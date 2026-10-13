@@ -14,8 +14,8 @@ import OpenAI from "openai";
 import type { ZodType } from "zod";
 
 import { EMBEDDING_DIMENSIONS } from "@/lib/db/types";
-import { AppError } from "@/lib/server/errors";
-import { settings, type Settings } from "@/lib/server/settings.server";
+import { AppError } from "@/lib/platform/errors";
+import { settings, type Settings } from "@/lib/platform/settings.server";
 
 export const DEFAULT_CHAT_MODEL = "mistral-small-latest";
 export const DEFAULT_EMBEDDING_MODEL = "mistral-embed";

@@ -57,8 +57,8 @@ token) is a server function in `src/lib/<feature>/<feature>.functions.ts`:
 ```ts
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireMember } from "@/lib/server/supabase.server";
-import { enforceRateLimit } from "@/lib/server/rate-limit.server";
+import { requireMember } from "@/lib/platform/supabase.server";
+import { enforceRateLimit } from "@/lib/platform/rate-limit.server";
 
 const input = z.object({ accessToken: z.string(), orgId: z.string().uuid(), briefId: z.string().uuid() });
 
@@ -73,13 +73,13 @@ export const extractCriteria = createServerFn({ method: "POST" })
 ```
 
 The browser calls it with the token: `await extractCriteria({ data: { ...(await withToken()), orgId, briefId } })`
-(`src/lib/server/call.ts`). A thrown `AppError` (`src/lib/server/errors.ts`)
+(`src/lib/platform/call.ts`). A thrown `AppError` (`src/lib/platform/errors.ts`)
 reaches the browser as an error whose message is the code; show
 `errorMessage(locale, error)` with `toast.error`. Never put a model or
 email call in the browser. Server-only modules end in `.server.ts`
 (the bundler keeps them out of the client).
 
-Service-role access is `db()` (`src/lib/server/supabase.server.ts`): a
+Service-role access is `db()` (`src/lib/platform/supabase.server.ts`): a
 PostgREST client (`select(path)`, `insert`, `patch`, `delete`, `rpc`,
 `signUrl`, `removeObjects`). Because it bypasses RLS, every handler calls
 `requireMember()` first and filters by the organisation it verified.
@@ -130,3 +130,12 @@ Supabase in tests: inject functions or fake clients.
 `package.json` / `bun.lock` (no new dependency), `src/lib/db/types.ts` and
 the migration (ask for a change instead), `src/components/app-shell/app-shell.tsx`
 (the nav is fixed), another feature's directories.
+
+## Why `src/lib/platform` and not `src/lib/server`
+
+The Vite config denies every import from a directory named `server/` in the
+client bundle (TanStack Start's import protection). Server functions
+(`*.functions.ts`) and the small client helpers (`call.ts`, `errors.ts`)
+must stay importable from pages, so the server-side library lives in
+`src/lib/platform/`; the modules that hold secrets end in `.server.ts` and
+are only ever imported by server-function handlers and API routes.

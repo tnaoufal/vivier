@@ -11,10 +11,10 @@ import { z } from "zod";
 
 import type { InvitationRow, OrganizationRow, ProfileRow } from "@/lib/db/types";
 import { emailLayout, emailSetup, sendRecorded, type EmailSetup } from "@/lib/email/email.server";
-import { AppError, appErrorCode } from "@/lib/server/errors";
-import { enforceRateLimit } from "@/lib/server/rate-limit.server";
-import { settings, siteOriginOf } from "@/lib/server/settings.server";
-import { SupabaseRequestError, db, requireMember } from "@/lib/server/supabase.server";
+import { AppError, appErrorCode } from "@/lib/platform/errors";
+import { enforceRateLimit } from "@/lib/platform/rate-limit.server";
+import { settings, siteOriginOf } from "@/lib/platform/settings.server";
+import { SupabaseRequestError, db, requireMember } from "@/lib/platform/supabase.server";
 
 import { invitationEmail } from "./invitation-email";
 import { seatsAvailable } from "./seats";

@@ -11,7 +11,7 @@ import { useCallback, useState } from "react";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import type { DocumentRow } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
-import { errorMessage, withToken } from "@/lib/server/call";
+import { errorMessage, withToken } from "@/lib/platform/call";
 import { toast } from "@/lib/toast";
 
 import { notifyProcessor } from "./candidates.functions";

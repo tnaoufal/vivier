@@ -24,7 +24,7 @@ import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
 import { formatDate, useI18n } from "@/lib/i18n";
 import { useCurrentOrg, useOrg } from "@/lib/org/org-context";
-import { withToken } from "@/lib/server/call";
+import { withToken } from "@/lib/platform/call";
 import { toast } from "@/lib/toast";
 
 export const Route = createFileRoute("/app/briefs/$briefId")({

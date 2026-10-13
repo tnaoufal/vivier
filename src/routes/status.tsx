@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, CircleDashed, XCircle } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
-import { getStatus } from "@/lib/server/status.functions";
+import { getStatus } from "@/lib/platform/status.functions";
 import { useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/status")({

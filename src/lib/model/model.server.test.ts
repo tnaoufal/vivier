@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { extractJson, modelConfig, vectorLiteral } from "./model.server";
-import { settings } from "@/lib/server/settings.server";
+import { settings } from "@/lib/platform/settings.server";
 
 describe("extractJson", () => {
   it("finds the object inside prose and fences", () => {

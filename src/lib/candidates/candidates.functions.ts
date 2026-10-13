@@ -8,10 +8,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { AppError } from "@/lib/server/errors";
-import { pokeProcessor } from "@/lib/server/processor.server";
-import { enforceRateLimit } from "@/lib/server/rate-limit.server";
-import { db, requireMember } from "@/lib/server/supabase.server";
+import { AppError } from "@/lib/platform/errors";
+import { pokeProcessor } from "@/lib/platform/processor.server";
+import { enforceRateLimit } from "@/lib/platform/rate-limit.server";
+import { db, requireMember } from "@/lib/platform/supabase.server";
 
 const notifyInput = z.object({
   accessToken: z.string().min(1).max(4096),

@@ -40,7 +40,7 @@ import { supabaseUploadDeps } from "@/lib/candidates/upload-browser";
 import { runUploads } from "@/lib/candidates/upload-runner";
 import { useI18n } from "@/lib/i18n";
 import { useCurrentOrg } from "@/lib/org/org-context";
-import { withToken } from "@/lib/server/call";
+import { withToken } from "@/lib/platform/call";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 

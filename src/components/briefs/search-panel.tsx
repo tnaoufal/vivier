@@ -29,7 +29,7 @@ import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
 import type { BriefCriterion, BriefRow, MatchResult, SearchMethod } from "@/lib/db/types";
 import { formatDateTime, useI18n } from "@/lib/i18n";
-import { errorMessage, withToken } from "@/lib/server/call";
+import { errorMessage, withToken } from "@/lib/platform/call";
 import { toast } from "@/lib/toast";
 
 import { ResultCard } from "./result-card";

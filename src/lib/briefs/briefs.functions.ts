@@ -12,10 +12,10 @@ import { z } from "zod";
 
 import type { BriefCriterion, BriefRow, MatchResult, SearchMethod, SearchRow } from "@/lib/db/types";
 import { completeJson, embed, modelConfigured, vectorLiteral } from "@/lib/model/model.server";
-import { AppError } from "@/lib/server/errors";
-import { enforceRateLimit } from "@/lib/server/rate-limit.server";
-import { db, requireMember, type ServiceClient } from "@/lib/server/supabase.server";
-import { recordUsage } from "@/lib/server/usage.server";
+import { AppError } from "@/lib/platform/errors";
+import { enforceRateLimit } from "@/lib/platform/rate-limit.server";
+import { db, requireMember, type ServiceClient } from "@/lib/platform/supabase.server";
+import { recordUsage } from "@/lib/platform/usage.server";
 
 import { isCriterionKind, LABEL_MAX, parseCriteria, toWeight, VALUE_MAX, withId } from "./criteria";
 import { rankResults, scoreCandidate, type MatchProfile } from "./matching";

@@ -12,7 +12,7 @@ import { extractCriteria } from "@/lib/briefs/briefs.functions";
 import { kindKey } from "@/lib/briefs/criteria";
 import type { BriefCriterion } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
-import { errorMessage, withToken } from "@/lib/server/call";
+import { errorMessage, withToken } from "@/lib/platform/call";
 import { toast } from "@/lib/toast";
 
 /** Null while unknown, then whether a model is set up on this deployment. */

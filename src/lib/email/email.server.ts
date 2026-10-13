@@ -8,9 +8,9 @@
  */
 import { BRAND } from "@/lib/brand";
 import type { EmailSendRow } from "@/lib/db/types";
-import { AppError } from "@/lib/server/errors";
-import { settings, siteOriginOf } from "@/lib/server/settings.server";
-import { db } from "@/lib/server/supabase.server";
+import { AppError } from "@/lib/platform/errors";
+import { settings, siteOriginOf } from "@/lib/platform/settings.server";
+import { db } from "@/lib/platform/supabase.server";
 
 export interface OutgoingEmail {
   /** The email_sends row id, sent as the idempotency key. */

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useI18n } from "@/lib/i18n";
-import { errorMessage, withToken } from "@/lib/server/call";
+import { errorMessage, withToken } from "@/lib/platform/call";
 import { errorSays } from "@/lib/team/team";
 import { inviteMember } from "@/lib/team/team.functions";
 import { toast } from "@/lib/toast";
