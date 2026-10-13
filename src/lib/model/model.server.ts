@@ -172,9 +172,14 @@ export async function embed(
   if (!texts.length) return { vectors: [], usage: { model: config.embeddingModel, tokensIn: 0, tokensOut: 0 } };
   const api = client(config);
   const openai = config.baseUrl.includes("api.openai.com");
+  // encoding_format stated on purpose: without it the SDK asks for base64 and
+  // decodes the answer itself; a provider that ignores the parameter (Mistral)
+  // answers floats, which older SDKs then mangle into a vector of a quarter
+  // of the width. Floats, as the provider sends them, on every version.
   const response = await api.embeddings.create({
     model: config.embeddingModel,
     input: texts.map((text) => text.slice(0, 8000)),
+    encoding_format: "float",
     ...(openai ? { dimensions: EMBEDDING_DIMENSIONS } : {}),
   });
   const vectors = response.data

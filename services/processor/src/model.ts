@@ -180,10 +180,17 @@ export async function completeJson<S extends ZodTypeAny>(input: {
 export async function embedOne(text: string, config: ModelConfig): Promise<Embedding> {
   const api = client(config);
   const openai = config.baseUrl.includes("api.openai.com");
+  // encoding_format is stated: left out, the SDK asks for base64 and decodes
+  // the answer with Buffer.from(value, "base64"). A provider that ignores the
+  // parameter (Mistral) answers a JSON array of floats, which that decoder
+  // turns into one byte per number and reads back as float32: a 1024-wide
+  // vector comes out 256 wide, garbage. Asking for floats keeps the answer as
+  // the provider sent it.
   const response = await api.embeddings
     .create({
       model: config.embeddingModel,
       input: [text.slice(0, 8000)],
+      encoding_format: "float",
       ...(openai ? { dimensions: EMBEDDING_DIMENSIONS } : {}),
     })
     .catch((error: unknown): never => {
