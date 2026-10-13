@@ -4,7 +4,7 @@
  * the second, the link and the recipients of the third. Nothing here
  * talks to the network; the dialog dispatches what the server answered.
  */
-import type { ShareItem } from "@/lib/db/types";
+import type { ShareBrief, ShareItem } from "@/lib/db/types";
 
 import { SHARE_ITEMS_MAX } from "./draft";
 import { DEFAULT_EXPIRY_DAYS, type ExpiryDays } from "./state";
@@ -38,6 +38,8 @@ export interface DialogState {
   expiresInDays: ExpiryDays;
   useModel: boolean;
   items: ShareItem[];
+  /** The brief as the cover will show it, answered with the draft; null before. */
+  brief: ShareBrief | null;
   modelUsed: boolean;
   modelFailed: boolean;
   share: CreatedShare | null;
@@ -58,7 +60,7 @@ export type DialogAction =
   | { type: "setExpiresInDays"; days: ExpiryDays }
   | { type: "setUseModel"; value: boolean }
   | { type: "setBusy"; value: boolean }
-  | { type: "drafted"; items: ShareItem[]; modelUsed: boolean; modelFailed: boolean }
+  | { type: "drafted"; items: ShareItem[]; brief: ShareBrief | null; modelUsed: boolean; modelFailed: boolean }
   | { type: "backToContent" }
   | { type: "setItemHeadline"; index: number; headline: string }
   | { type: "setItemSummary"; index: number; summary: string }
@@ -83,6 +85,7 @@ export function initialState(title: string): DialogState {
     expiresInDays: DEFAULT_EXPIRY_DAYS,
     useModel: false,
     items: [],
+    brief: null,
     modelUsed: false,
     modelFailed: false,
     share: null,
@@ -160,6 +163,7 @@ export function dialogReducer(state: DialogState, action: DialogAction): DialogS
         ...state,
         step: "review",
         items: action.items,
+        brief: action.brief,
         modelUsed: action.modelUsed,
         modelFailed: action.modelFailed,
         busy: false,

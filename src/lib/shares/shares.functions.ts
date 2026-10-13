@@ -1,8 +1,10 @@
 /**
  * Server side of sharing a shortlist: what this deployment can do (a
- * model, an email sender), the draft of a presentation from the chosen
- * candidates (the model's summaries when asked for and available), the
- * share row itself (its token minted and hashed here, shown once), the
+ * model, an email sender), the draft of a dossier from the chosen
+ * candidates (their profiles, the analysis the shortlist holds for them,
+ * the model's summaries when asked for and available), the share row
+ * itself (its token minted and hashed here, shown once; the brief's
+ * snapshot taken from the shortlist, never from the browser), the
  * emails that carry the link, and the revocation (the public read a
  * link opens is public.functions.ts). Every handler reads the caller
  * from the access token through requireMember() and works only on the
@@ -12,7 +14,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 
-import type { ShareItem, ShareRow } from "@/lib/db/types";
+import type { ShareBrief, ShareItem, ShareRow } from "@/lib/db/types";
 import { emailLayout, emailSetup, sendRecorded } from "@/lib/email/email.server";
 import { completeJson, modelConfigured } from "@/lib/model/model.server";
 import { AppError, appErrorCode } from "@/lib/platform/errors";
@@ -22,24 +24,42 @@ import { db, requireMember } from "@/lib/platform/supabase.server";
 import { recordUsage } from "@/lib/platform/usage.server";
 
 import {
+  AVAILABILITY_MAX,
+  briefSnapshot,
   cleanItems,
+  DECISIONS,
   DRAFT_COLUMNS,
+  EVIDENCE_MAX,
   HEADLINE_MAX,
+  LANGUAGE_MAX,
+  LANGUAGES_MAX,
   latestDocumentByCandidate,
+  LOCATION_MAX,
+  MATCH_COLUMNS,
+  matchByCandidate,
   mergeDraft,
+  MET_VALUES,
   NAME_MAX,
   orderedCandidates,
   plainDraft,
   POINT_MAX,
   POINTS_MAX,
+  REQUIREMENT_LABEL_MAX,
+  REQUIREMENTS_MAX,
   SHARE_ITEMS_MAX,
+  SKILL_MAX,
+  SKILLS_MAX,
   SUMMARY_MAX,
   summaryAnswer,
   summaryMaxTokens,
   summaryPayload,
   summarySystemPrompt,
+  unique,
+  YEARS_MAX,
   type DocumentPick,
   type DraftCandidate,
+  type MatchPick,
+  type SummaryAnswer,
 } from "./draft";
 import { MESSAGE_MAX, shareEmail } from "./email";
 import { SHARE_PATH, isShareUrl, shareUrlOf } from "./links";
@@ -72,13 +92,28 @@ const draftInput = orgInput.extend({
   useModel: z.boolean(),
 });
 
+const requirementInput = z.object({
+  label: z.string().min(1).max(REQUIREMENT_LABEL_MAX),
+  required: z.boolean(),
+  met: z.enum(MET_VALUES),
+  evidence: z.string().max(EVIDENCE_MAX).nullable(),
+});
+
 const itemInput = z.object({
   candidateId: z.uuid(),
   name: z.string().min(1).max(NAME_MAX),
   headline: z.string().max(HEADLINE_MAX).nullable(),
+  location: z.string().max(LOCATION_MAX).nullable(),
+  yearsExperience: z.number().int().min(0).max(YEARS_MAX).nullable(),
+  availability: z.string().max(AVAILABILITY_MAX).nullable(),
+  skills: z.array(z.string().max(SKILL_MAX)).max(SKILLS_MAX),
+  languages: z.array(z.string().max(LANGUAGE_MAX)).max(LANGUAGES_MAX),
   summary: z.string().max(SUMMARY_MAX),
   strengths: z.array(z.string().max(POINT_MAX)).max(POINTS_MAX),
   attention: z.array(z.string().max(POINT_MAX)).max(POINTS_MAX),
+  score: z.number().min(0).max(100).nullable(),
+  decision: z.enum(DECISIONS).nullable(),
+  requirements: z.array(requirementInput).max(REQUIREMENTS_MAX),
   documentId: z.uuid().nullable(),
 });
 
@@ -148,6 +183,8 @@ export const shareCapabilities = createServerFn({ method: "POST" })
 
 export interface DraftResult {
   items: ShareItem[];
+  /** The brief as the cover will show it; the server takes the same snapshot at creation. */
+  brief: ShareBrief;
   briefTitle: string;
   orgName: string;
   /** True when the summaries come from the model. */
@@ -166,24 +203,34 @@ export const draftShare = createServerFn({ method: "POST" })
       loadOrg(client, member.orgId),
       loadShortlist(client, member.orgId, data.shortlistId),
     ]);
-    const ids = [...new Set(data.candidateIds)];
+    const ids = unique(data.candidateIds);
     const rows = await client.select<DraftCandidate>(
       `candidates?select=${DRAFT_COLUMNS}&org_id=eq.${encodeURIComponent(member.orgId)}&id=${inList(ids)}`,
     );
     const candidates = orderedCandidates(ids, rows);
     if (!candidates.length) throw new AppError("NOT_FOUND");
-    const documents = await client.select<DocumentPick>(
-      `documents?select=id,candidate_id&org_id=eq.${encodeURIComponent(member.orgId)}&status=eq.processed&candidate_id=${inList(candidates.map((c) => c.id))}&order=processed_at.desc.nullslast,created_at.desc`,
-    );
-    let items = plainDraft(candidates, latestDocumentByCandidate(documents), org.locale);
+    const candidateIds = inList(candidates.map((c) => c.id));
+    const org_id = encodeURIComponent(member.orgId);
+    // The latest processed CV and the shortlist's match of each candidate: what the sheets rest on.
+    const [documents, matchRows] = await Promise.all([
+      client.select<DocumentPick>(
+        `documents?select=id,candidate_id&org_id=eq.${org_id}&status=eq.processed&candidate_id=${candidateIds}&order=processed_at.desc.nullslast,created_at.desc`,
+      ),
+      client.select<MatchPick>(
+        `shortlist_items?select=${MATCH_COLUMNS}&org_id=eq.${org_id}&shortlist_id=eq.${encodeURIComponent(shortlist.id)}&candidate_id=${candidateIds}&order=position.asc,created_at.asc`,
+      ),
+    ]);
+    const matches = matchByCandidate(matchRows);
+    const criteria = shortlist.brief.criteria;
+    let items = plainDraft(candidates, latestDocumentByCandidate(documents), matches, criteria, org.locale);
     let modelUsed = false;
     let modelFailed = false;
     if (data.useModel && modelConfigured()) {
       await enforceRateLimit("model", { userKey: member.userId });
       try {
-        const answer = await completeJson({
+        const answer = await completeJson<SummaryAnswer>({
           system: summarySystemPrompt(org.locale),
-          user: JSON.stringify(summaryPayload(shortlist.brief, candidates)),
+          user: JSON.stringify(summaryPayload(shortlist.brief, candidates, matches)),
           schema: summaryAnswer,
           maxTokens: summaryMaxTokens(candidates.length),
         });
@@ -195,7 +242,14 @@ export const draftShare = createServerFn({ method: "POST" })
         modelFailed = true;
       }
     }
-    return { items, briefTitle: shortlist.brief.title, orgName: org.name, modelUsed, modelFailed };
+    return {
+      items,
+      brief: briefSnapshot(shortlist.brief),
+      briefTitle: shortlist.brief.title,
+      orgName: org.name,
+      modelUsed,
+      modelFailed,
+    };
   });
 
 // ---------------------------------------------------------------------
@@ -222,7 +276,7 @@ export const createShare = createServerFn({ method: "POST" })
     if (!items.length) throw new AppError("INPUT:invalid");
 
     // Every candidate must be the organisation's: the ids are re-verified, never trusted.
-    const candidateIds = [...new Set(items.map((item) => item.candidateId))];
+    const candidateIds = unique(items.map((item) => item.candidateId));
     const owned = await client.select<{ id: string }>(
       `candidates?select=id&org_id=eq.${encodeURIComponent(member.orgId)}&id=${inList(candidateIds)}`,
     );
@@ -230,7 +284,7 @@ export const createShare = createServerFn({ method: "POST" })
 
     // A CV link is kept only for a document of the organisation attached to that very candidate.
     const documentOwner = new Map<string, string | null>();
-    const documentIds = [...new Set(items.flatMap((item) => (item.documentId ? [item.documentId] : [])))];
+    const documentIds = unique(items.flatMap((item) => (item.documentId ? [item.documentId] : [])));
     if (data.includeCvs && documentIds.length) {
       const documents = await client.select<DocumentPick>(
         `documents?select=id,candidate_id&org_id=eq.${encodeURIComponent(member.orgId)}&id=${inList(documentIds)}`,
@@ -245,6 +299,8 @@ export const createShare = createServerFn({ method: "POST" })
           : null,
     }));
 
+    // The cover's brief is the shortlist's own, frozen now: the browser never writes it.
+    const brief = briefSnapshot(shortlist.brief);
     const token = randomToken();
     const tokenHash = await sha256Hex(token);
     const [share] = await client.insert<Pick<ShareRow, "id" | "expires_at">>("shares", [
@@ -255,6 +311,7 @@ export const createShare = createServerFn({ method: "POST" })
         title,
         intro: data.intro.trim(),
         items: stored,
+        brief,
         include_cvs: data.includeCvs,
         expires_at: expiresAtFrom(data.expiresInDays),
         created_by: member.userId,
@@ -316,7 +373,7 @@ export const sendShare = createServerFn({ method: "POST" })
       footer: content.footer,
     });
 
-    const recipients = [...new Set(data.recipients.map((email) => email.trim().toLowerCase()))];
+    const recipients = unique(data.recipients.map((email: string) => email.trim().toLowerCase()));
     let sent = 0;
     const failed: string[] = [];
     for (const to of recipients) {

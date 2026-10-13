@@ -14,8 +14,9 @@ stack and nothing else.
   the frontend's `bun.lock` is frozen (`bun install --frozen-lockfile`);
   adding a package is an owner decision, not a session's.
 - No decision is ever made by a machine. The model structures CVs,
-  extracts criteria from a brief, ranks and explains; a person retains or
-  dismisses, and `shortlist_items.decided_by` says who. The UI never hides
+  extracts criteria from a brief, ranks and assesses requirement by
+  requirement (a reading, bound by rules in `src/lib/briefs/assessment.ts`);
+  a person retains or dismisses, and `shortlist_items.decided_by` says who. The UI never hides
   this. A criterion the CV says nothing about is `not_stated`, never a
   mismatch; a field the model did not read is absent, never invented.
 - No sensitive inference: age, date of birth, gender, origin, photo,

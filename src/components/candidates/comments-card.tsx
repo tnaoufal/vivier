@@ -1,7 +1,9 @@
 /**
  * The team's notes on a candidate: who wrote what and when, a box to
  * add one, and a delete for the author (or an admin). Live through
- * realtime on comments, handled by the page.
+ * realtime on comments, handled by the page. Spacing and type follow
+ * docs/DESIGN.md; the send button stays outline so the page keeps one
+ * primary action.
  */
 import { useState, type FormEvent } from "react";
 import { MessageSquare, Trash2 } from "lucide-react";
@@ -85,18 +87,18 @@ export function CommentsCard({
   }
 
   return (
-    <section className="sheet p-4 sm:p-5">
-      <h2 className="label-caps mb-3">{t("candidates.comments.title")}</h2>
+    <section className="sheet p-6">
+      <h2 className="mb-4 text-base font-semibold text-ink">{t("candidates.comments.title")}</h2>
       {comments.length ? (
-        <ul className="space-y-3">
+        <ul className="space-y-4">
           {comments.map((comment) => {
             const author = memberName(members.get(comment.author_id), t("common.someone"));
             const mine = user?.id === comment.author_id;
             return (
-              <li key={comment.id} className="flex gap-2">
-                <Avatar name={author} size="sm" className="mt-0.5" />
+              <li key={comment.id} className="flex gap-3">
+                <Avatar name={author} size="sm" className="mt-1" />
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-x-2 text-[13px] leading-5 text-muted-foreground">
                     <span className="font-medium text-ink">{author}</span>
                     <span>{formatRelative(locale, comment.created_at)}</span>
                     {mine || can("admin") ? (
@@ -112,7 +114,7 @@ export function CommentsCard({
                       </button>
                     ) : null}
                   </div>
-                  <p className="whitespace-pre-line text-sm text-ink">{comment.body}</p>
+                  <p className="whitespace-pre-line text-[15px] leading-6 text-ink">{comment.body}</p>
                 </div>
               </li>
             );
@@ -133,7 +135,7 @@ export function CommentsCard({
             aria-label={t("candidates.comments.title")}
           />
           <div className="flex justify-end">
-            <Button type="submit" size="sm" disabled={busy || !body.trim()}>
+            <Button type="submit" size="sm" variant="outline" disabled={busy || !body.trim()}>
               {t("common.send")}
             </Button>
           </div>

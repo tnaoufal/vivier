@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { addChips, removeChip } from "@/lib/candidates/draft";
 import { useT } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 export function ChipEditor({
   values,
@@ -52,21 +53,18 @@ export function ChipEditor({
     setTyped("");
   }
 
-  const chipClass =
-    tone === "primary"
-      ? "bg-primary/12 text-primary"
-      : "bg-muted text-muted-foreground";
+  const chipClass = tone === "primary" ? "bg-primary/12 text-primary" : "bg-muted text-muted-foreground";
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {values.length ? (
-        <ul className="flex flex-wrap gap-1.5">
+        <ul className="flex flex-wrap gap-2">
           {values.map((value) => (
             <li
               key={value}
-              className={`inline-flex h-7 items-center gap-1 rounded-full pl-2.5 pr-1.5 text-xs font-medium ${chipClass}`}
+              className={cn("inline-flex h-8 max-w-full items-center gap-1 rounded-full pl-3 text-[13px] font-medium", canEdit ? "pr-1.5" : "pr-3", chipClass)}
             >
-              <span>{value}</span>
+              <span className="truncate">{value}</span>
               {canEdit ? (
                 <button
                   type="button"
@@ -74,9 +72,9 @@ export function ChipEditor({
                   disabled={busy}
                   aria-label={t("candidates.chips.remove", { value })}
                   title={t("candidates.chips.remove", { value })}
-                  className="rounded-full p-0.5 hover:bg-background/60 disabled:opacity-50"
+                  className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors duration-150 hover:bg-card/70 disabled:opacity-50"
                 >
-                  <X className="size-3" />
+                  <X className="size-3.5" aria-hidden="true" />
                 </button>
               ) : null}
             </li>
@@ -86,16 +84,16 @@ export function ChipEditor({
         <p className="text-sm text-muted-foreground">{t(emptyKey)}</p>
       )}
       {canEdit ? (
-        <form onSubmit={(event) => void add(event)} className="flex gap-2">
+        <form onSubmit={(event) => void add(event)} className="flex flex-wrap gap-2">
           <Input
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
             placeholder={placeholder}
             maxLength={200}
             disabled={busy}
-            className="h-8 text-sm"
+            className="min-w-0 flex-1 basis-48"
           />
-          <Button type="submit" size="sm" variant="outline" disabled={busy || !typed.trim()}>
+          <Button type="submit" variant="outline" disabled={busy || !typed.trim()}>
             {t("common.add")}
           </Button>
         </form>

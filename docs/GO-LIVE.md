@@ -7,11 +7,24 @@ provider accounts. Work it in one block before the first real CV.
 
 - [ ] Create the project `vivier_prod` in `eu-west-1` (or Frankfurt); note the
       project ref, the URL and the publishable key.
-- [ ] Apply `supabase/migrations/20261013090000_vivier_init.sql`
-      (`supabase link` then `supabase db push`, or the SQL editor). The dev
-      project `vivier_dev` (ref `qtujdeolcdvlzwvpqpuv`, eu-west-1, free tier)
-      already carries it; reset its database password in the dashboard before
-      using it from a machine.
+- [ ] Apply the four files of `supabase/migrations` in order (`supabase link`
+      then `supabase db push`, or the SQL editor): `20261013090000_vivier_init`,
+      then evolution 2: `20261013180000_vivier_assessment` (status `rejected`,
+      `documents.document_kind`, `similar_candidates()`),
+      `20261013190000_vivier_dossier` (`shares.brief`, `candidates.phone_digits`
+      and the dedup indexes, the `assess` usage kind, the re-embed index) and
+      `20261013200000_vivier_pool` (`searches.pool_size`, and
+      `cvs_processed_this_month()` no longer counts rejected documents). All
+      four are safe to re-run. The dev project `vivier_dev` (ref
+      `qtujdeolcdvlzwvpqpuv`, eu-west-1, free tier) carries all four (checked
+      on its schema on 2026-10-13: `document_kind`, `shares.brief`,
+      `phone_digits`, `similar_candidates()`, `searches.pool_size` exist and
+      the quota function excludes `rejected`). The three evolution-2 files were
+      applied outside the CLI, so `supabase_migrations.schema_migrations` lists
+      only `vivier_init`: run `supabase migration repair --status applied
+      20261013180000 20261013190000 20261013200000` before a `db push`, or let
+      the push re-run them. Reset the dev database password in the dashboard
+      before using it from a machine.
 - [ ] Default privileges for `anon` and `authenticated` are revoked by the
       migration: every later table or RPC meant for the browser needs its own
       `GRANT` (the migration shows the pattern).
@@ -29,7 +42,8 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Create the Worker from this repository with the Git integration
       (root directory `vivier`, build `bun run build`, deploy with wrangler).
 - [ ] Variables: `SITE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`,
-      `PROCESSOR_URL`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_EMBEDDING_MODEL`, `EMAIL_FROM`, `EMAIL_REPLY_TO`.
+      `PROCESSOR_URL`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_EMBEDDING_MODEL`, `EMAIL_FROM`, `EMAIL_REPLY_TO`;
+      optionally `LLM_ASSESSMENT_MODEL` (see "Model vendor").
 - [ ] Secrets: `SUPABASE_SERVICE_ROLE_KEY`, `PROCESSOR_SHARED_SECRET`,
       `LLM_API_KEY`, `RESEND_API_KEY`.
 - [ ] Check `/status` shows every part green without any value.
@@ -41,7 +55,15 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Variables: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
       `PROCESSOR_SHARED_SECRET` (the same 32+ character secret as the Worker),
       `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_EMBEDDING_MODEL`,
-      optionally `MISTRAL_OCR_API_KEY` for scanned PDFs.
+      optionally `MISTRAL_OCR_API_KEY` for scanned PDFs. `PROCESSOR_CONCURRENCY`
+      now defaults to 4 (was 2): set it only to lower it when the model answers 429.
+- [ ] **Set `LLM_EMBEDDING_MODEL=mistral-embed` on the Railway service** (the
+      current deployment runs without it, so the candidates processed so far
+      have no vector), then **redeploy the processor** so the startup probe
+      runs: the logs show `embedding_ok { dimensions: 1024 }` and `GET /health`
+      answers `"embedding": "ok"`. A `mismatch` or `unavailable` there names
+      what to fix. The hourly re-embed pass then gives the existing candidates
+      a vector (100 a pass); `POST /maintenance` with the bearer runs it now.
 - [ ] After the first deploy: check the logs show `polling: true` and `/status` sees it.
 
 ## Model vendor
@@ -51,6 +73,13 @@ provider accounts. Work it in one block before the first real CV.
       Sign the data processing terms; confirm no training on API data.
 - [ ] Alternative: OpenAI (`LLM_BASE_URL=https://api.openai.com/v1`,
       `LLM_EMBEDDING_MODEL=text-embedding-3-small`, shortened to 1024 dimensions automatically).
+- [ ] The expert assessment (`assessCandidates`: one call per profile read, kind
+      `assess`) is what decides which CVs a hiring team sees as matching the
+      brief: when budget allows, set `LLM_ASSESSMENT_MODEL=mistral-medium-latest`
+      on the Worker for that call alone and keep `LLM_MODEL=mistral-small-latest`
+      for structuring, criteria and dossier drafts. Unset, `LLM_MODEL` assesses
+      too. An analysis of a 200-profile pool is 200 calls of about 9 000
+      characters each; `ai_usage.model` says which model answered.
 
 ## Resend
 
@@ -60,9 +89,10 @@ provider accounts. Work it in one block before the first real CV.
       the share dialog only offers the link to copy. Share emails set Reply-To
       to the sender's confirmed address (`EMAIL_REPLY_TO` is the fallback).
 - [ ] Without `LLM_API_KEY` the brief page says no model is set up, criteria
-      are typed by hand and every search runs on text only (shown on the page);
-      with a key, proposals, hybrid retrieval and explanations record
-      `ai_usage` rows of kinds `brief`, `embed` and `explain`.
+      are typed by hand and every analysis runs on text only, without
+      assessment (shown on the page); with a key, proposals, derived criteria,
+      hybrid retrieval, assessments and dossier drafts record `ai_usage` rows
+      of kinds `brief`, `embed`, `assess` and `summary`.
 
 ## Legal
 
@@ -70,7 +100,12 @@ provider accounts. Work it in one block before the first real CV.
       `src/components/legal-page.tsx` (Contact sections).
 - [ ] Sign the DPAs: Supabase, Cloudflare, Railway, Resend, the model vendor.
 - [ ] Decide the default retention (24 months) and tell customers to inform
-      candidates (the share page and the privacy policy already say a model is used).
+      candidates (the dossier page and the privacy policy already say a model is
+      used; the notice in `docs/RGPD.md` now describes the assessment).
+- [ ] A document set aside as "not a CV" that is pinned to no candidate (an
+      identity document uploaded by mistake) is purged by nothing and deleted
+      by no button yet: until that evolution, delete such rows with the service
+      role when a customer asks (README "Not built yet").
 
 ## Billing (phase 7, not built yet)
 

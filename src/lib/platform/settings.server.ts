@@ -17,6 +17,8 @@ export interface Settings {
     apiKey: string | null;
     model: string | null;
     embeddingModel: string | null;
+    /** The chat model of the expert assessment when it differs from `model` (LLM_ASSESSMENT_MODEL); null means the same. */
+    assessmentModel: string | null;
   };
   resend: { apiKey: string | null; from: string | null; replyTo: string | null };
   rateLimitOff: boolean;
@@ -51,6 +53,7 @@ export function settings(env: NodeJS.ProcessEnv = process.env): Settings {
       apiKey: value(env, "LLM_API_KEY"),
       model: value(env, "LLM_MODEL"),
       embeddingModel: value(env, "LLM_EMBEDDING_MODEL"),
+      assessmentModel: value(env, "LLM_ASSESSMENT_MODEL"),
     },
     resend: {
       apiKey: value(env, "RESEND_API_KEY"),
@@ -66,7 +69,14 @@ export interface Setup {
   accounts: boolean;
   serviceKey: boolean;
   processor: boolean;
-  model: { configured: boolean; baseUrl: string | null; model: string | null; embeddingModel: string | null };
+  model: {
+    configured: boolean;
+    baseUrl: string | null;
+    model: string | null;
+    embeddingModel: string | null;
+    /** The assessment's own model when one is named; null when the chat model assesses too. */
+    assessmentModel: string | null;
+  };
   email: boolean;
   rateLimit: boolean;
 }
@@ -84,6 +94,7 @@ export function describeSetup(env: NodeJS.ProcessEnv = process.env): Setup {
       baseUrl: s.llm.apiKey ? (s.llm.baseUrl ?? "https://api.openai.com/v1") : null,
       model: s.llm.apiKey ? (s.llm.model ?? "default") : null,
       embeddingModel: s.llm.apiKey ? (s.llm.embeddingModel ?? "default") : null,
+      assessmentModel: s.llm.apiKey ? s.llm.assessmentModel : null,
     },
     // What emailSetup() decides: a key and the site origin the links are built on.
     email: Boolean(s.resend.apiKey && siteOriginOf(s.siteUrl)),

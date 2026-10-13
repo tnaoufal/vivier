@@ -119,7 +119,12 @@ export interface ProcessingCounts {
   pending: number;
   /** failed or needs_ocr */
   failed: number;
+  /** rejected: read by the service, which did not take it for a CV; a person may disagree and retry. */
+  rejected: number;
 }
+
+/** The statuses a person may want to look at: the service could not read them, or set them aside. */
+const SET_ASIDE_STATUSES = ["failed", "needs_ocr", "rejected"];
 
 async function countDocuments(supabase: SupabaseClient, orgId: string, statuses: string[]): Promise<number> {
   const { count, error } = await supabase
@@ -132,11 +137,12 @@ async function countDocuments(supabase: SupabaseClient, orgId: string, statuses:
 }
 
 export async function readProcessingCounts(supabase: SupabaseClient, orgId: string): Promise<ProcessingCounts> {
-  const [pending, failed] = await Promise.all([
+  const [pending, failed, rejected] = await Promise.all([
     countDocuments(supabase, orgId, ["queued", "processing"]),
     countDocuments(supabase, orgId, ["failed", "needs_ocr"]),
+    countDocuments(supabase, orgId, ["rejected"]),
   ]);
-  return { pending, failed };
+  return { pending, failed, rejected };
 }
 
 /** When the hourly purge deletes the candidate, from retention_due_at(); null when unknown. */
@@ -146,13 +152,13 @@ export async function readRetentionDueAt(supabase: SupabaseClient, candidateId: 
   return typeof data === "string" ? data : null;
 }
 
-/** The organisation's documents the service could not read, newest first, for the list's banner. */
+/** The organisation's documents the service could not read or set aside, newest first, for the list's banner. */
 export async function listFailedDocuments(supabase: SupabaseClient, orgId: string, limit = 50): Promise<DocumentRow[]> {
   const { data, error } = await supabase
     .from("documents")
     .select("*")
     .eq("org_id", orgId)
-    .in("status", ["failed", "needs_ocr"])
+    .in("status", SET_ASIDE_STATUSES)
     .order("updated_at", { ascending: false })
     .limit(limit);
   if (error) throw error;

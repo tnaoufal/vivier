@@ -189,8 +189,8 @@
 
 :root,
 .share-sheet {
-  --radius: 0.75rem;
-  --background: oklch(0.992 0.003 120);
+  --radius: 0.875rem;
+  --background: oklch(0.985 0.004 130);
   --foreground: oklch(0.22 0.015 150);
   --ink: oklch(0.19 0.015 150);
   --ink-soft: oklch(0.47 0.015 150);
@@ -210,8 +210,8 @@
   --accent-foreground: oklch(0.2 0.015 150);
   --destructive: oklch(0.55 0.18 27);
   --destructive-foreground: oklch(0.99 0.003 88);
-  --border: oklch(0.905 0.01 140);
-  --input: oklch(0.86 0.012 140);
+  --border: oklch(0.92 0.008 140);
+  --input: oklch(0.88 0.01 140);
   --ring: oklch(0.62 0.1 160);
   --positive: oklch(0.52 0.14 155);
   --positive-foreground: oklch(0.99 0.005 150);
@@ -310,6 +310,8 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
 }
@@ -320,15 +322,24 @@
   letter-spacing: -0.01em;
 }
 
+/* A label or a meta line: 13/20, medium, muted; sentence case, never caps. */
 @utility label-caps {
   font-family: var(--font-sans);
-  font-size: 0.6875rem;
-  @media (width < 40rem) {
-    font-size: 0.75rem;
-  }
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--color-muted-foreground);
+}
+
+/* The big number of a stat tile: display face, 30/36, digits that line up. */
+@utility stat-number {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 @utility skeleton {
@@ -367,10 +378,56 @@
 
 /* Cards of the app: a white sheet with a hairline, the same everywhere. */
 @utility sheet {
-  border-radius: var(--radius-xl);
+  border-radius: 1rem;
   border: 1px solid var(--color-border);
   background-color: var(--color-card);
   color: var(--color-card-foreground);
+}
+
+/*
+ * A row inside a sheet: roomy (16px vertical, 24px horizontal, 16px on
+ * phones), divided by hairlines, tinted on hover and focus when the row
+ * is a link (an <a> itself, inside one, or marked data-link). The tint
+ * is the muted token at half strength, so dark mode follows on its own.
+ */
+@utility sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  min-width: 0;
+  transition: background-color 150ms var(--ease-out-soft);
+  @media (width < 40rem) {
+    padding-inline: 1rem;
+  }
+  & + & {
+    border-top: 1px solid var(--color-border);
+  }
+  &:is(a):hover,
+  &:is(a):focus-visible,
+  a > &:hover,
+  a:focus-visible > &,
+  &[data-link]:hover,
+  &[data-link]:focus-visible {
+    background-color: color-mix(in oklab, var(--color-muted) 50%, transparent);
+  }
+  &:is(a):focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--color-ring);
+  }
+}
+
+/* The tint of a card that leads somewhere, on hover and keyboard focus. */
+@utility sheet-link {
+  transition:
+    background-color 150ms var(--ease-out-soft),
+    border-color 150ms var(--ease-out-soft);
+  &:hover,
+  &:focus-visible {
+    background-color: color-mix(in oklab, var(--color-muted) 50%, var(--color-card));
+    border-color: color-mix(in oklab, var(--color-primary) 25%, var(--color-border));
+    outline: none;
+  }
 }
 
 @utility rise-in {

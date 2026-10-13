@@ -17,7 +17,7 @@ counsel to confirm, not advice. Paths are relative to `vivier/`.
 | Supabase                           | Sub-processor               | Database, authentication, file storage, realtime; project in the EU region chosen at creation.                                            |
 | Cloudflare                         | Sub-processor               | Runs the web application (Workers, global edge) and holds the backups (R2 bucket, EU jurisdiction, thirty-day retention).                |
 | Railway                            | Sub-processor               | Runs the processor (reads the PDFs, structures them, runs the retention purge).                                                           |
-| The model vendor                   | Sub-processor               | Mistral by default (EU); any OpenAI-compatible vendor the organisation's deployment chooses. Receives CV text, briefs and profiles for the duration of each call; no training on the data (to be confirmed in the vendor's terms). |
+| The model vendor                   | Sub-processor               | Mistral by default (EU); any OpenAI-compatible vendor the organisation's deployment chooses. Receives, for the duration of each call: the CV's text (structuring, and the classification that sets aside what is not a CV), briefs (criteria), the profile's compact text (embeddings), and for the assessment and the dossier draft a profile with the name, e-mail addresses and phone numbers removed from every text. A deployment may name a second model of the same vendor for the assessment (`LLM_ASSESSMENT_MODEL`). No training on the data (to be confirmed in the vendor's terms). |
 | Mistral (OCR)                      | Sub-processor, when enabled | Receives scanned PDFs to read their text.                                                                                                  |
 | Resend                             | Sub-processor               | Sends invitations to the organisation's users and shared shortlists to the addresses the organisation enters (hiring managers). Never emails a candidate. |
 | Hiring managers                    | Recipients                  | Open a shared page by link: a snapshot of the retained candidates, expiring, revocable, with CVs when the team chose to include them.     |
@@ -33,14 +33,14 @@ complete where brackets appear.
 | Purpose                            | Receiving and keeping applications (spontaneous or for a position), finding in the pool the candidates who answer a brief, deciding as a team whom to contact, presenting a shortlist to the hiring manager.                                                                                                                                                                                                 |
 | Legal basis                        | Steps prior to a contract at the candidate's request (Art. 6(1)(b)) for the position applied for; the organisation's legitimate interest in recruiting (Art. 6(1)(f)) for keeping an application in the pool for a bounded time, with the information below given to the candidate; the candidate's consent (Art. 6(1)(a)) when the organisation chooses to ask for it, recorded as `consent_status = given` with its date, withdrawable at any time (`withdrawn`: the profile and its files are deleted within the hour). |
 | Data subjects                      | Candidates (anyone whose CV the organisation uploads or whose profile it types in); the organisation's users (members of the team).                                                                                                                                                                                                                                                                         |
-| Categories of data: candidates     | Identity (name), contact (email, phone, links such as a portfolio), current title, location, years of experience, availability, a summary, skills, languages and levels, experiences (title, company, dates, description), education (degree, school, year), tags given by the team; the CV file as uploaded and the text read from it; the model's reading with a confidence per field; the team's comments, votes, decisions, notes and assignments; consent status and date, last contact date; the explained match against each brief (verdicts and the evidence quoted from the CV). |
-| Data explicitly excluded           | Age, date of birth, gender, nationality or origin, photo, family situation, health, religion, union membership, political opinions, sexual orientation: never extracted into a profile, never accepted as a criterion of a brief (a request naming one is dropped and reported), never mentioned in the model's explanations. The CV file itself is kept as the candidate sent it and may contain such data (a photo, a date of birth): it is read by the members who open it and by the model during structuring, not stored as fields. The organisation's notice tells candidates not to include them. |
+| Categories of data: candidates     | Identity (name), contact (email, phone, links such as a portfolio), current title, location, years of experience, availability, a summary, skills, languages and levels, experiences (title, company, dates, description), education (degree, school, year), tags given by the team; the CV file as uploaded and the text read from it; the model's reading with a confidence per field; the team's comments, votes, decisions, notes and assignments; consent status and date, last contact date; the explained match against each brief (verdicts and the evidence quoted from the CV) and, with a model, its assessment (a reading fit / borderline / no fit, a score 0..100, two to four sentences, one row per requirement with the evidence quoted from the CV), kept with the analysis (`searches.results`), the shortlist item (`shortlist_items.match`) and the dossier sent (`shares.items`); the kind the processor gave each document (`cv`, `other`). A document set aside as not a CV keeps its file and its text, attached to no candidate, until it is deleted. |
+| Data explicitly excluded           | Age, date of birth, gender, nationality or origin, photo, family situation, health, religion, union membership, political opinions, sexual orientation: never extracted into a profile, never accepted as a criterion of a brief (a request naming one is dropped and reported), never mentioned in the model's assessments or dossier drafts (the prompts forbid it, and the assessment receives neither the name nor the contact details). The CV file itself is kept as the candidate sent it and may contain such data (a photo, a date of birth): it is read by the members who open it and by the model during structuring, not stored as fields. The organisation's notice tells candidates not to include them. |
 | Categories of data: users          | Email, display name, language, role in the organisation, actions in the organisation (`activities`), sessions.                                                                                                                                                                                                                                                                                              |
-| Recipients                         | The organisation's members by role (viewers read; members write; administrators delete and erase; owners manage). The sub-processors above. Hiring managers through a shared page (expiring, revocable, a snapshot of the retained candidates, CVs through links valid two minutes).                                                                                                                       |
+| Recipients                         | The organisation's members by role (viewers read; members write; administrators delete and erase; owners manage). The sub-processors above. Hiring managers through a dossier page (expiring, revocable, a snapshot of the retained candidates with the requirement table, the score and the decision of the assessment, and the brief's requirements; CVs through links valid two minutes). |
 | Transfers outside the EU           | None with the default deployment (Supabase EU region, Cloudflare EU jurisdiction for backups, Mistral). Cloudflare Workers run at the edge nearest the user and keep no candidate data at rest. If the organisation's deployment chooses a vendor outside the EU (e.g. OpenAI, United States), the vendor's data processing terms and transfer mechanism (standard contractual clauses) apply and the notice is updated. |
 | Retention                          | Set by the organisation, 1 to 24 months after the last contact (24 by default, the ceiling the CNIL recommends for a recruitment pool); an hourly purge deletes the candidate and their files when the date is past, or at once when consent is withdrawn; the profile page shows the date. Backups: thirty days after deletion at most. Audit log (`activities`): kept with the organisation (a deletion leaves a line naming the deleted candidate). Shared pages: until their expiry or revocation (a snapshot; see "Requests"). User accounts: until the person deletes theirs; an organisation deleted by its owner takes everything with it. |
-| Security measures                  | Row Level Security on every table with the role as the only key; server-side checks of the caller's token and role before any privileged action; secrets in the hosting dashboards only, never in the code or the browser; TLS everywhere; encryption at rest by Supabase and Cloudflare; CV files in a private bucket, opened through signed links of five minutes (members) or two minutes (shared pages); share and invitation links as random tokens stored hashed; rate limits on every costly action; an audit log of actions written by the database; nightly backups with a thirty-day retention and a rehearsed restore; no automated decision; sensitive data excluded by design. |
-| Automated decision-making (Art. 22) | None. The model structures CVs, proposes criteria, ranks and explains; a criterion the CV says nothing about never counts against the candidate; every retain or dismiss is a person's, recorded with their identity and the moment. The organisation's users are told so on every page.                                                                                                                 |
+| Security measures                  | Row Level Security on every table with the role as the only key; server-side checks of the caller's token and role before any privileged action; secrets in the hosting dashboards only, never in the code or the browser; TLS everywhere; encryption at rest by Supabase and Cloudflare; CV files in a private bucket, opened through signed links of five minutes (members) or two minutes (shared pages); share and invitation links as random tokens stored hashed; rate limits on every costly action; the assessment sends the model a profile stripped of its name and contact details; an audit log of actions written by the database; nightly backups with a thirty-day retention and a rehearsed restore; no automated decision; sensitive data excluded by design. |
+| Automated decision-making (Art. 22) | None. The model structures CVs, proposes criteria, and assesses each profile against the brief's requirements with a reading (fit, borderline, no fit) that rules bound in the code: a requirement the CV says nothing about is "not stated", never a lack; a "no" the model cannot quote becomes "not stated"; a required requirement the CV is silent about leaves the profile "to check" at most. The brief page shows the profiles "set aside" collapsed, never removed, with the missing requirement named; every retain or dismiss is a person's, recorded with their identity and the moment. The organisation's users are told so on every page, and the dossier's footer says so to the hiring manager. |
 | Impact assessment (Art. 35)        | [To decide with the DPO.] Large-scale processing of applicants' data with a ranking step is a reason to carry one out; this register and `docs/ARCHITECTURE.md` provide its technical part.                                                                                                                                                                                                                 |
 
 ## Candidate information notice
@@ -67,10 +67,11 @@ languages say the same thing.
 > Nous utilisons le logiciel Vivier pour gérer notre vivier de candidats.
 > Le texte de votre CV est transmis à un fournisseur de modèle de langage
 > ([Mistral AI, hébergé dans l'Union européenne]) pour en extraire une fiche
-> structurée et pour expliquer en quelques phrases la correspondance entre
-> votre profil et un poste. Le modèle ne prend aucune décision : il
-> structure, classe et explique ; chaque décision est prise par une personne
-> de notre équipe et tracée. Le fournisseur n'utilise pas vos données pour
+> structurée et pour évaluer, exigence par exigence et en quelques phrases,
+> la correspondance entre votre profil et un poste ; cette évaluation ne
+> reçoit ni votre nom ni vos coordonnées. Le modèle ne prend aucune
+> décision : il structure, évalue et explique ; chaque décision est prise
+> par une personne de notre équipe et tracée. Le fournisseur n'utilise pas vos données pour
 > entraîner ses modèles. Aucune donnée sensible (âge, date de naissance,
 > genre, origine, photo, situation familiale, santé, religion, syndicat,
 > opinions politiques) n'est extraite ni utilisée comme critère ; nous vous
@@ -79,8 +80,9 @@ languages say the same thing.
 > Vos données sont accessibles aux membres de notre équipe de recrutement,
 > à nos sous-traitants techniques (hébergement de l'application et des
 > fichiers dans l'Union européenne, envoi d'emails, fournisseur de modèle)
-> et, sous la forme d'une présentation à durée limitée, aux responsables du
-> recrutement concernés.
+> et, sous la forme d'un dossier à durée limitée (votre fiche, l'évaluation
+> exigence par exigence, votre CV), aux responsables du recrutement
+> concernés.
 >
 > Vos données sont conservées [24] mois après notre dernier contact, puis
 > supprimées automatiquement avec votre CV. Les sauvegardes sont effacées
@@ -108,10 +110,12 @@ languages say the same thing.
 >
 > We use the Vivier software to manage our talent pool. The text of your
 > CV is sent to a language-model vendor ([Mistral AI, hosted in the
-> European Union]) to extract a structured profile and to explain in a
-> few sentences how your profile matches a position. The model makes no
-> decision: it structures, ranks and explains; every decision is made by a
-> person on our team and recorded. The vendor does not use your data to
+> European Union]) to extract a structured profile and to assess, requirement
+> by requirement and in a few sentences, how your profile matches a
+> position; that assessment receives neither your name nor your contact
+> details. The model makes no decision: it structures, assesses and
+> explains; every decision is made by a person on our team and recorded.
+> The vendor does not use your data to
 > train its models. No sensitive data (age, date of birth, gender, origin,
 > photo, family situation, health, religion, union membership, political
 > opinions) is extracted or used as a criterion; please leave such data
@@ -120,7 +124,8 @@ languages say the same thing.
 > Your data is accessible to the members of our recruiting team, to our
 > technical processors (hosting of the application and files in the
 > European Union, email sending, the model vendor) and, as a time-limited
-> presentation, to the hiring managers concerned.
+> dossier (your profile, the requirement-by-requirement assessment, your
+> CV), to the hiring managers concerned.
 >
 > Your data is kept for [24] months after our last contact, then deleted
 > automatically together with your CV. Backups are erased at most thirty
@@ -142,8 +147,11 @@ the actions, not the correspondence).
 
 **Find the candidate**: `/app/candidates`, search by name, then the
 Archived tab if nothing shows; the email in the profile confirms it is the
-right person. A candidate uploaded twice is one profile (fingerprint
-dedup), but check for a second row typed in by hand.
+right person. A candidate uploaded twice is one profile (the processor
+merges by email, by phone number and by fingerprint), but check for a
+second row typed in by hand, or one the processor refused to merge because
+the names disagreed (`dedup_name_conflict` in its log): search by email as
+well as by name, and open **Similar profiles** on the page found.
 
 | Request                     | What to do in Vivier                                                                                                                                                                                                                                                                                                                                                                                                              |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -154,23 +162,36 @@ dedup), but check for a second row typed in by hand.
 | Objection, restriction (Art. 18, 21) | **Archive** the candidate (status `archived`): archived profiles are out of every search and shortlist addition while the request is examined, and the team sees the status on the profile. Note the reason in a comment. Then erase or reactivate.                                                                                                                                                                             |
 | Information about the model | Point to the notice above: which vendor (the deployment's `LLM_BASE_URL`, shown by name on `/status`), what is sent (the CV text, the brief, the profile), what comes back (a structured profile with confidences, explanations), and that no decision is automated.                                                                                                                                                                      |
 
+**Documents set aside** (`rejected`): a file the model did not take for a
+CV (a cover letter alone, a diploma, an identity document or a payslip
+uploaded by mistake) keeps its file in the bucket and its text in the row,
+with the sentence saying why, attached to no candidate unless it was
+uploaded from a profile page. Nothing purges it: the retention pass
+removes candidates and their documents only, and no page offers to delete
+it yet (an administrator deletes it through the API, the `documents:
+admins delete` policy). When such a file holds a person's data the pool
+has no reason to keep, delete it as soon as it is noticed and record it.
+
 **What erasure leaves, said honestly** (so the answer to the candidate is
 exact):
 
 - `activities`: one line `candidate.deleted` with the candidate's name
   and the person who erased; earlier lines about the candidate keep their
   id, not their name.
-- `searches.results`: the stored results of past searches keep, for each
+- `searches.results`: the stored results of past analyses keep, for each
   candidate id, the verdicts and the evidence quoted from the CV at the
-  time (a skill, a language, a snippet). The id no longer resolves to a
-  profile; the snippets remain. A deployment that must remove them runs,
+  time (a skill, a language, a snippet) and, with a model, the assessment
+  (its sentences, its score, one row per requirement with its quote). The
+  id no longer resolves to a profile; the text remains. A deployment that must remove them runs,
   with the service role, an update of `searches.results` dropping the
   entries whose `candidateId` is the erased one (a later evolution should
   do this inside `eraseCandidate`).
-- `shares.items`: the snapshot of a share that included the candidate
-  (name, headline, summary, strengths, attention) stays in the row until
-  the share is deleted; revoking makes the page unreachable. The same
-  later evolution should scrub the item from `items` on erasure.
+- `shares.items`: the snapshot of a dossier that included the candidate
+  (name, headline, location, years, availability, skills, languages,
+  synthesis, strengths, attention, the score, the decision and the
+  requirement table with its quotes) stays in the row until the share is
+  deleted; revoking makes the page unreachable. The same later evolution
+  should scrub the item from `items` on erasure.
 - Backups: the nightly dump taken before the erasure holds the data for
   up to thirty days; the bucket mirror moves the CV into a dated deleted
   set, removed thirty days later (`docs/BACKUPS.md`).

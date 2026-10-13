@@ -1,8 +1,9 @@
 /**
  * /app/briefs/:briefId: the brief page in two parts. The brief itself
  * (title, description, status, criteria with the model's proposals when
- * one is set up) and the search of the talent pool with its explained
- * results. Live through realtime on this brief.
+ * one is set up) and the analysis of the talent pool: every profile
+ * checked requirement by requirement, only the matching ones presented.
+ * Live through realtime on this brief.
  */
 import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -45,7 +46,7 @@ function BriefPage() {
   const [deleting, setDeleting] = useState(false);
 
   const brief = useQuery(`brief:${org.id}:${briefId}`, async () => readBrief(await requireSupabase(), org.id, briefId));
-  // Read once per organisation: whether a model can propose criteria and explain results.
+  // Read once per organisation: whether a model can propose criteria and assess results.
   const capabilities = useQuery(`brief-capabilities:${org.id}`, async () =>
     briefCapabilities({ data: { ...(await withToken()), orgId: org.id } }),
   );
@@ -104,11 +105,17 @@ function BriefPage() {
 
   if (brief.loading && !brief.data) {
     return (
-      <div className="space-y-4">
-        <div className="skeleton h-8 w-1/2 rounded" />
-        <div className="sheet space-y-3 p-5">
-          <div className="skeleton h-4 w-1/3 rounded" />
-          <div className="skeleton h-24 w-full rounded" />
+      <div className="space-y-8">
+        <div className="skeleton h-9 w-1/2 rounded-lg" />
+        <div className="grid gap-6 lg:grid-cols-5">
+          <div className="sheet space-y-4 p-6 lg:col-span-2">
+            <div className="skeleton h-4 w-1/3 rounded" />
+            <div className="skeleton h-24 w-full rounded-xl" />
+          </div>
+          <div className="sheet space-y-4 p-6 lg:col-span-3">
+            <div className="skeleton h-4 w-1/3 rounded" />
+            <div className="skeleton h-9 w-40 rounded-full" />
+          </div>
         </div>
       </div>
     );
@@ -121,6 +128,7 @@ function BriefPage() {
   return (
     <div>
       <PageHeader
+        className="mb-8"
         eyebrow={
           <Link to="/app/briefs" className="hover:underline">
             {t("nav.briefs")}
@@ -144,7 +152,7 @@ function BriefPage() {
       />
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <div className="space-y-6 lg:col-span-2">
+        <div className="space-y-8 lg:col-span-2">
           <BriefForm brief={row} canEdit={canEdit} onSaved={refreshBrief} />
           <CriteriaEditor
             brief={row}
@@ -154,8 +162,8 @@ function BriefPage() {
             onDirtyChange={setCriteriaDirty}
           />
         </div>
-        <div className="lg:col-span-3">
-          <SearchPanel brief={row} canEdit={canEdit} criteriaDirty={criteriaDirty} />
+        <div className="min-w-0 lg:col-span-3">
+          <SearchPanel brief={row} canEdit={canEdit} criteriaDirty={criteriaDirty} modelAvailable={modelAvailable} />
         </div>
       </div>
 

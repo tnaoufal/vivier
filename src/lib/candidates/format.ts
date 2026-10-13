@@ -47,6 +47,11 @@ function numberFormat(locale: Locale, maximumFractionDigits: number): Intl.Numbe
   return new Intl.NumberFormat(locale === "fr" ? "fr-FR" : "en-GB", { maximumFractionDigits });
 }
 
+/** "10 000" / "10,000": a count with the locale's thousands separator, for counters. */
+export function formatCount(locale: Locale, value: number): string {
+  return numberFormat(locale, 0).format(Number.isFinite(value) ? Math.max(0, value) : 0);
+}
+
 /** "1,2 Mo" / "1.2 MB", in powers of 1024 so the 25 MB limit reads as 25. */
 export function formatBytes(bytes: number, locale: Locale): string {
   const units = UNITS[locale];
@@ -135,6 +140,9 @@ export function documentTone(status: DocumentStatus): PillToneName {
     case "processing":
       return "primary";
     case "queued":
+      return "neutral";
+    case "rejected":
+      // Not a failure of the service: the file was read and is not a CV.
       return "neutral";
     default:
       return "neutral";

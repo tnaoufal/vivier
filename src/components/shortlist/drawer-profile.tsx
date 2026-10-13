@@ -33,51 +33,54 @@ export function DrawerProfile({
   const years = candidate?.years_experience ?? null;
   const availability = candidate?.availability?.trim() ?? "";
   return (
-    <section>
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="label-caps">{t("shortlists.drawer.profile")}</h3>
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-semibold leading-6 text-ink">{t("shortlists.drawer.profile")}</h3>
         <Link
           to="/app/candidates/$candidateId"
           params={{ candidateId }}
-          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+          className="inline-flex items-center gap-1 text-[13px] font-medium leading-5 text-primary hover:underline"
         >
           {t("shortlists.drawer.openCandidate")}
-          <ExternalLink className="size-3" aria-hidden="true" />
+          <ExternalLink className="size-3.5" aria-hidden="true" />
         </Link>
       </div>
       {loading && !candidate ? (
-        <div className="mt-2 space-y-2" aria-busy="true">
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-5/6" />
+        <div className="space-y-2" aria-busy="true">
+          <Skeleton className="h-3.5 w-full" />
+          <Skeleton className="h-3.5 w-5/6" />
         </div>
       ) : (
-        <p className="mt-2 whitespace-pre-line text-sm text-ink">
+        <p className="whitespace-pre-line text-[15px] leading-6 text-ink break-words">
           {summary || <span className="text-muted-foreground">{t("shortlists.drawer.summary.none")}</span>}
         </p>
       )}
       {years !== null || availability ? (
-        <p className="mt-2 text-xs text-muted-foreground">
+        <p className="text-[13px] leading-5 text-muted-foreground">
           {years !== null ? t("shortlists.drawer.experience", { years: yearsLabel(locale, years) }) : null}
           {years !== null && availability ? " · " : null}
           {availability ? t("shortlists.drawer.availability", { value: availability }) : null}
         </p>
       ) : null}
       {skills.length ? (
-        <div className="mt-3">
-          <h4 className="text-xs font-medium text-ink">{t("shortlists.drawer.skills")}</h4>
-          <ul className="mt-1 flex flex-wrap gap-1">
+        <div>
+          <h4 className="label-caps">{t("shortlists.drawer.skills")}</h4>
+          <ul className="mt-1.5 flex flex-wrap gap-1.5">
             {skills.map((skill) => (
-              <li key={skill}>
-                <Pill tone="primary">{skill}</Pill>
+              <li key={skill} className="min-w-0">
+                <Pill className="max-w-56">
+                  <span className="min-w-0 truncate">{skill}</span>
+                </Pill>
               </li>
             ))}
           </ul>
         </div>
       ) : null}
       {languages ? (
-        <p className="mt-3 text-xs text-muted-foreground">
-          <span className="font-medium text-ink">{t("shortlists.drawer.languages")}</span> · {languages}
-        </p>
+        <div>
+          <h4 className="label-caps">{t("shortlists.drawer.languages")}</h4>
+          <p className="mt-1 text-[15px] leading-6 text-ink break-words">{languages}</p>
+        </div>
       ) : null}
     </section>
   );

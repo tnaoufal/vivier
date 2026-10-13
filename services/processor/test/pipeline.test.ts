@@ -9,11 +9,25 @@ import {
   type DocumentPatch,
   type ExpiredCandidate,
 } from "../src/db.js";
-import { runMaintenance } from "../src/maintenance.js";
+import { embeddingStatus, resetEmbeddingStatus } from "../src/embedding.js";
+import {
+  REEMBED_BATCH,
+  REEMBED_MAX_PAGES,
+  runMaintenance,
+  type MaintenanceDeps,
+} from "../src/maintenance.js";
 import { FAILURE_MESSAGES } from "../src/messages.js";
+import { readMetrics, resetMetrics } from "../src/metrics.js";
+import { ModelError, type Embedding } from "../src/model.js";
 import { processDocument, type PipelineDeps } from "../src/pipeline.js";
-import { emptyProfile, type Profile } from "../src/structure.js";
+import {
+  emptyProfile,
+  type DocumentClassification,
+  type Profile,
+  type StructuredAnswer,
+} from "../src/structure.js";
 import type { AiUsageKind, CandidateRow, DocumentRow, OrganizationLimits } from "../src/types.js";
+import { usageRecorderOf } from "../src/usage.js";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const USER = "22222222-2222-4222-8222-222222222222";
@@ -33,8 +47,32 @@ Analyses de rentabilité, business plans, suivi de trésorerie.
 Formation
 2015 Master Contrôle de gestion, Université Paris-Dauphine`;
 
+/** A CV text without an email or a phone number, long enough not to look scanned. */
+const BARE_CV = `Marie Dupont
+Contrôleuse de gestion senior
+Paris, France
+
+Expérience
+Contrôleuse de gestion, Groupe Alpha, Paris
+Pilotage budgétaire, reporting mensuel, consolidation, SAP et Excel au quotidien.
+Analyste financière, Beta Conseil, Lyon
+Analyses de rentabilité, business plans, suivi de trésorerie.`;
+
+const VECTOR = Array.from({ length: 1024 }, (_, i) => (i === 0 ? 0.5 : 0));
+const EMBED_USAGE = { model: "mistral-embed", tokensIn: 80, tokensOut: 0 };
+
 function stripUndefined<T extends object>(value: T): Partial<T> {
   return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
+/** What the database's GENERATED column computes from `phone`. */
+function phoneDigits(phone: string | null | undefined): string | null {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  return digits ? digits : null;
+}
+
+function experience(company: string | null): Profile["experiences"][number] {
+  return { title: "Contrôleuse de gestion", company, start: "2019", end: null, description: null };
 }
 
 class FakeDb implements Db {
@@ -69,6 +107,7 @@ class FakeDb implements Db {
       extracted_text: null,
       extraction_method: null,
       structuring_method: null,
+      document_kind: null,
       processed_at: null,
       uploaded_by: USER,
       created_at: NOW,
@@ -78,6 +117,10 @@ class FakeDb implements Db {
     this.documents.set(id, row);
     this.objects.set(row.storage_path, bytes);
     return row;
+  }
+
+  private firstCandidate(matches: (row: CandidateRow) => boolean): CandidateRow | null {
+    return [...this.candidates.values()].find(matches) ?? null;
   }
 
   async claimDocument(id: string): Promise<DocumentRow | null> {
@@ -128,12 +171,29 @@ class FakeDb implements Db {
   }
 
   async findCandidateByFingerprint(orgId: string, fingerprint: string): Promise<CandidateRow | null> {
-    return [...this.candidates.values()].find((c) => c.org_id === orgId && c.fingerprint === fingerprint) ?? null;
+    return this.firstCandidate((c) => c.org_id === orgId && c.fingerprint === fingerprint);
+  }
+
+  async findCandidateByEmail(orgId: string, email: string): Promise<CandidateRow | null> {
+    const key = email.toLowerCase();
+    return this.firstCandidate((c) => c.org_id === orgId && (c.email ?? "").toLowerCase() === key);
+  }
+
+  async findCandidateByPhoneDigits(orgId: string, digits: string): Promise<CandidateRow | null> {
+    return this.firstCandidate(
+      (c) => c.org_id === orgId && c.phone_digits !== null && c.phone_digits.endsWith(digits),
+    );
   }
 
   async getCandidateById(orgId: string, id: string): Promise<CandidateRow | null> {
     const row = this.candidates.get(id);
     return row && row.org_id === orgId ? row : null;
+  }
+
+  async listCandidatesWithoutEmbedding(limit: number, offset = 0): Promise<CandidateRow[]> {
+    return [...this.candidates.values()]
+      .filter((c) => c.status === "active" && this.embeddings.get(c.id) === null)
+      .slice(offset, offset + limit);
   }
 
   async insertCandidate(values: CandidateInsert): Promise<string> {
@@ -164,6 +224,7 @@ class FakeDb implements Db {
       status: "active",
       fingerprint: values.fingerprint ?? null,
       search_text: values.search_text ?? null,
+      phone_digits: phoneDigits(values.phone),
       created_by: values.created_by,
       created_at: NOW,
       updated_at: NOW,
@@ -177,7 +238,9 @@ class FakeDb implements Db {
     const current = this.candidates.get(id);
     if (!current) throw new Error(`candidate ${id} missing`);
     const { embedding, ...rest } = patch;
-    this.candidates.set(id, Object.assign({}, current, stripUndefined(rest), { updated_at: NOW }));
+    const next: CandidateRow = Object.assign({}, current, stripUndefined(rest), { updated_at: NOW });
+    next.phone_digits = phoneDigits(next.phone);
+    this.candidates.set(id, next);
     if (embedding !== undefined) this.embeddings.set(id, embedding);
   }
 
@@ -234,7 +297,10 @@ function depsFor(db: FakeDb, overrides: Partial<PipelineDeps> = {}): PipelineDep
   };
 }
 
-function modelAnswer(overrides: Partial<Profile> = {}): { profile: Profile; usage: { model: string; tokensIn: number; tokensOut: number } } {
+function modelAnswer(
+  overrides: Partial<Profile> = {},
+  classification: DocumentClassification = { kind: "cv", reason: null },
+): StructuredAnswer {
   return {
     profile: {
       ...emptyProfile(),
@@ -242,13 +308,27 @@ function modelAnswer(overrides: Partial<Profile> = {}): { profile: Profile; usag
       headline: "Contrôleuse de gestion senior",
       location: "Paris",
       skills: ["SQL", "excel"],
-      experiences: [
-        { title: "Contrôleuse de gestion", company: "Groupe Alpha", start: "2019", end: null, description: null },
-      ],
+      experiences: [experience("Groupe Alpha")],
       confidence: { full_name: 0.95, headline: 0.9, location: 0.9, skills: 0.9, experiences: 0.85 },
       ...overrides,
     },
     usage: { model: "mistral-small-latest", tokensIn: 1200, tokensOut: 300 },
+    classification,
+  };
+}
+
+async function fakeEmbed(_text: string): Promise<Embedding> {
+  return { vector: VECTOR, usage: EMBED_USAGE };
+}
+
+function maintenanceDeps(db: FakeDb, overrides: Partial<MaintenanceDeps> = {}): MaintenanceDeps {
+  return {
+    db,
+    now: () => new Date(NOW),
+    embed: null,
+    recordUsage: usageRecorderOf(db),
+    embeddingModel: "mistral-embed",
+    ...overrides,
   };
 }
 
@@ -279,12 +359,14 @@ describe("processDocument", () => {
     expect(updated?.extracted_text).toContain("Marie Dupont");
     expect(updated?.extraction_method).toBe("pdf-text");
     expect(updated?.structuring_method).toBe("heuristic");
+    expect(updated?.document_kind).toBeNull();
     expect(updated?.processed_at).toBe(NOW);
 
     const candidate = db.candidates.get(updated?.candidate_id ?? "");
     expect(candidate?.full_name).toBe("Marie Dupont");
     expect(candidate?.email).toBe("marie.dupont@example.com");
     expect(candidate?.phone).toBe("+33 6 12 34 56 78");
+    expect(candidate?.phone_digits).toBe("33612345678");
     expect(candidate?.fingerprint).toBe("marie.dupont@example.com");
     expect(candidate?.confidence).toEqual({ email: 0.9, phone: 0.6, full_name: 0.3 });
     expect(candidate?.source).toBe("upload");
@@ -360,16 +442,13 @@ describe("processDocument", () => {
 
   it("uses the model and the embedding when configured, backfills contacts and merges a second CV", async () => {
     const db = new FakeDb();
-    const vector = Array.from({ length: 1024 }, (_, i) => (i === 0 ? 0.5 : 0));
     const first = db.addDocument({}, Buffer.from("pdf-one"));
-    const deps = depsFor(db, {
-      structure: async () => modelAnswer(),
-      embed: async () => ({ vector, usage: { model: "mistral-embed", tokensIn: 80, tokensOut: 0 } }),
-    });
+    const deps = depsFor(db, { structure: async () => modelAnswer(), embed: fakeEmbed });
     expect(await processDocument(first.id, deps)).toBe("processed");
 
     const doc = db.documents.get(first.id);
     expect(doc?.structuring_method).toBe("model");
+    expect(doc?.document_kind).toBe("cv");
     const candidate = db.candidates.get(doc?.candidate_id ?? "");
     expect(candidate?.headline).toBe("Contrôleuse de gestion senior");
     expect(candidate?.email).toBe("marie.dupont@example.com");
@@ -411,7 +490,8 @@ describe("processDocument", () => {
     expect(updated?.confidence.headline).toBe(0.9);
   });
 
-  it("keeps the document processed when the embedding call fails", async () => {
+  it("keeps the document processed when the embedding call fails, and /health learns of it", async () => {
+    resetEmbeddingStatus();
     const db = new FakeDb();
     const doc = db.addDocument({}, Buffer.from("pdf-one"));
     const outcome = await processDocument(
@@ -427,6 +507,274 @@ describe("processDocument", () => {
     const candidateId = db.documents.get(doc.id)?.candidate_id ?? "";
     expect(db.embeddings.get(candidateId)).toBeNull();
     expect(db.usage.map((u) => u.kind)).toEqual(["structure"]);
+    expect(embeddingStatus()).toBe("unavailable");
+
+    const wrongWidth = db.addDocument({}, Buffer.from("pdf-two"));
+    await processDocument(
+      wrongWidth.id,
+      depsFor(db, {
+        structure: async () => modelAnswer(),
+        embed: async () => {
+          throw new ModelError("The embedding model answered 256 dimensions", { dimensions: 256 });
+        },
+      }),
+    );
+    expect(db.documents.get(wrongWidth.id)?.status).toBe("processed");
+    expect(embeddingStatus()).toBe("mismatch");
+
+    const fixed = db.addDocument({}, Buffer.from("pdf-three"));
+    await processDocument(fixed.id, depsFor(db, { structure: async () => modelAnswer(), embed: fakeEmbed }));
+    expect(embeddingStatus()).toBe("ok");
+  });
+
+  it("sets aside a document the model says is not a CV, without creating or touching a candidate", async () => {
+    resetMetrics();
+    const db = new FakeDb();
+    const doc = db.addDocument({ file_name: "lettre.pdf" }, Buffer.from("letter"));
+    const embed = vi.fn(fakeEmbed);
+    const outcome = await processDocument(
+      doc.id,
+      depsFor(db, {
+        structure: async () =>
+          modelAnswer({}, { kind: "other", reason: "A cover letter: no experiences, no education." }),
+        embed,
+      }),
+    );
+    expect(outcome).toBe("rejected");
+
+    const updated = db.documents.get(doc.id);
+    expect(updated?.status).toBe("rejected");
+    expect(updated?.document_kind).toBe("other");
+    expect(updated?.error).toBe(FAILURE_MESSAGES.notCv);
+    expect(updated?.candidate_id).toBeNull();
+    expect(updated?.extracted_text).toContain("Marie Dupont");
+    expect(updated?.text_chars).toBeGreaterThan(100);
+    expect(updated?.page_count).toBe(2);
+    expect(updated?.extraction_method).toBe("pdf-text");
+    expect(updated?.structuring_method).toBe("model");
+    expect(updated?.processed_at).toBe(NOW);
+    expect(db.candidates.size).toBe(0);
+    expect(embed).not.toHaveBeenCalled();
+    expect(db.usage.map((u) => u.kind)).toEqual(["structure"]);
+    expect(readMetrics().documents.rejected).toBe(1);
+  });
+
+  it("keeps a pinned document's candidate as it was when the file is set aside", async () => {
+    const db = new FakeDb();
+    const candidateId = await db.insertCandidate({
+      org_id: ORG,
+      created_by: USER,
+      source: "upload",
+      full_name: "Marie Dupont",
+      email: "marie.dupont@example.com",
+      headline: "Contrôleuse de gestion senior",
+      fingerprint: "marie.dupont@example.com",
+    });
+    const before = db.candidates.get(candidateId);
+    const doc = db.addDocument({ candidate_id: candidateId }, Buffer.from("diploma"));
+    const outcome = await processDocument(
+      doc.id,
+      depsFor(db, {
+        structure: async () => modelAnswer({}, { kind: "other", reason: "A diploma." }),
+      }),
+    );
+    expect(outcome).toBe("rejected");
+    const updated = db.documents.get(doc.id);
+    expect(updated?.status).toBe("rejected");
+    expect(updated?.candidate_id).toBe(candidateId);
+    expect(db.candidates.size).toBe(1);
+    expect(db.candidates.get(candidateId)).toEqual(before);
+  });
+
+  it("never sets a document aside without a model: the heuristic cannot tell", async () => {
+    const db = new FakeDb();
+    const doc = db.addDocument({ file_name: "lettre.pdf" }, Buffer.from("letter"));
+    expect(await processDocument(doc.id, depsFor(db))).toBe("processed");
+    expect(db.documents.get(doc.id)?.document_kind).toBeNull();
+    expect(db.candidates.size).toBe(1);
+  });
+
+  it("merges a second export of the same person through the email, whatever its case", async () => {
+    const db = new FakeDb();
+    const first = db.addDocument({}, Buffer.from("export-one"));
+    expect(await processDocument(first.id, depsFor(db, { structure: async () => modelAnswer() }))).toBe(
+      "processed",
+    );
+    const candidateId = db.documents.get(first.id)?.candidate_id ?? "";
+    expect(db.candidates.get(candidateId)?.email).toBe("marie.dupont@example.com");
+
+    const second = db.addDocument({}, Buffer.from("export-two"));
+    const outcome = await processDocument(
+      second.id,
+      depsFor(db, {
+        extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
+        structure: async () =>
+          modelAnswer({ full_name: "M. Dupont", email: "Marie.Dupont@EXAMPLE.com", phone: null }),
+      }),
+    );
+    expect(outcome).toBe("processed");
+    expect(db.candidates.size).toBe(1);
+    expect(db.documents.get(second.id)?.candidate_id).toBe(candidateId);
+  });
+
+  it("merges through the phone number when the email is missing and the number is written differently", async () => {
+    const db = new FakeDb();
+    const first = db.addDocument({}, Buffer.from("export-one"));
+    await processDocument(first.id, depsFor(db, { structure: async () => modelAnswer() }));
+    const candidateId = db.documents.get(first.id)?.candidate_id ?? "";
+    expect(db.candidates.get(candidateId)?.phone).toBe("+33 6 12 34 56 78");
+
+    const second = db.addDocument({}, Buffer.from("export-two"));
+    const outcome = await processDocument(
+      second.id,
+      depsFor(db, {
+        extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
+        structure: async () => modelAnswer({ full_name: "M. Dupont", email: null, phone: "06.12.34.56.78" }),
+      }),
+    );
+    expect(outcome).toBe("processed");
+    expect(db.candidates.size).toBe(1);
+    expect(db.documents.get(second.id)?.candidate_id).toBe(candidateId);
+  });
+
+  it("merges namesakes only when the latest company agrees; a name alone never merges", async () => {
+    const db = new FakeDb();
+    const bare = (company: string | null, fullName = "Marie Dupont") =>
+      depsFor(db, {
+        extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
+        structure: async () =>
+          modelAnswer({
+            full_name: fullName,
+            email: null,
+            phone: null,
+            experiences: company === null ? [] : [experience(company)],
+          }),
+      });
+
+    const alpha = db.addDocument({}, Buffer.from("alpha-one"));
+    await processDocument(alpha.id, bare("Groupe Alpha"));
+    const alphaId = db.documents.get(alpha.id)?.candidate_id ?? "";
+    expect(db.candidates.get(alphaId)?.fingerprint).toBe("marie dupont|groupe alpha");
+
+    const alphaAgain = db.addDocument({}, Buffer.from("alpha-two"));
+    await processDocument(alphaAgain.id, bare("Groupe ALPHA", "Marie DUPONT"));
+    expect(db.documents.get(alphaAgain.id)?.candidate_id).toBe(alphaId);
+    expect(db.candidates.size).toBe(1);
+
+    const beta = db.addDocument({}, Buffer.from("beta"));
+    await processDocument(beta.id, bare("Beta Conseil"));
+    expect(db.documents.get(beta.id)?.candidate_id).not.toBe(alphaId);
+    expect(db.candidates.size).toBe(2);
+
+    const nameOnly = db.addDocument({}, Buffer.from("name-only"));
+    await processDocument(nameOnly.id, bare(null));
+    expect(db.candidates.size).toBe(3);
+    expect(db.candidates.get(db.documents.get(nameOnly.id)?.candidate_id ?? "")?.fingerprint).toBeNull();
+  });
+
+  it("merges into the pinned candidate before any contact detail", async () => {
+    const db = new FakeDb();
+    const other = db.addDocument({}, Buffer.from("other-person"));
+    await processDocument(
+      other.id,
+      depsFor(db, {
+        extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
+        structure: async () => modelAnswer({ full_name: "Jean Martin", email: "jean.martin@example.com" }),
+      }),
+    );
+    const otherId = db.documents.get(other.id)?.candidate_id ?? "";
+    const pinnedId = await db.insertCandidate({
+      org_id: ORG,
+      created_by: USER,
+      source: "upload",
+      full_name: "Marie Dupont",
+      fingerprint: null,
+    });
+
+    const doc = db.addDocument({ candidate_id: pinnedId }, Buffer.from("pinned"));
+    await processDocument(
+      doc.id,
+      depsFor(db, {
+        extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
+        structure: async () => modelAnswer({ email: "jean.martin@example.com" }),
+      }),
+    );
+    expect(db.documents.get(doc.id)?.candidate_id).toBe(pinnedId);
+    expect(db.candidates.size).toBe(2);
+    expect(db.candidates.get(otherId)?.full_name).toBe("Jean Martin");
+    expect(db.candidates.get(pinnedId)?.headline).toBe("Contrôleuse de gestion senior");
+  });
+
+  it("ends two exports of the same person processed at once in one candidate", async () => {
+    const db = new FakeDb();
+    const one = db.addDocument({}, Buffer.from("export-one"));
+    const two = db.addDocument({}, Buffer.from("export-two"));
+    // The model answers both documents at once (a barrier), so both reach
+    // the lookup together: without the lock, each finds nobody and inserts.
+    const waiting: Array<() => void> = [];
+    const structure = (): Promise<StructuredAnswer> =>
+      new Promise((resolve) => {
+        waiting.push(() => resolve(modelAnswer()));
+        if (waiting.length === 2) for (const answer of waiting) answer();
+      });
+    const outcomes = await Promise.all([
+      processDocument(one.id, depsFor(db, { structure, embed: fakeEmbed })),
+      processDocument(two.id, depsFor(db, { structure, embed: fakeEmbed })),
+    ]);
+    expect(outcomes).toEqual(["processed", "processed"]);
+    expect(db.candidates.size).toBe(1);
+    const candidateId = db.documents.get(one.id)?.candidate_id ?? "";
+    expect(db.documents.get(two.id)?.candidate_id).toBe(candidateId);
+    expect(db.embeddings.get(candidateId)?.split(",")).toHaveLength(1024);
+    expect(db.usage.map((u) => u.kind)).toEqual(["structure", "structure", "embed", "embed"]);
+  });
+
+  it("sets aside a second copy of a file that was set aside, with the same sentence and at no cost", async () => {
+    resetMetrics();
+    const db = new FakeDb();
+    const letter = db.addDocument({ file_name: "lettre.pdf" }, Buffer.from("same-letter"));
+    const other = async (): Promise<StructuredAnswer> =>
+      modelAnswer({}, { kind: "other", reason: "A cover letter." });
+    expect(await processDocument(letter.id, depsFor(db, { structure: other }))).toBe("rejected");
+
+    const again = db.addDocument({ file_name: "lettre (1).pdf" }, Buffer.from("same-letter"));
+    const structure = vi.fn(other);
+    expect(await processDocument(again.id, depsFor(db, { structure }))).toBe("rejected");
+    const copy = db.documents.get(again.id);
+    expect(copy?.status).toBe("rejected");
+    expect(copy?.document_kind).toBe("other");
+    expect(copy?.error).toBe(FAILURE_MESSAGES.notCv);
+    expect(copy?.candidate_id).toBeNull();
+    expect(copy?.extraction_method).toBe("none");
+    expect(copy?.structuring_method).toBeNull();
+    expect(copy?.processed_at).toBeNull();
+    expect(structure).not.toHaveBeenCalled();
+    expect(db.candidates.size).toBe(0);
+    expect(db.usage.map((u) => u.kind)).toEqual(["structure"]);
+    expect(readMetrics().documents).toMatchObject({ rejected: 2, duplicates: 0 });
+  });
+
+  it("puts an archived candidate back in the pool when a fresh CV of theirs arrives", async () => {
+    const db = new FakeDb();
+    const archivedId = await db.insertCandidate({
+      org_id: ORG,
+      created_by: USER,
+      source: "upload",
+      full_name: "Marie Dupont",
+      email: "marie.dupont@example.com",
+      fingerprint: "marie.dupont@example.com",
+    });
+    const row = db.candidates.get(archivedId);
+    if (row) row.status = "archived";
+
+    const doc = db.addDocument({}, Buffer.from("fresh-cv"));
+    expect(await processDocument(doc.id, depsFor(db, { structure: async () => modelAnswer() }))).toBe(
+      "processed",
+    );
+    expect(db.candidates.size).toBe(1);
+    expect(db.documents.get(doc.id)?.candidate_id).toBe(archivedId);
+    expect(db.candidates.get(archivedId)?.status).toBe("active");
+    expect(db.candidates.get(archivedId)?.headline).toBe("Contrôleuse de gestion senior");
   });
 
   it("fails with one sentence per failure class and keeps the cause out of the row", async () => {
@@ -480,8 +828,15 @@ describe("runMaintenance", () => {
     await processDocument(doc.id, depsFor(db));
     const candidateId = db.documents.get(doc.id)?.candidate_id ?? "";
     db.expired = [{ candidate_id: candidateId, org_id: ORG, reason: "retention" }];
-    const report = await runMaintenance({ db, now: () => new Date(NOW) });
-    expect(report).toMatchObject({ purged: 1, filesRemoved: 1, failed: 0, ranAt: NOW });
+    const report = await runMaintenance(maintenanceDeps(db));
+    expect(report).toMatchObject({
+      purged: 1,
+      filesRemoved: 1,
+      failed: 0,
+      reembedded: 0,
+      reembedFailed: 0,
+      ranAt: NOW,
+    });
     expect(db.removed).toEqual([doc.storage_path]);
     expect(db.candidates.size).toBe(0);
     expect(db.documents.size).toBe(0);
@@ -496,8 +851,115 @@ describe("runMaintenance", () => {
     db.removeObjects = async () => {
       throw new Error("storage down");
     };
-    const report = await runMaintenance({ db, now: () => new Date(NOW) });
+    const report = await runMaintenance(maintenanceDeps(db));
     expect(report).toMatchObject({ purged: 0, filesRemoved: 0, failed: 1 });
     expect(db.candidates.size).toBe(1);
+  });
+
+  it("gives a vector to the active candidates without one and records the spend", async () => {
+    const db = new FakeDb();
+    const withText = await db.insertCandidate({
+      org_id: ORG,
+      created_by: USER,
+      source: "upload",
+      headline: "Contrôleuse de gestion",
+      skills: ["SQL"],
+    });
+    const empty = await db.insertCandidate({ org_id: ORG, created_by: USER, source: "upload" });
+    const archived = await db.insertCandidate({
+      org_id: ORG,
+      created_by: USER,
+      source: "upload",
+      headline: "Archivée",
+    });
+    const archivedRow = db.candidates.get(archived);
+    if (archivedRow) archivedRow.status = "archived";
+    const already = await db.insertCandidate({
+      org_id: ORG,
+      created_by: USER,
+      source: "upload",
+      headline: "Déjà vectorisée",
+      embedding: "[1,2]",
+    });
+
+    const embed = vi.fn(fakeEmbed);
+    const report = await runMaintenance(maintenanceDeps(db, { embed }));
+    expect(report).toMatchObject({ reembedded: 1, reembedFailed: 0 });
+    expect(embed).toHaveBeenCalledTimes(1);
+    expect(embed).toHaveBeenCalledWith(expect.stringContaining("Contrôleuse de gestion"));
+    expect(db.embeddings.get(withText)?.split(",")).toHaveLength(1024);
+    expect(db.embeddings.get(empty)).toBeNull();
+    expect(db.embeddings.get(archived)).toBeNull();
+    expect(db.embeddings.get(already)).toBe("[1,2]");
+    expect(db.usage).toEqual([{ orgId: ORG, kind: "embed", model: "mistral-embed", tokensIn: 80, tokensOut: 0 }]);
+  });
+
+  it("pages past the candidates with nothing to embed to reach the ones below them", async () => {
+    const db = new FakeDb();
+    for (let i = 0; i < REEMBED_BATCH + 50; i++) {
+      await db.insertCandidate({ org_id: ORG, created_by: USER, source: "upload", full_name: `Personne ${i}` });
+    }
+    const below = await db.insertCandidate({
+      org_id: ORG,
+      created_by: USER,
+      source: "upload",
+      headline: "Tout en bas de la liste",
+    });
+    const embed = vi.fn(fakeEmbed);
+    const report = await runMaintenance(maintenanceDeps(db, { embed }));
+    expect(report).toMatchObject({ reembedded: 1, reembedFailed: 0, reembedSkipped: REEMBED_BATCH + 50 });
+    expect(embed).toHaveBeenCalledTimes(1);
+    expect(db.embeddings.get(below)?.split(",")).toHaveLength(1024);
+  });
+
+  it("reads at most REEMBED_MAX_PAGES pages in one pass", async () => {
+    const db = new FakeDb();
+    const empty = REEMBED_MAX_PAGES * REEMBED_BATCH;
+    for (let i = 0; i < empty; i++) {
+      await db.insertCandidate({ org_id: ORG, created_by: USER, source: "upload", full_name: `Personne ${i}` });
+    }
+    const beyond = await db.insertCandidate({ org_id: ORG, created_by: USER, source: "upload", headline: "Au-delà" });
+    const embed = vi.fn(fakeEmbed);
+    const report = await runMaintenance(maintenanceDeps(db, { embed }));
+    expect(report).toMatchObject({ reembedded: 0, reembedFailed: 0, reembedSkipped: empty });
+    expect(embed).not.toHaveBeenCalled();
+    expect(db.embeddings.get(beyond)).toBeNull();
+  });
+
+  it("skips the re-embed pass without a model", async () => {
+    const db = new FakeDb();
+    await db.insertCandidate({ org_id: ORG, created_by: USER, source: "upload", headline: "Sans vecteur" });
+    const report = await runMaintenance(maintenanceDeps(db));
+    expect(report).toMatchObject({ reembedded: 0, reembedFailed: 0 });
+    expect(db.usage).toEqual([]);
+  });
+
+  it("stops the pass at the first wrong-width answer and goes on after any other failure", async () => {
+    resetEmbeddingStatus();
+    const db = new FakeDb();
+    for (const headline of ["Première", "Deuxième", "Troisième"]) {
+      await db.insertCandidate({ org_id: ORG, created_by: USER, source: "upload", headline });
+    }
+
+    const mismatch = vi.fn(async (_text: string): Promise<Embedding> => {
+      throw new ModelError("The embedding model answered 256 dimensions", { dimensions: 256 });
+    });
+    const stopped = await runMaintenance(maintenanceDeps(db, { embed: mismatch }));
+    expect(stopped).toMatchObject({ reembedded: 0, reembedFailed: 1 });
+    expect(mismatch).toHaveBeenCalledTimes(1);
+    expect(embeddingStatus()).toBe("mismatch");
+    expect(db.usage).toEqual([]);
+
+    let calls = 0;
+    const flaky = async (text: string): Promise<Embedding> => {
+      calls += 1;
+      if (calls === 1) throw new Error("embedding down");
+      return fakeEmbed(text);
+    };
+    const partial = await runMaintenance(maintenanceDeps(db, { embed: flaky }));
+    expect(partial).toMatchObject({ reembedded: 2, reembedFailed: 1 });
+    expect(calls).toBe(3);
+    expect(embeddingStatus()).toBe("ok");
+    expect([...db.embeddings.values()].filter((v) => v !== null)).toHaveLength(2);
   });
 });

@@ -1,7 +1,8 @@
 /**
  * /app/shortlists: the organisation's shortlists, one per brief, newest
- * change first, each with its counts (to review, retained, dismissed),
- * the people assigned on it and the way in. Live through realtime on
+ * change first, each a row with the brief's title and status, three
+ * small pills for the counts (to review, retained, dismissed), the
+ * people assigned on it and the way in. Live through realtime on
  * shortlists and shortlist_items of the organisation.
  */
 import { useEffect } from "react";
@@ -13,6 +14,7 @@ import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Pill, type PillTone } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { BRIEFS_PATH } from "@/lib/activity/links";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
@@ -42,6 +44,7 @@ interface ListData {
 const BRIEF_TONES: Record<BriefStatus, PillTone> = { draft: "neutral", open: "positive", closed: "neutral" };
 
 const MAX_AVATARS = 5;
+const SKELETON_ROWS = 3;
 
 function ShortlistsPage() {
   const { t } = useI18n();
@@ -77,7 +80,7 @@ function ShortlistsPage() {
 
   return (
     <div>
-      <PageHeader title={t("shortlists.title")} description={`${t("shortlists.subtitle")} ${countText}`} />
+      <PageHeader eyebrow={t("nav.shortlists")} title={t("shortlists.title")} description={`${t("shortlists.subtitle")} ${countText}`} />
 
       {list.error ? (
         <EmptyState
@@ -89,11 +92,14 @@ function ShortlistsPage() {
           }
         />
       ) : list.loading && !list.data ? (
-        <div className="sheet divide-y divide-border" aria-busy="true">
-          {[0, 1, 2].map((index) => (
-            <div key={index} className="space-y-2 px-4 py-3">
-              <div className="skeleton h-4 w-1/3 rounded" />
-              <div className="skeleton h-3 w-2/3 rounded" />
+        <div className="sheet overflow-hidden" aria-busy="true">
+          {Array.from({ length: SKELETON_ROWS }, (_, index) => (
+            <div key={index} className="sheet-row">
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-3 w-1/4" />
+              </div>
+              <Skeleton className="h-6 w-40 rounded-full" />
             </div>
           ))}
         </div>
@@ -109,21 +115,23 @@ function ShortlistsPage() {
           }
         />
       ) : (
-        <ul className="sheet overflow-hidden">
+        <ol className="sheet divide-y divide-border overflow-hidden">
           {rows.map((row) => (
-            <ShortlistLine
-              key={row.id}
-              row={row}
-              counts={list.data?.counts.get(row.id) ?? NO_COUNTS}
-              assignees={list.data?.assignees.get(row.id) ?? []}
-            />
+            <li key={row.id}>
+              <ShortlistLine
+                row={row}
+                counts={list.data?.counts.get(row.id) ?? NO_COUNTS}
+                assignees={list.data?.assignees.get(row.id) ?? []}
+              />
+            </li>
           ))}
-        </ul>
+        </ol>
       )}
     </div>
   );
 }
 
+/** One row, the whole of it a link to the board. */
 function ShortlistLine({ row, counts, assignees }: { row: ShortlistListRow; counts: StatusCounts; assignees: string[] }) {
   const { t, locale } = useI18n();
   const nameOf = useMemberNamer();
@@ -134,39 +142,66 @@ function ShortlistLine({ row, counts, assignees }: { row: ShortlistListRow; coun
       : assignees.length === 1
         ? t("shortlists.members.one")
         : t("shortlists.members.many", { count: assignees.length });
+  const countsText = t("shortlists.counts.line", {
+    to_review: counts.to_review,
+    retained: counts.retained,
+    dismissed: counts.dismissed,
+  });
   return (
-    <li className="border-b border-border last:border-b-0">
-      <Link
-        to="/app/shortlists/$shortlistId"
-        params={{ shortlistId: row.id }}
-        className="flex flex-col gap-2 px-4 py-3 transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none sm:flex-row sm:items-center sm:gap-4"
-        aria-label={t("shortlists.open")}
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="truncate font-medium text-ink">{brief ? brief.title : t("shortlists.noBrief")}</span>
-            {brief ? <Pill tone={BRIEF_TONES[brief.status]}>{t(`shortlists.brief.status.${brief.status}`)}</Pill> : null}
-          </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {t("shortlists.counts.line", {
-              to_review: counts.to_review,
-              retained: counts.retained,
-              dismissed: counts.dismissed,
-            })}
-            {" · "}
-            {t("shortlists.updated", { when: formatRelative(locale, row.updated_at) })}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5" title={assignedText} aria-label={assignedText}>
-          {assignees.slice(0, MAX_AVATARS).map((userId) => (
-            <Avatar key={userId} name={nameOf(userId)} size="sm" />
-          ))}
-          {assignees.length > MAX_AVATARS ? (
-            <span className="text-xs text-muted-foreground">+{assignees.length - MAX_AVATARS}</span>
+    <Link
+      to="/app/shortlists/$shortlistId"
+      params={{ shortlistId: row.id }}
+      className="sheet-row flex-wrap gap-x-6 gap-y-3 lg:flex-nowrap"
+      aria-label={t("shortlists.open")}
+    >
+      <div className="min-w-0 flex-1 basis-full lg:basis-auto">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="min-w-0 truncate text-[15px] font-semibold leading-6 text-ink">
+            {brief ? brief.title : t("shortlists.noBrief")}
+          </span>
+          {brief ? (
+            <Pill tone={BRIEF_TONES[brief.status]} dot>
+              {t(`shortlists.brief.status.${brief.status}`)}
+            </Pill>
           ) : null}
-          {assignees.length === 0 ? <span className="text-xs text-muted-foreground">{assignedText}</span> : null}
         </div>
-      </Link>
-    </li>
+        <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
+          {t("shortlists.updated", { when: formatRelative(locale, row.updated_at) })}
+        </p>
+      </div>
+      <ul className="flex flex-wrap items-center gap-1.5" aria-label={countsText}>
+        <li>
+          <Pill tone="primary" dot>
+            {t("shortlists.pill.to_review", { count: counts.to_review })}
+          </Pill>
+        </li>
+        <li>
+          <Pill tone="positive" dot>
+            {t("shortlists.pill.retained", { count: counts.retained })}
+          </Pill>
+        </li>
+        <li>
+          <Pill tone="negative" dot>
+            {t("shortlists.pill.dismissed", { count: counts.dismissed })}
+          </Pill>
+        </li>
+      </ul>
+      <div className="flex items-center gap-2 lg:w-40 lg:justify-end" title={assignedText} aria-label={assignedText}>
+        {assignees.length ? (
+          <ul className="flex -space-x-1.5">
+            {assignees.slice(0, MAX_AVATARS).map((userId) => (
+              <li key={userId}>
+                <Avatar name={nameOf(userId)} size="sm" className="ring-2 ring-card" />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span className="text-[13px] leading-5 text-muted-foreground">{assignedText}</span>
+        )}
+        {assignees.length > MAX_AVATARS ? (
+          <span className="text-[13px] leading-5 text-muted-foreground tabular-nums">+{assignees.length - MAX_AVATARS}</span>
+        ) : null}
+      </div>
+    </Link>
   );
 }

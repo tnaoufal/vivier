@@ -1,7 +1,7 @@
 /**
- * /app/briefs: the briefs of the organisation, newest change first, with
- * a status filter and the way to a new one. Live through realtime on
- * briefs.
+ * /app/briefs: the briefs of the organisation as a grid of cards,
+ * newest change first, with a status filter and the way to a new one.
+ * Live through realtime on briefs.
  */
 import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { BriefStatusPill } from "@/components/briefs/brief-status-pill";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { listBriefs } from "@/lib/briefs/queries";
@@ -27,9 +28,15 @@ export const Route = createFileRoute("/app/briefs/")({
 type Filter = BriefStatus | "all";
 
 const FILTERS: readonly Filter[] = ["all", "open", "draft", "closed"];
+const SKELETON_CARDS = 4;
 
 function isFilter(value: string): value is Filter {
   return (FILTERS as readonly string[]).includes(value);
+}
+
+/** The first non-empty line of a description, for the card (the card clamps it to two lines). */
+function firstLine(description: string): string {
+  return description.split("\n").map((line) => line.trim()).find((line) => line.length > 0) ?? "";
 }
 
 function BriefsPage() {
@@ -67,7 +74,7 @@ function BriefsPage() {
           : t("briefs.count.many", { count: rows.length });
 
   const newButton = canEdit ? (
-    <Button type="button" onClick={() => void navigate({ to: "/app/briefs/new" })} className="gap-1.5">
+    <Button type="button" onClick={() => void navigate({ to: "/app/briefs/new" })}>
       <Plus />
       {t("briefs.new")}
     </Button>
@@ -81,9 +88,9 @@ function BriefsPage() {
 
   return (
     <div>
-      <PageHeader title={t("briefs.title")} description={countText} actions={newButton} />
+      <PageHeader eyebrow={t("nav.briefs")} title={t("briefs.title")} description={countText} actions={newButton} />
 
-      <div className="mb-4">
+      <div className="mb-6">
         <Tabs
           value={filter}
           onValueChange={(value) => {
@@ -110,11 +117,12 @@ function BriefsPage() {
           }
         />
       ) : list.loading && !list.data ? (
-        <div className="sheet divide-y divide-border">
-          {Array.from({ length: 4 }, (_, index) => (
-            <div key={index} className="space-y-2 px-4 py-3">
-              <div className="skeleton h-4 w-1/3 rounded" />
-              <div className="skeleton h-3 w-2/3 rounded" />
+        <div className="grid gap-6 sm:grid-cols-2" aria-busy="true">
+          {Array.from({ length: SKELETON_CARDS }, (_, index) => (
+            <div key={index} className="sheet space-y-3 p-6">
+              <Skeleton className="h-5 w-1/2" />
+              <Skeleton className="h-3.5 w-full" />
+              <Skeleton className="h-3.5 w-2/3" />
             </div>
           ))}
         </div>
@@ -134,28 +142,31 @@ function BriefsPage() {
           <EmptyState icon={<Briefcase />} title={t("briefs.empty.title")} text={t("briefs.empty.text")} action={newButton} />
         )
       ) : (
-        <ul className="sheet overflow-hidden">
-          {rows.map((row) => (
-            <li key={row.id} className="border-b border-border last:border-b-0">
-              <Link
-                to="/app/briefs/$briefId"
-                params={{ briefId: row.id }}
-                className="flex flex-col gap-1 px-4 py-3 transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none sm:flex-row sm:items-center sm:gap-4"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="truncate font-medium text-ink">{row.title}</span>
+        <ul className="grid gap-6 sm:grid-cols-2">
+          {rows.map((row) => {
+            const description = firstLine(row.description);
+            return (
+              <li key={row.id} className="min-w-0">
+                <Link
+                  to="/app/briefs/$briefId"
+                  params={{ briefId: row.id }}
+                  className="sheet sheet-link flex h-full min-w-0 flex-col p-6"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <h2 className="line-clamp-2 min-w-0 flex-1 text-base font-semibold leading-6 text-ink break-words">{row.title}</h2>
                     <BriefStatusPill status={row.status} />
                   </div>
-                  <p className="truncate text-sm text-muted-foreground">{row.description.trim() || t("briefs.list.noDescription")}</p>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
-                  <span>{criteriaText(row.criteria.length)}</span>
-                  <span>{t("briefs.list.updated", { date: formatDate(locale, row.updated_at) })}</span>
-                </div>
-              </Link>
-            </li>
-          ))}
+                  <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground break-words">
+                    {description || t("briefs.list.noDescription")}
+                  </p>
+                  <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-5 text-[13px] leading-5 text-muted-foreground">
+                    <span className="tabular-nums">{criteriaText(row.criteria.length)}</span>
+                    <span>{t("briefs.list.updated", { date: formatDate(locale, row.updated_at) })}</span>
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

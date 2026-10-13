@@ -38,6 +38,7 @@ const document: DocumentRow = {
   org_id: "o1",
   candidate_id: candidate.id,
   storage_path: "o1/d1.pdf",
+  document_kind: "cv",
   file_name: "cv.pdf",
   mime_type: "application/pdf",
   byte_size: 1234,

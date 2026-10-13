@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   ModelProfileSchema,
+  STRUCTURE_SYSTEM_PROMPT,
+  anchorOrganisationOf,
   backfillContacts,
+  classificationOfModelAnswer,
   embeddingTextOf,
   emptyProfile,
   findName,
@@ -38,6 +41,10 @@ Anglais C1, Espagnol B2`;
 
 function profile(overrides: Partial<Profile> = {}): Profile {
   return { ...emptyProfile(), ...overrides };
+}
+
+function experience(company: string | null): Profile["experiences"][number] {
+  return { title: "Contrôleuse de gestion", company, start: "2019", end: null, description: null };
 }
 
 describe("heuristicProfile", () => {
@@ -87,10 +94,32 @@ describe("fingerprintOf", () => {
     expect(normaliseName("  Émilie   DURAND ")).toBe("emilie durand");
   });
 
-  it("answers null without an email and without both a name and a phone", () => {
+  it("falls back to the name and the latest company, else the first school", () => {
+    const alpha = profile({ full_name: "Marie Dupont", experiences: [experience("Groupe Alpha")] });
+    expect(anchorOrganisationOf(alpha)).toBe("groupe alpha");
+    expect(fingerprintOf(alpha)).toBe("marie dupont|groupe alpha");
+    const school = profile({
+      full_name: "Marie Dupont",
+      experiences: [experience(null)],
+      education: [{ degree: "Master", school: "Université Paris-Dauphine", year: "2015" }],
+    });
+    expect(fingerprintOf(school)).toBe("marie dupont|universite paris dauphine");
+    const withPhone = profile({ ...alpha, phone: "06 12 34 56 78" });
+    expect(fingerprintOf(withPhone)).toBe("marie dupont|0612345678");
+    const withEmail = profile({ ...withPhone, email: "marie@example.com" });
+    expect(fingerprintOf(withEmail)).toBe("marie@example.com");
+  });
+
+  it("never makes a key from a name alone, and keeps namesakes at different companies apart", () => {
     expect(fingerprintOf(profile({ full_name: "Marie Dupont" }))).toBeNull();
     expect(fingerprintOf(profile({ phone: "06 12 34 56 78" }))).toBeNull();
+    expect(fingerprintOf(profile({ experiences: [experience("Groupe Alpha")] }))).toBeNull();
     expect(fingerprintOf(profile())).toBeNull();
+    const alpha = fingerprintOf(profile({ full_name: "Marie Dupont", experiences: [experience("Groupe Alpha")] }));
+    const beta = fingerprintOf(profile({ full_name: "Marie Dupont", experiences: [experience("Beta Conseil")] }));
+    expect(alpha).not.toBeNull();
+    expect(beta).not.toBeNull();
+    expect(alpha).not.toBe(beta);
   });
 });
 
@@ -232,6 +261,21 @@ describe("ModelProfileSchema", () => {
     expect(result.data.full_name).toBeNull();
     expect(result.data.skills).toEqual([]);
     expect(result.data.confidence).toEqual({});
+  });
+
+  it("reads the document kind, and takes anything but an explicit \"other\" for a CV", () => {
+    const other = ModelProfileSchema.safeParse({ document_kind: " Other ", kind_reason: "  A diploma, no experiences. " });
+    expect(other.success).toBe(true);
+    if (other.success) {
+      expect(classificationOfModelAnswer(other.data)).toEqual({ kind: "other", reason: "A diploma, no experiences." });
+    }
+    for (const value of [{ document_kind: "cv" }, { document_kind: "CV" }, {}, { document_kind: 42 }, { document_kind: null }]) {
+      const result = ModelProfileSchema.safeParse(value);
+      expect(result.success).toBe(true);
+      if (result.success) expect(classificationOfModelAnswer(result.data)).toEqual({ kind: "cv", reason: null });
+    }
+    expect(STRUCTURE_SYSTEM_PROMPT).toContain('"document_kind"');
+    expect(STRUCTURE_SYSTEM_PROMPT).toContain('"kind_reason"');
   });
 
   it("rejects an answer of the wrong shape", () => {

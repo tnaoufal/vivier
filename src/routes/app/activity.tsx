@@ -35,24 +35,24 @@ function ActivityPage() {
 
   return (
     <>
-      <PageHeader title={t("nav.activity")} description={t("activity.subtitle")} />
-      <FamilyFilter value={family} onChange={setFamily} />
-      <div className="mt-4">
-        {feed.error ? <p className="mb-3 text-sm text-negative">{t("common.error")}</p> : null}
-        <ActivityList
-          rows={feed.rows}
-          names={names}
-          loading={feed.loading}
-          emptyState={<EmptyState icon={<Activity />} title={family ? t("activity.emptyFiltered") : t("activity.empty")} />}
-        />
-        {feed.hasMore ? (
-          <div className="mt-4 flex justify-center">
-            <Button variant="outline" onClick={() => void feed.loadMore()} disabled={feed.loadingMore}>
-              {t("activity.loadMore")}
-            </Button>
-          </div>
-        ) : null}
+      <PageHeader eyebrow={t("nav.activity")} title={t("nav.activity")} description={t("activity.subtitle")} />
+      <div className="mb-6">
+        <FamilyFilter value={family} onChange={setFamily} />
       </div>
+      {feed.error ? <p className="mb-4 text-sm text-negative">{t("common.error")}</p> : null}
+      <ActivityList
+        rows={feed.rows}
+        names={names}
+        loading={feed.loading}
+        emptyState={<EmptyState icon={<Activity />} title={family ? t("activity.emptyFiltered") : t("activity.empty")} />}
+      />
+      {feed.hasMore ? (
+        <div className="mt-6 flex justify-center">
+          <Button variant="outline" onClick={() => void feed.loadMore()} disabled={feed.loadingMore}>
+            {t("activity.loadMore")}
+          </Button>
+        </div>
+      ) : null}
     </>
   );
 }

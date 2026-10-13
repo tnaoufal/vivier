@@ -19,6 +19,14 @@ export const VERSION = "1.0.0";
  */
 export const SHARED_SECRET_MIN_LENGTH = 32;
 
+/**
+ * Documents processed at once by default. A document is mostly waiting on
+ * the model and the storage, so four in flight drain a queue of hundreds
+ * of files at a steady pace without starving one process of memory;
+ * PROCESSOR_CONCURRENCY tunes it within 1..8.
+ */
+export const DEFAULT_CONCURRENCY = 4;
+
 export const DEFAULT_CHAT_MODEL = "mistral-small-latest";
 export const DEFAULT_EMBEDDING_MODEL = "mistral-embed";
 export const DEFAULT_OCR_MODEL = "mistral-ocr-latest";
@@ -56,7 +64,7 @@ export interface ProcessorConfig {
   pollIntervalMs: number;
   /** 0 disables the maintenance timer (POST /maintenance still works). */
   maintenanceIntervalMs: number;
-  /** Documents processed at once: 1..8. */
+  /** Documents processed at once: 1..8 (default 4). */
   concurrency: number;
   /** Cap on the text kept per document (extracted_text and what the model reads from). */
   maxTextChars: number;
@@ -187,7 +195,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProcessorConfi
       60_000,
       86_400_000,
     ),
-    concurrency: clampedInt(value(env, "PROCESSOR_CONCURRENCY"), 2, 1, 8),
+    concurrency: clampedInt(value(env, "PROCESSOR_CONCURRENCY"), DEFAULT_CONCURRENCY, 1, 8),
     maxTextChars: clampedInt(value(env, "MAX_TEXT_CHARS"), 200_000, 10_000, 2_000_000),
     warnings,
   };

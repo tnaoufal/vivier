@@ -1,10 +1,11 @@
 /**
  * Sharing a shortlist in one dialog and three steps: the content (which
  * candidates, title, intro, CVs, expiry, the model or not), the review
- * of every sheet, then the link and the emails. The state lives in a
- * pure reducer (lib/shares/dialog-state.ts); the server functions do
- * the reading of profiles, the model call, the share row and the
- * emails. Opened from the shortlist board by members.
+ * of every sheet (the assessment read only, the prose editable), then
+ * the link and the emails. The state lives in a pure reducer
+ * (lib/shares/dialog-state.ts); the server functions do the reading of
+ * profiles and of the shortlist's analysis, the model call, the share
+ * row and the emails. Opened from the shortlist board by members.
  */
 import { useEffect, useReducer, useRef, useState } from "react";
 
@@ -20,9 +21,9 @@ import { listShareableItems } from "@/lib/shares/queries";
 import { createShare, draftShare, sendShare, shareCapabilities, type ShareCapabilities } from "@/lib/shares/shares.functions";
 import { toast } from "@/lib/toast";
 
-import { ContentStep } from "./step-content";
-import { ReviewStep } from "./step-review";
-import { SendStep } from "./step-send";
+import { ContentFooter, ContentStep } from "./step-content";
+import { ReviewFooter, ReviewStep } from "./step-review";
+import { SendFooter, SendStep } from "./step-send";
 
 const STEP_KEYS: Record<Step, "shares.step.content" | "shares.step.review" | "shares.step.send"> = {
   content: "shares.step.content",
@@ -41,7 +42,7 @@ function StepIndicator({ step }: { step: Step }) {
   const { t } = useI18n();
   const current = stepIndex(step);
   return (
-    <ol className="flex flex-wrap gap-x-4 gap-y-1 text-xs" aria-label={t("shares.dialog.title")}>
+    <ol className="flex flex-wrap gap-x-5 gap-y-1 text-[13px]" aria-label={t("shares.dialog.title")}>
       {STEPS.map((name, index) => (
         <li
           key={name}
@@ -130,7 +131,13 @@ export function ShareDialog({
           useModel: state.useModel && capabilities?.model === true,
         },
       });
-      dispatch({ type: "drafted", items: answer.items, modelUsed: answer.modelUsed, modelFailed: answer.modelFailed });
+      dispatch({
+        type: "drafted",
+        items: answer.items,
+        brief: answer.brief,
+        modelUsed: answer.modelUsed,
+        modelFailed: answer.modelFailed,
+      });
       if (answer.modelFailed) toast.error(t("shares.review.modelFailed"));
     } catch (error) {
       fail(error);
@@ -182,32 +189,36 @@ export function ShareDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{t("shares.dialog.title")}</DialogTitle>
-          <DialogDescription>{t("shares.dialog.text")}</DialogDescription>
+      <DialogContent className="flex max-h-[92vh] w-full max-w-2xl flex-col gap-6 overflow-hidden p-8 sm:p-8">
+        <DialogHeader className="min-w-0 space-y-2 pr-8 text-left">
+          <DialogTitle className="text-xl leading-7">{t("shares.dialog.title")}</DialogTitle>
+          <DialogDescription className="text-sm leading-5">{t("shares.dialog.text")}</DialogDescription>
         </DialogHeader>
         <StepIndicator step={state.step} />
+        {/* Scrolls only when a short screen cannot hold the step; the candidates list scrolls on its own. */}
+        <div className="min-h-0 min-w-0 overflow-y-auto">
+          {state.step === "content" ? (
+            <ContentStep
+              state={state}
+              dispatch={dispatch}
+              items={shareable.data}
+              loading={shareable.loading}
+              error={shareable.error}
+              capabilities={capabilities}
+            />
+          ) : state.step === "review" ? (
+            <ReviewStep state={state} dispatch={dispatch} />
+          ) : (
+            <SendStep state={state} dispatch={dispatch} emailReady={capabilities?.email === true} />
+          )}
+        </div>
+        {/* The step's buttons sit under the scrolling box, as the charter asks, so the primary action never scrolls away with thirty sheets. */}
         {state.step === "content" ? (
-          <ContentStep
-            state={state}
-            dispatch={dispatch}
-            items={shareable.data}
-            loading={shareable.loading}
-            error={shareable.error}
-            capabilities={capabilities}
-            onPrepare={() => void prepare()}
-          />
+          <ContentFooter state={state} items={shareable.data} loading={shareable.loading} onPrepare={() => void prepare()} />
         ) : state.step === "review" ? (
-          <ReviewStep state={state} dispatch={dispatch} onBack={() => dispatch({ type: "backToContent" })} onCreate={() => void create()} />
+          <ReviewFooter state={state} onBack={() => dispatch({ type: "backToContent" })} onCreate={() => void create()} />
         ) : (
-          <SendStep
-            state={state}
-            dispatch={dispatch}
-            emailReady={capabilities?.email === true}
-            onSend={() => void send()}
-            onClose={() => onOpenChange(false)}
-          />
+          <SendFooter state={state} emailReady={capabilities?.email === true} onSend={() => void send()} onClose={() => onOpenChange(false)} />
         )}
       </DialogContent>
     </Dialog>

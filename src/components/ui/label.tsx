@@ -1,3 +1,4 @@
+/** A field's label: 13/20, medium, muted, 8px above its field (the form sets the gap). */
 "use client";
 
 import * as React from "react";
@@ -7,7 +8,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const labelVariants = cva(
-  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+  "block text-[13px] font-medium leading-5 text-muted-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
 );
 
 const Label = React.forwardRef<

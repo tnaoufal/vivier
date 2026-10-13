@@ -8,6 +8,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { KeyRound, LogOut } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
+import { LocaleChips } from "@/components/app-shell/locale-chips";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -134,20 +135,20 @@ function AccountPage() {
 
   return (
     <>
-      <PageHeader title={t("nav.account")} description={t("account.subtitle")} />
+      <PageHeader eyebrow={user?.email ?? ""} title={t("nav.account")} description={t("account.subtitle")} />
 
-      <div className="space-y-6">
+      <div className="space-y-8">
         {passwordRecovery ? passwordForm : null}
 
-        <form onSubmit={saveName} className="sheet p-4 sm:p-5">
-          <h2 className="font-display text-lg text-ink">{t("account.displayName")}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t("account.displayName.help")}</p>
-          <div className="mt-4 space-y-4">
-            <div className="space-y-1.5">
+        <form onSubmit={saveName} className="sheet p-6 sm:p-8">
+          <h2 className="font-display text-xl text-ink">{t("account.displayName")}</h2>
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">{t("account.displayName.help")}</p>
+          <div className="mt-6 grid gap-6 sm:grid-cols-2">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="account-email">{t("account.email")}</Label>
               <Input id="account-email" value={user?.email ?? ""} readOnly disabled />
             </div>
-            <div className="space-y-1.5">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="account-name">{t("account.displayName")}</Label>
               <Input
                 id="account-name"
@@ -159,45 +160,35 @@ function AccountPage() {
               />
             </div>
           </div>
-          <Button type="submit" className="mt-5" disabled={savingName || profile.loading}>
-            {t("common.save")}
-          </Button>
+          <div className="mt-8">
+            <Button type="submit" disabled={savingName || profile.loading}>
+              {t("common.save")}
+            </Button>
+          </div>
         </form>
 
-        <section className="sheet p-4 sm:p-5">
-          <h2 className="font-display text-lg text-ink">{t("account.locale")}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t("account.locale.help")}</p>
-          <div className="mt-4 flex gap-2">
-            {(["fr", "en"] as const).map((value) => (
-              <Button
-                key={value}
-                type="button"
-                variant={savedLocale === value ? "default" : "outline"}
-                size="sm"
-                onClick={() => void chooseLocale(value)}
-                className="uppercase"
-                disabled={savingLocale || profile.loading}
-              >
-                {value}
-              </Button>
-            ))}
+        <section className="sheet p-6 sm:p-8">
+          <h2 className="font-display text-xl text-ink">{t("account.locale")}</h2>
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">{t("account.locale.help")}</p>
+          <div className="mt-6">
+            <LocaleChips value={savedLocale} onChange={(next) => void chooseLocale(next)} disabled={savingLocale || profile.loading} />
           </div>
         </section>
 
         {!passwordRecovery ? passwordForm : null}
 
-        <section className="sheet p-4 sm:p-5">
-          <h2 className="font-display text-lg text-ink">{t("common.signOut")}</h2>
-          <Button variant="outline" className="mt-4 gap-2" onClick={() => void doSignOut()} disabled={signingOut}>
+        <section className="sheet p-6 sm:p-8">
+          <h2 className="font-display text-xl text-ink">{t("common.signOut")}</h2>
+          <Button variant="outline" className="mt-6" onClick={() => void doSignOut()} disabled={signingOut}>
             <LogOut />
             {t("common.signOut")}
           </Button>
         </section>
 
-        <section className="sheet border-negative/40 p-4 sm:p-5">
-          <h2 className="font-display text-lg text-negative">{t("account.danger")}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t("account.danger.text")}</p>
-          <Button variant="destructive" className="mt-4" onClick={() => setDeleteOpen(true)} disabled={deleting}>
+        <section className="sheet border-negative/40 p-6 sm:p-8">
+          <h2 className="font-display text-xl text-negative">{t("account.danger")}</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">{t("account.danger.text")}</p>
+          <Button variant="destructive" className="mt-6" onClick={() => setDeleteOpen(true)} disabled={deleting}>
             {t("account.danger")}
           </Button>
         </section>
@@ -217,7 +208,7 @@ function AccountPage() {
   );
 }
 
-/** New password twice; `lead` marks the form that follows a reset link. */
+/** New password twice; `lead` marks the form that follows a reset link (then its button is the page's primary). */
 function PasswordForm({ lead, onSubmit }: { lead: boolean; onSubmit: (password: string) => Promise<boolean> }) {
   const { t } = useI18n();
   const [password, setPassword] = useState("");
@@ -248,11 +239,11 @@ function PasswordForm({ lead, onSubmit }: { lead: boolean; onSubmit: (password: 
   }
 
   return (
-    <form onSubmit={submit} className={lead ? "sheet border-primary/40 p-4 sm:p-5" : "sheet p-4 sm:p-5"}>
-      <h2 className="font-display text-lg text-ink">{lead ? t("auth.newPassword") : t("account.password.change")}</h2>
-      {lead ? <p className="mt-1 text-sm text-muted-foreground">{t("account.password.recovery")}</p> : null}
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5">
+    <form onSubmit={submit} className={lead ? "sheet border-primary/40 p-6 sm:p-8" : "sheet p-6 sm:p-8"}>
+      <h2 className="font-display text-xl text-ink">{lead ? t("auth.newPassword") : t("account.password.change")}</h2>
+      {lead ? <p className="mt-1 text-sm leading-5 text-muted-foreground">{t("account.password.recovery")}</p> : null}
+      <div className="mt-6 grid gap-6 sm:grid-cols-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="new-password">{t("auth.newPassword")}</Label>
           <Input
             id="new-password"
@@ -264,9 +255,9 @@ function PasswordForm({ lead, onSubmit }: { lead: boolean; onSubmit: (password: 
             required
             disabled={busy}
           />
-          <p className="text-xs text-muted-foreground">{t("auth.password.help")}</p>
+          <p className="text-[13px] leading-5 text-muted-foreground">{t("auth.password.help")}</p>
         </div>
-        <div className="space-y-1.5">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="confirm-password">{t("account.password.confirm")}</Label>
           <Input
             id="confirm-password"
@@ -280,10 +271,12 @@ function PasswordForm({ lead, onSubmit }: { lead: boolean; onSubmit: (password: 
           />
         </div>
       </div>
-      <Button type="submit" className="mt-5 gap-2" disabled={busy || !password || !confirm}>
-        <KeyRound />
-        {lead ? t("common.save") : t("account.password.change")}
-      </Button>
+      <div className="mt-8">
+        <Button type="submit" variant={lead ? "default" : "outline"} disabled={busy || !password || !confirm}>
+          <KeyRound />
+          {lead ? t("common.save") : t("account.password.change")}
+        </Button>
+      </div>
     </form>
   );
 }

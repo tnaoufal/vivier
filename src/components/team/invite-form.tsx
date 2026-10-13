@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useI18n } from "@/lib/i18n";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { errorMessage, withToken } from "@/lib/platform/call";
 import { errorSays } from "@/lib/team/team";
 import { inviteMember } from "@/lib/team/team.functions";
@@ -22,6 +22,10 @@ const INVITE_ROLES: readonly InviteRole[] = ["admin", "member", "viewer"];
 
 /** The same shape the database checks; refused here before any call. */
 const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+function roleHelpKey(role: InviteRole): TranslationKey {
+  return `role.${role}.help`;
+}
 
 export function InviteForm({
   orgId,
@@ -81,11 +85,12 @@ export function InviteForm({
   }
 
   return (
-    <form onSubmit={submit} className="sheet p-4 sm:p-5">
-      <h2 className="font-display text-lg text-ink">{t("team.invite.title")}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">{t("team.invite.text")}</p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_11rem_auto] sm:items-end">
-        <div className="space-y-1.5">
+    <form onSubmit={submit} className="sheet p-6 sm:p-8">
+      <h2 className="font-display text-xl text-ink">{t("team.invite.title")}</h2>
+      <p className="mt-1 text-sm leading-5 text-muted-foreground">{t("team.invite.text")}</p>
+      {/* The button has its own row: beside the two fields it left the address a few characters wide on a small tablet. */}
+      <div className="mt-6 grid gap-6 sm:grid-cols-[minmax(0,1fr)_11rem]">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="invite-email">{t("auth.email")}</Label>
           <Input
             id="invite-email"
@@ -98,7 +103,7 @@ export function InviteForm({
             required
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="invite-role">{t("common.role")}</Label>
           <Select value={role} onValueChange={(value) => setRole(value as InviteRole)} disabled={busy || disabled}>
             <SelectTrigger id="invite-role">
@@ -113,19 +118,21 @@ export function InviteForm({
             </SelectContent>
           </Select>
         </div>
-        <Button type="submit" disabled={busy || disabled || !email.trim()} className="gap-2">
+      </div>
+      <p className="mt-2 text-[13px] leading-5 text-muted-foreground">{t(roleHelpKey(role))}</p>
+      {disabled ? <p className="mt-4 text-sm text-caution-foreground dark:text-caution">{t("members.seatsFull")}</p> : null}
+      <div className="mt-6 flex flex-col sm:flex-row sm:justify-end">
+        <Button type="submit" disabled={busy || disabled || !email.trim()}>
           <UserPlus />
           {t("team.invite.send")}
         </Button>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">{t(`role.${role}.help`)}</p>
-      {disabled ? <p className="mt-3 text-sm text-caution">{t("members.seatsFull")}</p> : null}
       {pendingLink ? (
-        <div className="mt-4 rounded-xl border border-caution/40 bg-caution/10 p-3 text-sm">
+        <div className="mt-6 rounded-2xl border border-caution/40 bg-caution/10 p-4 text-sm">
           <p className="text-ink">{t("team.invite.notEmailed")}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <code className="min-w-0 flex-1 truncate rounded-md bg-background px-2 py-1 text-xs">{pendingLink.link}</code>
-            <Button type="button" size="sm" variant="outline" onClick={() => void copyLink()} className="gap-1.5">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded-lg bg-card px-3 py-2 text-xs">{pendingLink.link}</code>
+            <Button type="button" size="sm" variant="outline" onClick={() => void copyLink()}>
               <Copy />
               {t("team.invite.copyLink")}
             </Button>

@@ -1,18 +1,23 @@
 /**
  * Process entry: reads the configuration (a bad one exits with the line
- * that says what to fix), builds the app, listens on 0.0.0.0:PORT, and
- * when Supabase is configured starts the poller and the maintenance
- * timer. SIGTERM/SIGINT stop the timers, close the server, wait for the
- * documents in flight (up to 25 s) and exit 0; what did not finish is put
- * back in the queue by the next stale reset.
+ * that says what to fix), builds the app, listens on 0.0.0.0:PORT, probes
+ * the embedding model once when there is one (the log and /health say
+ * whether it answers the right width), and when Supabase is configured
+ * starts the poller and the maintenance timer. SIGTERM/SIGINT stop the
+ * timers, close the server, wait for the documents in flight (up to 25 s)
+ * and exit 0; what did not finish is put back in the queue by the next
+ * stale reset.
  */
 import { buildApp, type AppRuntime } from "./app.js";
 import { loadConfig, type ProcessorConfig } from "./config.js";
 import { createDb } from "./db.js";
+import { probeEmbedding } from "./embedding.js";
 import { logError, logInfo, logWarn } from "./log.js";
-import { runMaintenance, type MaintenanceReport } from "./maintenance.js";
+import { runMaintenance, type MaintenanceDeps, type MaintenanceReport } from "./maintenance.js";
+import { embedOne } from "./model.js";
 import { defaultDeps } from "./pipeline.js";
 import { Poller } from "./poller.js";
+import { usageRecorderOf } from "./usage.js";
 
 /** Time given to the documents in flight after a stop signal. */
 const SHUTDOWN_DRAIN_MS = 25_000;
@@ -38,13 +43,23 @@ const deps = db ? defaultDeps(config, db) : null;
 const poller = deps
   ? new Poller(deps, { intervalMs: config.pollIntervalMs, concurrency: config.concurrency })
   : null;
+const maintenanceDeps: MaintenanceDeps | null =
+  db && deps
+    ? {
+        db,
+        now: deps.now,
+        embed: deps.embed,
+        recordUsage: usageRecorderOf(db),
+        ...(config.model ? { embeddingModel: config.model.embeddingModel } : {}),
+      }
+    : null;
 
 // One maintenance pass at a time: a POST while the timer's pass runs joins it.
 let maintenanceRun: Promise<MaintenanceReport> | null = null;
 function maintenanceOnce(): Promise<MaintenanceReport> {
-  if (!deps) return Promise.reject(new Error("Supabase is not configured"));
+  if (!maintenanceDeps) return Promise.reject(new Error("Supabase is not configured"));
   if (!maintenanceRun) {
-    maintenanceRun = runMaintenance(deps).finally(() => {
+    maintenanceRun = runMaintenance(maintenanceDeps).finally(() => {
       maintenanceRun = null;
     });
   }
@@ -55,7 +70,7 @@ const runtime: AppRuntime = {
   polling: poller !== null && config.pollIntervalMs > 0,
   inFlight: () => poller?.inFlight ?? 0,
   schedule: poller ? (ids) => poller.schedule(ids) : null,
-  maintenance: deps ? maintenanceOnce : null,
+  maintenance: maintenanceDeps ? maintenanceOnce : null,
 };
 const app = buildApp(config, runtime);
 
@@ -113,8 +128,14 @@ app
       pollIntervalMs: config.pollIntervalMs,
       maintenanceIntervalMs: config.maintenanceIntervalMs,
     });
+    // Fire and forget: /health answers from the state the probe leaves,
+    // never waits for it (Railway's check and CI's smoke test hit it at once).
+    const model = config.model;
+    if (model) {
+      void probeEmbedding((text) => embedOne(text, model), model.embeddingModel);
+    }
     if (poller && config.pollIntervalMs > 0) poller.start();
-    if (deps && config.maintenanceIntervalMs > 0) {
+    if (maintenanceDeps && config.maintenanceIntervalMs > 0) {
       const pass = () => {
         maintenanceOnce().catch((error: unknown) => logError("maintenance_failed", error));
       };

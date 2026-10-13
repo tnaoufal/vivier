@@ -9,12 +9,27 @@
  * processors asking for the same document see one empty answer. A
  * unique violation (23505) on `documents.sha256` is surfaced as
  * DuplicateFileError, the pipeline's "same file, same organisation" case.
+ *
+ * The candidate lookups the deduplication runs (dedup.ts) read the
+ * contact columns: the email case-insensitively (ILIKE: it filters the
+ * organisation's rows through the org_id index, the `lower(email)` index
+ * cannot serve a pattern), the phone by the end of `phone_digits` (a
+ * GENERATED column the database computes: never written here; a suffix
+ * LIKE filters the organisation's rows the same way), the fingerprint
+ * exactly through its index. Each one prefers an active candidate to an
+ * archived one, so a fresh CV meets the person in the pool first.
  */
 import { createClient } from "@supabase/supabase-js";
 
 import type { SupabaseConfig } from "./config.js";
 import { FAILURE_MESSAGES } from "./messages.js";
-import type { AiUsageKind, CandidateRow, DocumentRow, OrganizationLimits } from "./types.js";
+import type {
+  AiUsageKind,
+  CandidateRow,
+  CandidateStatus,
+  DocumentRow,
+  OrganizationLimits,
+} from "./types.js";
 
 export const STORAGE_BUCKET = "cvs";
 /** Claims before a stale document is left failed instead of re-queued. */
@@ -53,6 +68,7 @@ export type DocumentPatch = Partial<
     | "extracted_text"
     | "extraction_method"
     | "structuring_method"
+    | "document_kind"
     | "processed_at"
   >
 >;
@@ -81,6 +97,10 @@ export type CandidateWrite = Partial<CandidateFields> & {
   search_text?: string | null;
   /** A pgvector literal ("[0.1,0.2,...]"); absent keeps the stored vector. */
   embedding?: string;
+  /** Written only to put an archived candidate back in the pool when a fresh CV of theirs arrives. */
+  status?: CandidateStatus;
+  /** Computed by the database from `phone`: a write that carries it is refused by PostgREST. */
+  phone_digits?: never;
 };
 
 export type CandidateInsert = CandidateWrite & {
@@ -106,9 +126,20 @@ export interface Db {
   getDocument(id: string): Promise<DocumentRow | null>;
   updateDocument(id: string, patch: DocumentPatch): Promise<void>;
   findDocumentBySha256(orgId: string, sha256: string, excludeId: string): Promise<DocumentRow | null>;
+  /** The candidate with this fingerprint: an active one first, then the most recently updated. */
   findCandidateByFingerprint(orgId: string, fingerprint: string): Promise<CandidateRow | null>;
+  /** The candidate whose email is `email` whatever the case (exact, no wildcard): active first, then the most recently updated. */
+  findCandidateByEmail(orgId: string, email: string): Promise<CandidateRow | null>;
+  /** The candidate whose `phone_digits` ends with `digits` (the last nine): active first, then the most recently updated. */
+  findCandidateByPhoneDigits(orgId: string, digits: string): Promise<CandidateRow | null>;
   /** The candidate a document was attached to before processing (same organisation), or null. */
   getCandidateById(orgId: string, id: string): Promise<CandidateRow | null>;
+  /**
+   * Active candidates with no vector, most recently updated first, from
+   * the `offset`-th on: what the re-embed pass refreshes, page by page
+   * when the first rows have nothing to embed.
+   */
+  listCandidatesWithoutEmbedding(limit: number, offset?: number): Promise<CandidateRow[]>;
   /** Answers the new row's id. */
   insertCandidate(values: CandidateInsert): Promise<string>;
   updateCandidate(id: string, patch: CandidateWrite): Promise<void>;
@@ -145,6 +176,15 @@ function rowsOf<T>(data: unknown): T[] {
 
 function rowOf<T>(data: unknown): T | null {
   return data && typeof data === "object" ? (data as T) : null;
+}
+
+/**
+ * A LIKE/ILIKE pattern that matches `value` literally: `%`, `_` and the
+ * escape character itself are escaped (an email often holds an underscore,
+ * which would otherwise match any character).
+ */
+export function likeLiteral(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
 export function createDb(config: SupabaseConfig): Db {
@@ -244,16 +284,47 @@ export function createDb(config: SupabaseConfig): Db {
       return rowOf<DocumentRow>(data);
     },
 
+    // 'active' sorts before 'archived': an active namesake wins over an
+    // archived one, and the archived one is only met when it is alone.
     findCandidateByFingerprint: async (orgId, fingerprint) => {
       const { data, error } = await client
         .from("candidates")
         .select("*")
         .eq("org_id", orgId)
         .eq("fingerprint", fingerprint)
+        .order("status", { ascending: true })
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (error) fail("findCandidateByFingerprint", error);
+      return rowOf<CandidateRow>(data);
+    },
+
+    findCandidateByEmail: async (orgId, email) => {
+      const { data, error } = await client
+        .from("candidates")
+        .select("*")
+        .eq("org_id", orgId)
+        .ilike("email", likeLiteral(email))
+        .order("status", { ascending: true })
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) fail("findCandidateByEmail", error);
+      return rowOf<CandidateRow>(data);
+    },
+
+    findCandidateByPhoneDigits: async (orgId, digits) => {
+      const { data, error } = await client
+        .from("candidates")
+        .select("*")
+        .eq("org_id", orgId)
+        .like("phone_digits", `%${likeLiteral(digits)}`)
+        .order("status", { ascending: true })
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) fail("findCandidateByPhoneDigits", error);
       return rowOf<CandidateRow>(data);
     },
 
@@ -266,6 +337,20 @@ export function createDb(config: SupabaseConfig): Db {
         .maybeSingle();
       if (error) fail("getCandidateById", error);
       return rowOf<CandidateRow>(data);
+    },
+
+    listCandidatesWithoutEmbedding: async (limit, offset = 0) => {
+      const size = Math.max(1, Math.floor(limit));
+      const from = Math.max(0, Math.floor(offset));
+      const { data, error } = await client
+        .from("candidates")
+        .select("*")
+        .eq("status", "active")
+        .is("embedding", null)
+        .order("updated_at", { ascending: false })
+        .range(from, from + size - 1);
+      if (error) fail("listCandidatesWithoutEmbedding", error);
+      return rowsOf<CandidateRow>(data);
     },
 
     insertCandidate: async (values) => {

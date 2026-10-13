@@ -1,10 +1,10 @@
 /**
  * What a person can do with one document from any card: open the CV in
- * a new tab through a short-lived signed link, and send a failed or
- * unreadable one back to the queue (the only status change the browser
- * is allowed; the trigger refuses the rest) followed by a poke of the
- * processor. Toasts speak the person's language; details go to the
- * console.
+ * a new tab through a short-lived signed link, and send a failed,
+ * unreadable or set-aside one back to the queue (the only status change
+ * the browser is allowed; the trigger refuses the rest) followed by a
+ * poke of the processor. Toasts speak the person's language; details go
+ * to the console.
  */
 import { useCallback, useState } from "react";
 
@@ -17,9 +17,13 @@ import { toast } from "@/lib/toast";
 import { notifyProcessor } from "./candidates.functions";
 import { signedCvUrl } from "./upload-browser";
 
-/** Statuses a person may send back to the queue. */
+/**
+ * Statuses a person may send back to the queue. A rejected document is
+ * one the service read and did not take for a CV: the person may
+ * disagree with that reading, so it can be retried like a failure.
+ */
 export function canRetry(status: DocumentRow["status"]): boolean {
-  return status === "failed" || status === "needs_ocr";
+  return status === "failed" || status === "needs_ocr" || status === "rejected";
 }
 
 export interface DocumentActions {

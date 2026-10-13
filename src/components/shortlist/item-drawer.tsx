@@ -1,12 +1,14 @@
 /**
- * The detail of one shortlist item, in a sheet from the right: the
- * candidate in short, the explained match against the brief, the team's
- * note (saved when the field loses focus), the votes, the comments with
- * mentions, and the item's history. Members write; viewers read. The
- * page tells it when the tables changed so its reads follow.
+ * The detail of one shortlist item, in a panel from the right: the
+ * candidate in short, the explained match against the brief (the shared
+ * requirement list), the team's note (saved when the field loses
+ * focus), the votes, the comments with mentions, and the item's
+ * history. Members write; viewers read. The page tells it when the
+ * tables changed so its reads follow.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Avatar } from "@/components/app-shell/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { memberNames } from "@/lib/activity/activity";
@@ -132,12 +134,17 @@ export function ItemDrawer({
         if (!open) onClose();
       }}
     >
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+      <SheetContent side="right">
         {shown ? (
-          <div className="space-y-6">
-            <SheetHeader className="pr-8 text-left">
-              <SheetTitle className="font-display text-xl text-ink">{candidateName}</SheetTitle>
-              <SheetDescription>{headline || t("common.unknown")}</SheetDescription>
+          <div className="space-y-8">
+            <SheetHeader>
+              <div className="flex items-start gap-3">
+                <Avatar name={candidateName} size="lg" />
+                <div className="min-w-0 flex-1">
+                  <SheetTitle>{candidateName}</SheetTitle>
+                  <SheetDescription className="mt-1">{headline || t("common.unknown")}</SheetDescription>
+                </div>
+              </div>
               <DecisionTrace status={shown.status} decidedBy={shown.decided_by} decidedAt={shown.decided_at} />
             </SheetHeader>
 
@@ -145,8 +152,8 @@ export function ItemDrawer({
 
             <VerdictList match={shown.match} criteria={criteria} />
 
-            <section>
-              <h3 className="label-caps mb-2">{t("shortlists.note.title")}</h3>
+            <section className="space-y-3">
+              <h3 className="text-base font-semibold leading-6 text-ink">{t("shortlists.note.title")}</h3>
               {canAct ? (
                 <Textarea
                   id="shortlist-item-note"
@@ -160,13 +167,14 @@ export function ItemDrawer({
                   aria-label={t("shortlists.note.title")}
                 />
               ) : (
-                <p className="whitespace-pre-line text-sm text-ink">
+                <p className="whitespace-pre-line text-[15px] leading-6 text-ink break-words">
                   {shown.note?.trim() || <span className="text-muted-foreground">{t("shortlists.note.empty")}</span>}
                 </p>
               )}
             </section>
 
-            <section>
+            <section className="space-y-3">
+              <h3 className="text-base font-semibold leading-6 text-ink">{t("shortlists.vote.tally", { up: tally.up, down: tally.down })}</h3>
               <VoteButtons
                 tally={item ? tally : NO_VOTES}
                 canVote={canAct && item !== null}

@@ -14,6 +14,8 @@ import { settings, type Settings } from "./settings.server";
 export interface ServiceClient {
   /** Reads rows: `path` is the table with its PostgREST query string. */
   select<T>(path: string): Promise<T[]>;
+  /** How many rows `path` matches (PostgREST's exact count), without reading them. */
+  count(path: string): Promise<number>;
   /** Inserts rows and answers them (with their generated columns). */
   insert<T>(table: string, rows: Record<string, unknown>[]): Promise<T[]>;
   /** Inserts or replaces rows by primary key. */
@@ -91,6 +93,16 @@ export function serviceClient(input: { url: string; serviceKey: string }): Servi
     select: async <T>(path: string) => {
       const response = await call(`rest/v1/${path}`, { method: "GET" });
       return (await response.json()) as T[];
+    },
+    count: async (path) => {
+      // A HEAD with limit=1 answers no row; the total sits in Content-Range ("0-0/42", "*/0" for none).
+      const response = await call(`rest/v1/${path}${path.includes("?") ? "&" : "?"}limit=1`, {
+        method: "HEAD",
+        prefer: "count=exact",
+      });
+      const total = /\/(\d+)$/.exec(response.headers.get("content-range") ?? "")?.[1];
+      if (total === undefined) throw new Error("Supabase answered no count");
+      return Number(total);
     },
     insert: async <T>(table: string, rows: Record<string, unknown>[]) => {
       if (!rows.length) return [];

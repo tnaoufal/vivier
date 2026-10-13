@@ -97,7 +97,9 @@ export function extractJson(text: string): string | null {
 /**
  * Asks for a JSON answer and validates it with the schema. One retry on
  * an answer the schema rejects, with the error quoted back; then a thrown
- * error (never a partial object).
+ * error (never a partial object). `model` names another chat model of the
+ * same endpoint for this call (the assessment may use a stronger one);
+ * empty or null means the configured one, and the usage names the one used.
  */
 export async function completeJson<T>(input: {
   system: string;
@@ -105,10 +107,12 @@ export async function completeJson<T>(input: {
   schema: ZodType<T>;
   temperature?: number;
   maxTokens?: number;
+  model?: string | null;
   config?: ModelConfig | null;
 }): Promise<JsonAnswer<T>> {
   const config = input.config ?? modelConfig();
   if (!config) throw new AppError("SETUP:model");
+  const model = input.model?.trim() || config.model;
   const api = client(config);
   // Structural, so the call type-checks whatever the SDK names its union.
   const messages: { role: "system" | "user"; content: string }[] = [
@@ -120,7 +124,7 @@ export async function completeJson<T>(input: {
   let lastError = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const completion = await api.chat.completions.create({
-      model: config.model,
+      model,
       messages:
         attempt === 0
           ? messages
@@ -149,7 +153,7 @@ export async function completeJson<T>(input: {
     }
     const result = input.schema.safeParse(parsed);
     if (result.success) {
-      return { value: result.data, usage: { model: config.model, tokensIn, tokensOut } };
+      return { value: result.data, usage: { model, tokensIn, tokensOut } };
     }
     lastError = result.error.issues
       .slice(0, 5)

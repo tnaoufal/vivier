@@ -2,29 +2,41 @@
  * What leaves for the model and the database, built here so it can be
  * read and tested without either: the brief as one query text (stored
  * with the search and embedded), the full-text terms the search
- * function gets, the two system prompts (criteria extraction, result
- * explanation), the compact payload of an explanation request, and the
- * guard that drops a criterion about a protected characteristic.
- * Prompts are in English; the model answers in the brief's language.
+ * function gets, the two system prompts (criteria extraction, the expert
+ * assessment of one candidate against one brief), and the payload of an
+ * assessment request (the guard against a criterion about a protected
+ * characteristic is criteria.ts's). Prompts are in English; the model answers
+ * in the brief's language. A payload never carries a name, an email or
+ * a phone number: the model reads a profile, not a person. The name is
+ * read for that very reason, so redactIdentity() can take it out of
+ * every text (the CV's indexed text starts with it), along with e-mail
+ * addresses and phone numbers.
  */
-import type { BriefRow, MatchResult } from "@/lib/db/types";
+import type { BriefRow, CandidateRow } from "@/lib/db/types";
 
-import { normalise, type MatchProfile } from "./matching";
+import { escapeRegExp, normalise, type MatchProfile } from "./matching";
 
 export type BriefText = Pick<BriefRow, "title" | "description" | "criteria">;
 
+/**
+ * Up to this many active candidates the search takes the whole pool, so
+ * no profile is left out by the retrieval; above it the hybrid retrieval
+ * answers RETRIEVAL_LIMIT rows and the assessment reads those.
+ */
+export const FULL_POOL_MAX = 200;
 /** The most rows the retrieval answers; scoring runs on all of them. */
-export const RETRIEVAL_LIMIT = 80;
-/** The most results the model explains, the top of the ranking. */
-export const EXPLANATION_MAX = 12;
+export const RETRIEVAL_LIMIT = 120;
 /** The most criteria an extraction proposes. */
 export const EXTRACTION_MAX = 12;
 
 export const QUERY_TEXT_MAX = 6000;
 export const TEXT_QUERY_MAX_TERMS = 48;
-const DESCRIPTION_MAX = 3000;
+/** The whole assessment payload stays under about this many characters: the CV text is clipped to what is left. */
+export const ASSESSMENT_PAYLOAD_MAX = 9000;
+const ASSESSMENT_DESCRIPTION_MAX = 4000;
+const ASSESSMENT_EXPERIENCES_MAX = 12;
+const ASSESSMENT_EXPERIENCE_TEXT_MAX = 500;
 const SUMMARY_MAX = 600;
-const EVIDENCE_MAX = 120;
 
 /** Title, description, then each criterion's label and value, each once, one per line. */
 export function queryTextOf(brief: BriefText): string {
@@ -91,30 +103,6 @@ export function textQueryOf(brief: BriefText, maxTerms = TEXT_QUERY_MAX_TERMS): 
 }
 
 // ---------------------------------------------------------------------
-// protected characteristics
-// ---------------------------------------------------------------------
-
-const PROTECTED = new RegExp(
-  "(?<![\\p{L}])(" +
-    [
-      "age", "ages", "aged", "date de naissance", "birth", "born", "sexe", "sex", "gender", "femme", "homme",
-      "female", "male", "origine", "origines", "origin", "origins", "ethnic", "ethnie", "ethnique", "race",
-      "racial", "nationalite", "nationality", "religion", "religieux", "religieuse", "religious", "confession",
-      "handicap", "handicape", "handicapee", "disability", "disabled", "enceinte", "grossesse", "pregnancy",
-      "pregnant", "famille", "familiale", "family", "marital", "marie", "mariee", "married", "enfants",
-      "children", "syndicat", "syndical", "syndicale", "syndique", "trade union", "politique", "political",
-      "orientation sexuelle", "sexual orientation", "photo", "photographie",
-    ].join("|") +
-    ")(?![\\p{L}])",
-  "u",
-);
-
-/** True when a label or value names a protected characteristic: such a criterion is never kept. */
-export function protectedCriterion(label: string, value: string): boolean {
-  return PROTECTED.test(normalise(label)) || PROTECTED.test(normalise(value));
-}
-
-// ---------------------------------------------------------------------
 // criteria extraction
 // ---------------------------------------------------------------------
 
@@ -139,40 +127,51 @@ export function extractionUserPrompt(brief: Pick<BriefRow, "title" | "descriptio
 }
 
 // ---------------------------------------------------------------------
-// explanations
+// the expert assessment of one candidate against one brief
 // ---------------------------------------------------------------------
 
-export interface ExplanationCandidate {
-  profile: MatchProfile;
-  result: MatchResult;
+/**
+ * The columns the assessment reads: the matching's, the dated
+ * experiences, and the name, which never leaves: the payload strips it
+ * out of every text it sends.
+ */
+export type AssessmentProfile = MatchProfile & Pick<CandidateRow, "experiences" | "full_name">;
+
+export interface AssessmentRequirement {
+  id: string;
+  label: string;
+  value: string;
+  required: boolean;
+  weight: number;
 }
 
-export interface ExplanationVerdict {
-  criterion: string;
-  verdict: string;
-  evidence: string | null;
+export interface AssessmentExperience {
+  title: string;
+  company: string | null;
+  start: string | null;
+  end: string | null;
+  description: string | null;
 }
 
-export interface ExplanationProfile {
-  candidateId: string;
-  headline: string | null;
-  summary: string | null;
-  skills: string[];
-  languages: string[];
-  location: string | null;
-  yearsExperience: number | null;
-  availability: string | null;
-  education: string[];
-  verdicts: ExplanationVerdict[];
-}
-
-export interface ExplanationPayload {
+export interface AssessmentPayload {
   brief: {
     title: string;
     description: string;
-    criteria: { id: string; label: string; value: string; required: boolean }[];
+    requirements: AssessmentRequirement[];
   };
-  candidates: ExplanationProfile[];
+  candidate: {
+    headline: string | null;
+    summary: string | null;
+    skills: string[];
+    languages: string[];
+    location: string | null;
+    yearsExperience: number | null;
+    availability: string | null;
+    experiences: AssessmentExperience[];
+    education: string[];
+    /** The CV's text as indexed, clipped to what the budget leaves; null when nothing is left. */
+    extra: string | null;
+  };
 }
 
 function text(value: unknown, max: number): string | null {
@@ -181,30 +180,120 @@ function text(value: unknown, max: number): string | null {
   return trimmed ? trimmed.slice(0, max) : null;
 }
 
+// ---------------------------------------------------------------------
+// what never leaves: the name, the e-mail, the phone
+// ---------------------------------------------------------------------
+
+const EMAIL_PATTERN = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.\p{L}{2,}/gu;
+/** A run of digits with the separators phone numbers are written with, eight characters at least. */
+const DIGIT_RUN = /\+?\d[\d .()-]{6,}\d/g;
+const YEAR_GROUP = /(?<!\d)(?:19|20)\d{2}(?!\d)/;
+
 /**
- * The user message of an explanation request: the brief, its criteria,
- * and for each of the top candidates a compact profile (no name, no
- * contact details) with the verdicts already computed. At most
- * EXPLANATION_MAX candidates.
+ * True for a digit run that reads as a phone number: 8 to 15 digits once
+ * the separators are gone, and no group that is a year, since a date
+ * range ("2019-2021", "2019-01 - 2021-06") stays for the model to read
+ * seniority from. A long figure written with spaces may go with the
+ * phones; the structured fields are untouched by this.
  */
-export function explanationPayload(brief: BriefText, candidates: readonly ExplanationCandidate[]): ExplanationPayload {
-  const criteria = brief.criteria ?? [];
-  const labels = new Map(criteria.map((criterion) => [criterion.id, criterion.label] as const));
-  return {
+function isPhone(run: string): boolean {
+  const digits = run.replace(/\D/g, "").length;
+  return digits >= 8 && digits <= 15 && !YEAR_GROUP.test(run);
+}
+
+/** The parts as whole words, in this order, with spaces or hyphens between them, whatever the case. */
+function wordPattern(parts: readonly string[]): RegExp {
+  return new RegExp(`(?<![\\p{L}\\p{N}])${parts.map(escapeRegExp).join("[\\s-]+")}(?![\\p{L}\\p{N}])`, "giu");
+}
+
+/**
+ * The patterns a name is removed with: the whole name in the order given
+ * and reversed, then each word and each hyphen-joined part of three
+ * letters or more on its own (a summary may call the person by their
+ * first name). A part that is also a word or a place disappears from
+ * the text with it; the structured fields keep what they hold.
+ */
+function namePatterns(fullName: string | null | undefined): RegExp[] {
+  const words = (fullName ?? "").trim().split(/\s+/u).filter((word) => word.length > 0);
+  const parts = words.flatMap((word) => word.split("-")).filter((part) => part.length > 0);
+  if (!parts.length) return [];
+  const patterns = [wordPattern(parts)];
+  if (parts.length > 1) patterns.push(wordPattern([...parts].reverse()));
+  for (const piece of Array.from(new Set([...words, ...parts]))) {
+    if (piece.length >= 3) patterns.push(wordPattern([piece]));
+  }
+  return patterns;
+}
+
+/**
+ * The text with the person's identity taken out: e-mail addresses and
+ * phone numbers first, then every occurrence of the name, whatever its
+ * case; the whitespace left behind is collapsed. Every free text of a
+ * payload goes through here, the CV's indexed text included, since the
+ * processor writes the name on its first line.
+ */
+export function redactIdentity(text: string, fullName: string | null | undefined): string {
+  let out = text.replace(EMAIL_PATTERN, " ").replace(DIGIT_RUN, (run) => (isPhone(run) ? " " : run));
+  for (const pattern of namePatterns(fullName)) out = out.replace(pattern, " ");
+  return out
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+}
+
+/** A text field of the payload: redacted, then trimmed and clipped (null when nothing is left). */
+type CleanText = (value: unknown, max: number) => string | null;
+
+function experiencesOf(profile: AssessmentProfile, clean: CleanText): AssessmentExperience[] {
+  const entries = Array.isArray(profile.experiences) ? profile.experiences : [];
+  const out: AssessmentExperience[] = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    const title = clean(entry.title, 160);
+    const company = clean(entry.company, 120);
+    if (!title && !company) continue;
+    out.push({
+      title: title ?? "",
+      company,
+      start: text(entry.start, 20),
+      end: text(entry.end, 20),
+      description: clean(entry.description, ASSESSMENT_EXPERIENCE_TEXT_MAX),
+    });
+    if (out.length >= ASSESSMENT_EXPERIENCES_MAX) break;
+  }
+  return out;
+}
+
+/**
+ * The user message of an assessment request: the brief with its
+ * requirements, and the candidate's structured profile (no name, no
+ * contact details) followed by the CV's text clipped so the whole
+ * payload stays under ASSESSMENT_PAYLOAD_MAX characters. The structured
+ * fields come first because they are what the processor read with
+ * confidence; the text lets the model check dates and wording. Every
+ * free text is redacted before it is clipped, so a name cut in half
+ * never survives at the edge of a clip.
+ */
+export function assessmentPayload(brief: BriefText, profile: AssessmentProfile): AssessmentPayload {
+  const clean: CleanText = (value, max) =>
+    typeof value === "string" ? text(redactIdentity(value, profile.full_name), max) : null;
+  const payload: AssessmentPayload = {
     brief: {
       title: brief.title.trim().slice(0, 200),
-      description: brief.description.trim().slice(0, DESCRIPTION_MAX),
-      criteria: criteria.map((criterion) => ({
+      description: brief.description.trim().slice(0, ASSESSMENT_DESCRIPTION_MAX),
+      requirements: (brief.criteria ?? []).map((criterion) => ({
         id: criterion.id,
         label: criterion.label,
         value: criterion.value,
         required: criterion.required,
+        weight: criterion.weight,
       })),
     },
-    candidates: candidates.slice(0, EXPLANATION_MAX).map(({ profile, result }) => ({
-      candidateId: profile.id,
-      headline: text(profile.headline, 200),
-      summary: text(profile.summary, SUMMARY_MAX),
+    candidate: {
+      headline: clean(profile.headline, 200),
+      summary: clean(profile.summary, SUMMARY_MAX),
       skills: (Array.isArray(profile.skills) ? profile.skills : [])
         .filter((skill): skill is string => typeof skill === "string" && skill.trim().length > 0)
         .slice(0, 40)
@@ -216,27 +305,33 @@ export function explanationPayload(brief: BriefText, candidates: readonly Explan
       location: text(profile.location, 120),
       yearsExperience: typeof profile.years_experience === "number" ? profile.years_experience : null,
       availability: text(profile.availability, 120),
+      experiences: experiencesOf(profile, clean),
       education: (Array.isArray(profile.education) ? profile.education : [])
         .filter((entry) => entry && typeof entry.degree === "string" && entry.degree.trim())
         .slice(0, 5)
         .map((entry) => (entry.school ? `${entry.degree.trim()} — ${entry.school}` : entry.degree.trim())),
-      verdicts: result.verdicts.map((verdict) => ({
-        criterion: labels.get(verdict.criterionId) ?? verdict.criterionId,
-        verdict: verdict.verdict,
-        evidence: verdict.evidence ? verdict.evidence.slice(0, EVIDENCE_MAX) : null,
-      })),
-    })),
+      extra: null,
+    },
   };
+  const left = ASSESSMENT_PAYLOAD_MAX - JSON.stringify(payload).length;
+  const extra = clean(profile.search_text, Math.max(0, left));
+  payload.candidate.extra = left > 0 && extra ? extra : null;
+  return payload;
 }
 
-export function explanationSystemPrompt(): string {
+export function assessmentSystemPrompt(): string {
   return [
-    "You explain, for an HR team, how each candidate profile relates to a job brief. The team decides; you only describe.",
-    'Answer with JSON only: {"explanations":[{"candidateId":"...","why":"..."}]}, one entry per candidate given, with the candidateId exactly as given.',
-    "Rules for why:",
-    "- Two or three factual sentences in the language of the brief, stating what matches the criteria, what is missing, and what the profile does not say (a verdict of not_stated means the CV says nothing about it: say so, never treat it as a lack).",
-    "- Rest only on the profile and the verdicts given. No praise, no speculation, no advice, no ranking between candidates, no recommendation to hire or reject.",
-    "- Never mention or infer age, gender, origin, nationality, family situation, health, religion, politics or any other protected characteristic.",
-    "- Plain sentences, no bullet points, no markdown, at most 400 characters per candidate.",
+    "You are a senior recruitment consultant in the field of the job brief. You assess ONE candidate profile against ONE brief for a hiring team, the way you would before presenting the candidate to a client. The team reviews your reading and decides; nothing you answer is applied by itself.",
+    'Answer with JSON only: {"requirements":[{"criterionId":"...","met":"yes|partial|no|unknown","evidence":"..."}],"decision":"fit|borderline|no_fit","score":0,"summary":"..."}.',
+    "Rules for requirements: one entry per requirement given, with its id exactly as given.",
+    '- met: "yes" when the profile clearly satisfies it; "partial" when it satisfies it in part (a lower level, fewer years, a neighbouring skill); "no" when the profile clearly does not satisfy it; "unknown" when the profile says nothing about it. Silence is never a lack: a requirement the CV does not mention is "unknown", not "no".',
+    '- evidence: a short quote or fact taken from the profile, at most 200 characters, never invented, never paraphrased into something the profile does not say. Empty when met is "unknown".',
+    "- Be strict on required requirements: when the profile clearly does not meet a required requirement, answer \"no\", whatever the rest of the profile.",
+    "- Seniority and years of experience are judged from the dated experiences when the CV states them (add up the relevant periods); the stated total is a hint, not a proof.",
+    "- Judge the field of experience, not only the words: a title in another industry or another role does not meet a requirement about this one.",
+    'Rules for decision: "fit" when every required requirement is met and you would present the profile to the client as it is; "borderline" when it deserves a human look (a required requirement unknown, or important optional ones missing); "no_fit" when a required requirement is not met or the profile is clearly off the brief.',
+    "Rules for score: 0 to 100, the overall fit of the profile to the brief, required requirements weighing most, then the weights given.",
+    "Rules for summary: two to four factual sentences in the language of the brief, for a hiring manager: what matches, what is missing, what the CV does not say. No praise, no advice, no ranking, no recommendation to hire or reject, no bullet points, no markdown.",
+    "Never mention, infer or use age, date of birth, gender, origin, nationality, ethnicity, family situation, pregnancy, health, disability, religion, union membership, political opinion, sexual orientation, appearance or any other protected characteristic, even when the brief or the profile mentions one.",
   ].join("\n");
 }

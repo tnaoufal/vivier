@@ -1,8 +1,11 @@
 /**
- * The words of the email that carries a presentation link, in the
+ * The words of the email that carries a dossier link, in the
  * organisation's language. Pure: the server function hands the result
  * to emailLayout() and Resend. The date is written in full so the
- * reader knows when the link stops working without opening it.
+ * reader knows when the link stops working without opening it, and one
+ * sentence says what the dossier holds: the requirement-by-requirement
+ * assessment of each profile, so the reader opens it knowing what to
+ * expect.
  */
 import type { Locale } from "@/lib/db/types";
 
@@ -64,9 +67,10 @@ export function shareEmail(input: ShareEmailInput): ShareEmailContent {
       paragraphs: [
         `${input.senderName} (${input.orgName}) is sharing a selection of profiles with you: ${input.title}.`,
         ...message,
+        "For each profile, the dossier holds the requirement-by-requirement assessment against the brief, with what the CV says of each one, a synthesis, strengths and points of attention.",
         `The link expires on ${date}. The CVs it opens are confidential: please do not forward them.`,
       ],
-      button: { label: "Open the presentation", url: input.url },
+      button: { label: "Open the dossier", url: input.url },
       footer: "This link is personal. Vivier makes no decision on your behalf.",
     };
   }
@@ -76,9 +80,10 @@ export function shareEmail(input: ShareEmailInput): ShareEmailContent {
     paragraphs: [
       `${input.senderName} (${input.orgName}) vous présente une sélection de profils : ${input.title}.`,
       ...message,
+      "Pour chaque profil, le dossier présente l'évaluation exigence par exigence au regard du brief, avec ce que le CV en dit, une synthèse, les points forts et les points d'attention.",
       `Le lien expire le ${date}. Les CV qu'il ouvre sont confidentiels : merci de ne pas les transmettre.`,
     ],
-    button: { label: "Ouvrir la présentation", url: input.url },
+    button: { label: "Ouvrir le dossier", url: input.url },
     footer: "Ce lien est personnel. Vivier ne prend aucune décision à votre place.",
   };
 }

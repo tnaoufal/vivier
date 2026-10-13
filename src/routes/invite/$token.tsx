@@ -13,7 +13,8 @@ import { LocaleToggle, ThemeToggle } from "@/components/app-shell/toggles";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/auth-context";
 import { isSupabaseConfigured, requireSupabase } from "@/lib/auth/supabase-client";
-import { useI18n } from "@/lib/i18n";
+import type { OrgRole } from "@/lib/db/types";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { rememberOrgId } from "@/lib/org/org-context";
 import { acceptErrorKey } from "@/lib/team/accept-error";
 import { previewInvitation, type InvitationPreview } from "@/lib/team/team.functions";
@@ -25,6 +26,11 @@ export const Route = createFileRoute("/invite/$token")({
 });
 
 type State = { status: "loading" } | { status: "error" } | { status: "ready"; preview: InvitationPreview };
+
+/** The dictionary keys of a role's name and its one-line help. */
+function roleKeys(role: OrgRole): { name: TranslationKey; help: TranslationKey } {
+  return { name: `role.${role}`, help: `role.${role}.help` };
+}
 
 function InvitePage() {
   const { token } = Route.useParams();
@@ -101,16 +107,17 @@ function InvitePage() {
   } else {
     const orgName = preview.orgName;
     const invitedEmail = preview.email;
+    const role = roleKeys(preview.role);
     const wrongAccount = Boolean(user?.email && user.email.toLowerCase() !== invitedEmail.toLowerCase());
     content = (
       <>
-        <h1 className="font-display text-2xl text-ink">{t("invite.title", { org: orgName })}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{t("invite.text", { role: t(`role.${preview.role}`) })}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{t(`role.${preview.role}.help`)}</p>
+        <h1 className="font-display text-2xl text-ink break-words">{t("invite.title", { org: orgName })}</h1>
+        <p className="mt-2 text-[15px] leading-6 text-muted-foreground">{t("invite.text", { role: t(role.name) })}</p>
+        <p className="mt-1 text-[13px] leading-5 text-muted-foreground">{t(role.help)}</p>
         {!user ? (
           <>
-            <p className="mt-6 text-sm text-ink">{t("invite.signInFirst", { email: invitedEmail })}</p>
-            <Button asChild className="mt-4 w-full">
+            <p className="mt-8 text-[15px] leading-6 text-ink break-words">{t("invite.signInFirst", { email: invitedEmail })}</p>
+            <Button asChild className="mt-6 w-full">
               <Link to="/sign-in" search={{ next: `/invite/${token}` }}>
                 {t("auth.signIn")}
               </Link>
@@ -118,15 +125,15 @@ function InvitePage() {
           </>
         ) : wrongAccount ? (
           <>
-            <p className="mt-6 text-sm text-ink">{t("team.invitePage.wrongAccount", { email: invitedEmail })}</p>
-            <Button variant="outline" className="mt-4 w-full" onClick={() => void switchAccount()} disabled={busy}>
+            <p className="mt-8 text-[15px] leading-6 text-ink break-words">{t("team.invitePage.wrongAccount", { email: invitedEmail })}</p>
+            <Button variant="outline" className="mt-6 w-full" onClick={() => void switchAccount()} disabled={busy}>
               {t("common.signOut")}
             </Button>
           </>
         ) : (
           <>
-            <p className="mt-6 text-sm text-muted-foreground">{t("team.invitePage.signedInAs", { email: user.email ?? "" })}</p>
-            <Button className="mt-4 w-full" onClick={() => void accept(orgName)} disabled={busy}>
+            <p className="mt-8 text-sm leading-5 text-muted-foreground break-words">{t("team.invitePage.signedInAs", { email: user.email ?? "" })}</p>
+            <Button className="mt-6 w-full" onClick={() => void accept(orgName)} disabled={busy}>
               {t("invite.accept")}
             </Button>
           </>
@@ -137,16 +144,16 @@ function InvitePage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+      <header className="flex items-center justify-between px-4 py-4 sm:px-8">
         <BrandMark size="sm" />
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
           <LocaleToggle />
           <ThemeToggle />
         </div>
-      </div>
-      <div className="flex flex-1 items-center justify-center px-4 py-8">
-        <div className="sheet w-full max-w-md p-6 sm:p-8">{content}</div>
-      </div>
+      </header>
+      <main className="flex flex-1 items-center justify-center px-4 py-10">
+        <div className="sheet w-full max-w-md p-8">{content}</div>
+      </main>
     </div>
   );
 }
@@ -157,8 +164,8 @@ function Closed({ text }: { text: string }) {
   return (
     <>
       <h1 className="font-display text-2xl text-ink">{t("invite.accept")}</h1>
-      <p className="mt-2 text-sm text-muted-foreground">{text}</p>
-      <Button asChild variant="outline" className="mt-6 w-full">
+      <p className="mt-2 text-[15px] leading-6 text-muted-foreground">{text}</p>
+      <Button asChild variant="outline" className="mt-8 w-full">
         <Link to="/app">{t("team.invitePage.goToApp")}</Link>
       </Button>
     </>

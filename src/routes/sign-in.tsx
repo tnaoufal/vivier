@@ -1,7 +1,7 @@
 /**
- * Sign in or create an account (email + password, or Google). Once a
- * session exists the browser goes to `next` (the page that asked) or to
- * the app.
+ * Sign in or create an account (email + password, or Google), in one
+ * centred card. Once a session exists the browser goes to `next` (the
+ * page that asked) or to the app.
  */
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
@@ -87,44 +87,44 @@ function SignInPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+      <header className="flex items-center justify-between px-4 py-4 sm:px-8">
         <BrandMark size="sm" />
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
           <LocaleToggle />
           <ThemeToggle />
         </div>
-      </div>
-      <div className="flex flex-1 items-center justify-center px-4 py-8">
-        <div className="w-full max-w-sm">
-          <h1 className="font-display text-3xl text-ink">{t("auth.title")}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t("auth.subtitle")}</p>
+      </header>
+      <main className="flex flex-1 items-center justify-center px-4 py-10">
+        <div className="sheet w-full max-w-md p-8">
+          <h1 className="font-display text-2xl text-ink">{t("auth.title")}</h1>
+          <p className="mt-2 text-[15px] leading-6 text-muted-foreground">{t("auth.subtitle")}</p>
           {!isSupabaseConfigured ? (
-            <p className="sheet mt-6 p-4 text-sm text-muted-foreground">{t("auth.notConfigured")}</p>
+            <p className="mt-8 text-sm leading-5 text-muted-foreground">{t("auth.notConfigured")}</p>
           ) : (
-            <form onSubmit={submit} className="mt-6 space-y-4">
+            <form onSubmit={submit} className="mt-8 space-y-6">
               {mode !== "reset" ? (
                 <>
-                  <Button type="button" variant="outline" className="w-full gap-2" onClick={() => void google()} disabled={busy}>
+                  <Button type="button" variant="outline" className="w-full" onClick={() => void google()} disabled={busy}>
                     <GoogleIcon />
                     {t("auth.continueWithGoogle")}
                   </Button>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-3 text-[13px] leading-5 text-muted-foreground">
                     <span className="h-px flex-1 bg-border" />
                     {t("auth.or")}
                     <span className="h-px flex-1 bg-border" />
                   </div>
                 </>
               ) : null}
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="email">{t("auth.email")}</Label>
                 <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
               {mode !== "reset" ? (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
                     <Label htmlFor="password">{t("auth.password")}</Label>
                     {mode === "signIn" ? (
-                      <button type="button" className="text-xs text-primary hover:underline" onClick={() => setMode("reset")}>
+                      <button type="button" className="cursor-pointer text-[13px] font-medium leading-5 text-primary hover:underline" onClick={() => setMode("reset")}>
                         {t("auth.forgot")}
                       </button>
                     ) : null}
@@ -138,25 +138,25 @@ function SignInPage() {
                     minLength={8}
                     required
                   />
-                  {mode === "signUp" ? <p className="text-xs text-muted-foreground">{t("auth.password.help")}</p> : null}
+                  {mode === "signUp" ? <p className="text-[13px] leading-5 text-muted-foreground">{t("auth.password.help")}</p> : null}
                 </div>
               ) : null}
               <Button type="submit" className="w-full" disabled={busy}>
                 {mode === "signUp" ? t("auth.signUp") : mode === "reset" ? t("common.send") : t("auth.signIn")}
               </Button>
-              {mode === "signUp" ? <p className="text-xs text-muted-foreground">{t("auth.terms")}</p> : null}
+              {mode === "signUp" ? <p className="text-[13px] leading-5 text-muted-foreground">{t("auth.terms")}</p> : null}
               <p className="text-center text-sm text-muted-foreground">
                 {mode === "signIn" ? (
                   <>
                     {t("auth.noAccount")}{" "}
-                    <button type="button" className="font-medium text-primary hover:underline" onClick={() => setMode("signUp")}>
+                    <button type="button" className="cursor-pointer font-medium text-primary hover:underline" onClick={() => setMode("signUp")}>
                       {t("auth.signUp")}
                     </button>
                   </>
                 ) : (
                   <>
                     {t("auth.hasAccount")}{" "}
-                    <button type="button" className="font-medium text-primary hover:underline" onClick={() => setMode("signIn")}>
+                    <button type="button" className="cursor-pointer font-medium text-primary hover:underline" onClick={() => setMode("signIn")}>
                       {t("auth.signIn")}
                     </button>
                   </>
@@ -164,13 +164,17 @@ function SignInPage() {
               </p>
             </form>
           )}
-          <p className="mt-8 text-center text-xs text-muted-foreground">
-            <Link to="/privacy" className="hover:underline">{t("nav.privacy")}</Link>
-            {" · "}
-            <Link to="/terms" className="hover:underline">{t("nav.terms")}</Link>
-          </p>
         </div>
-      </div>
+      </main>
+      <footer className="px-4 py-6 text-center text-[13px] leading-5 text-muted-foreground">
+        <Link to="/privacy" className="hover:text-ink hover:underline">
+          {t("nav.privacy")}
+        </Link>
+        {" · "}
+        <Link to="/terms" className="hover:text-ink hover:underline">
+          {t("nav.terms")}
+        </Link>
+      </footer>
     </div>
   );
 }

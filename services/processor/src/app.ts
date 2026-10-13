@@ -9,6 +9,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 
 import type { ProcessorConfig } from "./config.js";
+import { embeddingStatus } from "./embedding.js";
 import { logError, logInfo } from "./log.js";
 import type { MaintenanceReport } from "./maintenance.js";
 import { readMetrics } from "./metrics.js";
@@ -58,10 +59,14 @@ export function buildApp(config: ProcessorConfig, runtime: AppRuntime = idleRunt
     connectionTimeout: CONNECTION_TIMEOUT_MS,
   });
 
+  // `embedding` is runtime state (embedding.ts): "off" without a model and
+  // until the startup probe has answered, then what the last call saw.
+  // Read synchronously, so /health never waits on the model.
   const setup = () => ({
     supabase: config.supabase !== null,
     model: config.model !== null,
     ocr: config.ocr !== null,
+    embedding: config.model === null ? "off" : embeddingStatus(),
     polling: runtime.polling,
   });
 
@@ -76,8 +81,9 @@ export function buildApp(config: ProcessorConfig, runtime: AppRuntime = idleRunt
     }
   });
 
-  // Public: says that the process listens and which parts are set up
-  // (presence only, never a value).
+  // Public: says that the process listens, which parts are set up
+  // (presence only, never a value) and whether the embedding model answers
+  // the right width.
   app.get("/health", async (_request, reply) => {
     return reply.send({
       ok: true,

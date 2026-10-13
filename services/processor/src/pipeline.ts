@@ -1,12 +1,16 @@
 /**
  * One document, end to end: claim, quota, download, sha256 (a duplicate
  * attaches to the existing candidate and stops), text layer or OCR,
- * normalisation, structuring (model when configured, regexes otherwise),
- * fingerprint and merge into the organisation's candidate, search text,
- * embedding (best effort), the candidate row, then the document row with
- * what was done. Any thrown error leaves the document `failed` with one
- * French sentence per failure class (messages.ts) and the real cause in
- * the log. Model and OCR spend is recorded in ai_usage as it happens.
+ * normalisation, structuring (model when configured, regexes otherwise;
+ * a file the model says is not a CV is set aside `rejected` with the
+ * sentence that says so, and no candidate is touched), then, one
+ * organisation at a time (mutex.ts), the candidate the person already is
+ * (dedup.ts: pinned, email, phone, fingerprint), the merge into it, the
+ * search text and the candidate row; then the embedding (best effort,
+ * outside the lock) and the document row with what was done. Any thrown
+ * error leaves the document `failed` with one French sentence per
+ * failure class (messages.ts) and the real cause in the log. Model and
+ * OCR spend is recorded in ai_usage as it happens.
  *
  * Everything with a side effect comes through `PipelineDeps`, so the
  * tests run the whole flow against an in-memory database and fake
@@ -21,10 +25,18 @@ import {
   type CandidateWrite,
   type Db,
 } from "./db.js";
+import { findExistingCandidate, type DedupKey } from "./dedup.js";
+import {
+  embeddingFixSentence,
+  isDimensionMismatch,
+  noteEmbeddingFailure,
+  noteEmbeddingSuccess,
+} from "./embedding.js";
 import { logError, logInfo } from "./log.js";
 import { FAILURE_MESSAGES } from "./messages.js";
 import { countDocument, countModelCall, countOcrCall, countPages } from "./metrics.js";
-import { ModelError, embedOne, vectorLiteral, type Usage } from "./model.js";
+import { ModelError, embedOne, vectorLiteral, type Embedder } from "./model.js";
+import { KeyedMutex } from "./mutex.js";
 import { ocrPdf, type OcrResult } from "./ocr.js";
 import { extractPdfText, looksScanned, normaliseText, readableChars, type PdfText } from "./pdf.js";
 import {
@@ -37,8 +49,10 @@ import {
   profileOfRow,
   searchTextOf,
   type Profile,
+  type StructuredAnswer,
 } from "./structure.js";
-import type { AiUsageKind, DocumentRow, ExtractionMethod, StructuringMethod } from "./types.js";
+import type { DocumentKind, DocumentRow, ExtractionMethod, StructuringMethod } from "./types.js";
+import { usageRecorderOf } from "./usage.js";
 
 export interface PipelineDeps {
   db: Db;
@@ -46,10 +60,10 @@ export interface PipelineDeps {
   extractPdf: (buffer: Buffer) => Promise<PdfText>;
   /** Null when OCR is not configured: scanned PDFs end in needs_ocr. */
   ocr: ((buffer: Buffer) => Promise<OcrResult>) | null;
-  /** Null without a model: the heuristic profile is used. */
-  structure: ((text: string) => Promise<{ profile: Profile; usage: Usage }>) | null;
+  /** Null without a model: the heuristic profile is used and nothing is classified. */
+  structure: ((text: string) => Promise<StructuredAnswer>) | null;
   /** Null without a model: candidates get no embedding. */
-  embed: ((text: string) => Promise<{ vector: number[]; usage: Usage }>) | null;
+  embed: Embedder | null;
   now: () => Date;
 }
 
@@ -69,6 +83,7 @@ export function defaultDeps(config: ProcessorConfig, db: Db): PipelineDeps {
 
 export type ProcessOutcome =
   | "processed"
+  | "rejected"
   | "duplicate"
   | "needs_ocr"
   | "quota"
@@ -88,6 +103,15 @@ export class PipelineFailure extends Error {
 
 /** Fewer readable characters than this after extraction (OCR included) is no CV. */
 const MIN_USABLE_CHARS = 40;
+
+/**
+ * The lookup of the person and the write of their row run one
+ * organisation at a time: with several documents in flight, two exports
+ * of one CV would otherwise both find nobody and both insert, and no
+ * database key refuses the second one (an email or a phone is often
+ * null). One process on Railway, so an in-process lock is enough.
+ */
+const candidateWrites = new KeyedMutex();
 
 export function failureMessageOf(error: unknown): string {
   if (error instanceof PipelineFailure) return error.userMessage;
@@ -113,22 +137,6 @@ export function candidateFieldsOf(profile: Profile): CandidateWrite {
     tags: profile.tags,
     confidence: profile.confidence,
   };
-}
-
-/** A failed usage row must not fail the document: logged and forgotten. */
-async function recordUsageSafely(
-  db: Db,
-  orgId: string,
-  kind: AiUsageKind,
-  model: string | null,
-  tokensIn: number,
-  tokensOut: number,
-): Promise<void> {
-  try {
-    await db.recordUsage(orgId, kind, model, tokensIn, tokensOut);
-  } catch (error) {
-    logError("usage_record_failed", error, { orgId, kind });
-  }
 }
 
 export async function processDocument(id: string, deps: PipelineDeps): Promise<ProcessOutcome> {
@@ -169,6 +177,7 @@ export async function processDocument(id: string, deps: PipelineDeps): Promise<P
 
 async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome> {
   const { db, config } = deps;
+  const recordUsage = usageRecorderOf(db);
 
   // Quota first: nothing is downloaded or spent for an organisation at its cap.
   const org = await db.getOrganization(doc.org_id);
@@ -198,6 +207,26 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
     } catch (error) {
       if (!(error instanceof DuplicateFileError)) throw error;
       const other = await db.findDocumentBySha256(doc.org_id, sha256, doc.id);
+      if (other?.status === "rejected") {
+        // The same file was set aside already: so is this copy, with the
+        // same sentence, at no cost (no model call, no processed_at). A
+        // "processed" copy leading to no candidate would say nothing.
+        await db.updateDocument(doc.id, {
+          status: "rejected",
+          document_kind: "other",
+          error: FAILURE_MESSAGES.notCv,
+          extraction_method: "none",
+          structuring_method: null,
+        });
+        countDocument("rejected");
+        logInfo("rejected", {
+          documentId: doc.id,
+          orgId: doc.org_id,
+          duplicateOf: other.id,
+          reason: "the same file was set aside",
+        });
+        return "rejected";
+      }
       await db.updateDocument(doc.id, {
         candidate_id: other?.candidate_id ?? null,
         status: "processed",
@@ -248,7 +277,11 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
       throw new PipelineFailure(FAILURE_MESSAGES.generic, { cause: error });
     }
     // OCR is billed by the page: the pages go in tokens_in, the only count the row holds.
-    await recordUsageSafely(db, doc.org_id, "ocr", ocr.model, ocr.pagesProcessed, 0);
+    await recordUsage(doc.org_id, "ocr", {
+      model: ocr.model,
+      tokensIn: ocr.pagesProcessed,
+      tokensOut: 0,
+    });
     text = ocr.text;
     extractionMethod = "ocr";
   }
@@ -263,8 +296,11 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
   const heuristic = heuristicProfile(text, doc.file_name);
   let profile: Profile;
   let structuringMethod: StructuringMethod;
+  // Only the model classifies; the heuristic path cannot tell a CV from a
+  // letter, so it never sets a document aside and leaves the kind unknown.
+  let documentKind: DocumentKind | null = null;
   if (deps.structure) {
-    let answer: { profile: Profile; usage: Usage };
+    let answer: StructuredAnswer;
     try {
       answer = await deps.structure(text);
       countModelCall("structure", true);
@@ -272,67 +308,86 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
       countModelCall("structure", false);
       throw new PipelineFailure(FAILURE_MESSAGES.model, { cause: error });
     }
-    await recordUsageSafely(
-      db,
-      doc.org_id,
-      "structure",
-      answer.usage.model,
-      answer.usage.tokensIn,
-      answer.usage.tokensOut,
-    );
+    await recordUsage(doc.org_id, "structure", answer.usage);
+    if (answer.classification.kind === "other") {
+      // Set aside, not failed: the text and the reason are kept so the
+      // person sees why, and can re-queue it if the model was wrong. The
+      // candidate it may have been pinned to is left as it was, untouched.
+      await db.updateDocument(doc.id, {
+        status: "rejected",
+        document_kind: "other",
+        error: FAILURE_MESSAGES.notCv,
+        page_count: pageCount,
+        text_chars: text.length,
+        extracted_text: text.slice(0, config.maxTextChars),
+        extraction_method: extractionMethod,
+        structuring_method: "model",
+        processed_at: deps.now().toISOString(),
+      });
+      countDocument("rejected");
+      logInfo("rejected", {
+        documentId: doc.id,
+        orgId: doc.org_id,
+        reason: answer.classification.reason,
+      });
+      return "rejected";
+    }
     profile = backfillContacts(answer.profile, heuristic);
     structuringMethod = "model";
+    documentKind = "cv";
   } else {
     profile = heuristic;
     structuringMethod = "heuristic";
   }
 
-  const fingerprint = fingerprintOf(profile);
   // A document uploaded from a profile page carries that candidate's id: the
-  // person chose the target, so the fingerprint only decides when nothing was chosen.
-  const pinned = doc.candidate_id ? await db.getCandidateById(doc.org_id, doc.candidate_id) : null;
-  const existing =
-    pinned ?? (fingerprint ? await db.findCandidateByFingerprint(doc.org_id, fingerprint) : null);
-  const merged = existing ? mergeProfiles(profileOfRow(existing), profile) : profile;
-  const searchText = searchTextOf(merged);
+  // person chose the target. Otherwise the contact details, then the
+  // fingerprint, say whether this person is already in the pool. The
+  // fingerprint stored is the merged profile's: the surest identity known.
+  const written = await candidateWrites.run(doc.org_id, () => writeCandidate(db, doc, profile));
+  const { candidateId, merged } = written;
 
-  // Only after a successful structuring, and never fatal: a candidate
-  // without a vector is found by text until the next document refreshes it.
-  let embedding: string | null = null;
+  // Only once the row exists, outside the lock (the call takes a while and
+  // must not hold the organisation's other documents), and never fatal: a
+  // candidate without a vector is found by text until the re-embed pass or
+  // the next document refreshes it. The vector is the merged profile's,
+  // what a brief's search compares with. A wrong-width answer is a
+  // configuration mistake the log names in full and /health shows
+  // (embedding.ts).
+  let embedded = false;
   if (deps.embed) {
     const embeddingText = embeddingTextOf(merged);
     if (embeddingText) {
+      let embedding: string | null = null;
       try {
         const { vector, usage } = await deps.embed(embeddingText);
         countModelCall("embed", true);
+        noteEmbeddingSuccess();
         embedding = vectorLiteral(vector);
-        await recordUsageSafely(db, doc.org_id, "embed", usage.model, usage.tokensIn, usage.tokensOut);
+        await recordUsage(doc.org_id, "embed", usage);
       } catch (error) {
         countModelCall("embed", false);
-        logError("embedding_failed", error, { documentId: doc.id, orgId: doc.org_id });
+        noteEmbeddingFailure(error);
+        if (isDimensionMismatch(error)) {
+          logError("embedding_mismatch", error, {
+            documentId: doc.id,
+            orgId: doc.org_id,
+            fix: embeddingFixSentence(config.model?.embeddingModel ?? null, error.dimensions),
+          });
+        } else {
+          logError("embedding_failed", error, { documentId: doc.id, orgId: doc.org_id });
+        }
+      }
+      if (embedding !== null) {
+        try {
+          await db.updateCandidate(candidateId, { embedding });
+          embedded = true;
+        } catch (error) {
+          // The re-embed pass computes it again: one call lost, no candidate.
+          logError("embedding_write_failed", error, { documentId: doc.id, orgId: doc.org_id, candidateId });
+        }
       }
     }
-  }
-
-  const write: CandidateWrite = {
-    ...candidateFieldsOf(merged),
-    fingerprint,
-    search_text: searchText,
-  };
-  if (embedding) write.embedding = embedding;
-
-  let candidateId: string;
-  if (existing) {
-    await db.updateCandidate(existing.id, write);
-    candidateId = existing.id;
-  } else {
-    const insert: CandidateInsert = {
-      ...write,
-      org_id: doc.org_id,
-      created_by: doc.uploaded_by,
-      source: "upload",
-    };
-    candidateId = await db.insertCandidate(insert);
   }
 
   await db.updateDocument(doc.id, {
@@ -344,6 +399,7 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
     extracted_text: text.slice(0, config.maxTextChars),
     extraction_method: extractionMethod,
     structuring_method: structuringMethod,
+    document_kind: documentKind,
     processed_at: deps.now().toISOString(),
   });
   countDocument("processed");
@@ -351,12 +407,57 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
     documentId: doc.id,
     orgId: doc.org_id,
     candidateId,
-    merged: Boolean(existing),
+    merged: written.matchedBy !== null,
+    matchedBy: written.matchedBy,
+    reactivated: written.reactivated,
     structuringMethod,
     extractionMethod,
     pages: pageCount,
     textChars: text.length,
-    embedding: embedding !== null,
+    embedding: embedded,
   });
   return "processed";
+}
+
+interface CandidateWritten {
+  candidateId: string;
+  /** The profile the row now holds: the new reading merged into the existing one, or the reading alone. */
+  merged: Profile;
+  /** The key that found the existing candidate; null when a row was inserted. */
+  matchedBy: DedupKey | null;
+  /** True when the candidate found was archived and this CV put them back in the pool. */
+  reactivated: boolean;
+}
+
+/**
+ * The section the organisation's lock covers: who this person already is,
+ * the merge, and the row (updated or inserted, without the embedding).
+ */
+async function writeCandidate(db: Db, doc: DocumentRow, profile: Profile): Promise<CandidateWritten> {
+  const match = await findExistingCandidate(db, doc.org_id, doc, profile);
+  const existing = match?.candidate ?? null;
+  const merged = existing ? mergeProfiles(profileOfRow(existing), profile) : profile;
+  const write: CandidateWrite = {
+    ...candidateFieldsOf(merged),
+    fingerprint: fingerprintOf(merged),
+    search_text: searchTextOf(merged),
+  };
+  if (existing) {
+    // A fresh CV of an archived person puts them back in the pool: the
+    // document would otherwise be "processed" into a row no search shows.
+    const reactivated = existing.status === "archived";
+    if (reactivated) write.status = "active";
+    await db.updateCandidate(existing.id, write);
+    if (reactivated) {
+      logInfo("candidate_reactivated", { documentId: doc.id, orgId: doc.org_id, candidateId: existing.id });
+    }
+    return { candidateId: existing.id, merged, matchedBy: match?.by ?? null, reactivated };
+  }
+  const insert: CandidateInsert = {
+    ...write,
+    org_id: doc.org_id,
+    created_by: doc.uploaded_by,
+    source: "upload",
+  };
+  return { candidateId: await db.insertCandidate(insert), merged, matchedBy: null, reactivated: false };
 }

@@ -1,14 +1,27 @@
 /**
  * One criterion of a brief as an editable row: its kind, its label (what
- * the chip says), its value (what is looked for in a profile), whether
- * it is required, and its weight as three buttons.
+ * the requirement row says), its value (what is looked for in a
+ * profile), whether it is required (a profile that does not meet it is
+ * set aside by the analysis), and its weight as three buttons. A row
+ * about a protected characteristic says under itself that it will not
+ * be saved (the clean-up leaves it out). The editor wraps the row in
+ * the list item that carries the hairline.
  */
 import { Check, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CRITERION_KINDS, isCriterionKind, kindKey, LABEL_MAX, VALUE_MAX, WEIGHTS, weightKey } from "@/lib/briefs/criteria";
+import {
+  CRITERION_KINDS,
+  isCriterionKind,
+  kindKey,
+  LABEL_MAX,
+  protectedCriterion,
+  VALUE_MAX,
+  WEIGHTS,
+  weightKey,
+} from "@/lib/briefs/criteria";
 import type { BriefCriterion } from "@/lib/db/types";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -29,8 +42,9 @@ export function CriterionRow({
   const t = useT();
   const locked = !canEdit || disabled;
   const placeholderKey = `briefs.criteria.value.placeholder.${criterion.kind}` as const;
+  const isProtected = protectedCriterion(criterion.label, criterion.value);
   return (
-    <li className="space-y-2 border-b border-border py-3 last:border-b-0">
+    <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Select
           value={criterion.kind}
@@ -69,6 +83,7 @@ export function CriterionRow({
           className="sm:flex-1"
         />
       </div>
+      {isProtected ? <p className="text-[13px] leading-5 text-negative">{t("briefs.criteria.protected")}</p> : null}
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
@@ -114,6 +129,6 @@ export function CriterionRow({
           </Button>
         ) : null}
       </div>
-    </li>
+    </div>
   );
 }

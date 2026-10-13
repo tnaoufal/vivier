@@ -163,7 +163,9 @@ export type CandidateInsert = Pick<CandidateRow, "org_id" | "created_by"> &
     >
   >;
 
-export type DocumentStatus = "queued" | "processing" | "processed" | "needs_ocr" | "failed";
+export type DocumentStatus = "queued" | "processing" | "processed" | "needs_ocr" | "failed" | "rejected";
+/** What the classifier decided before structuring; null when never classified. */
+export type DocumentKind = "cv" | "other";
 export type ExtractionMethod = "pdf-text" | "ocr" | "none";
 export type StructuringMethod = "model" | "heuristic";
 
@@ -184,6 +186,7 @@ export interface DocumentRow {
   extracted_text: string | null;
   extraction_method: ExtractionMethod | null;
   structuring_method: StructuringMethod | null;
+  document_kind: DocumentKind | null;
   processed_at: string | null;
   uploaded_by: string | null;
   created_at: string;
@@ -235,9 +238,40 @@ export interface CriterionResult {
   evidence: string | null;
 }
 
+/** The model's answer on one requirement of the brief, with the evidence it quotes from the CV. */
+export type RequirementMet = "yes" | "partial" | "no" | "unknown";
+
+export interface RequirementAssessment {
+  criterionId: string;
+  met: RequirementMet;
+  /** A short quote or fact from the profile; null when nothing in the CV speaks to it. */
+  evidence: string | null;
+}
+
+/** The model's expert reading of a candidate against the whole brief. */
+export type AssessmentDecision = "fit" | "borderline" | "no_fit";
+
+export interface Assessment {
+  decision: AssessmentDecision;
+  /** 0..100, the model's overall fit; a required requirement at "no" forces no_fit. */
+  score: number;
+  /** Two to four factual sentences for a hiring manager, in the brief's language. */
+  summary: string;
+  requirements: RequirementAssessment[];
+  /** Which model answered, for the audit. */
+  model: string;
+}
+
+/** A candidate near another one (similar_candidates). */
+export interface SimilarCandidate {
+  candidate_id: string;
+  similarity: number;
+  method: "embedding" | "skills";
+}
+
 export interface MatchResult {
   candidateId: string;
-  /** 0..100 over the criteria that could be evaluated. */
+  /** 0..100 over the criteria that could be evaluated (the deterministic pass). */
   score: number;
   /** 0..1: the share of criteria the profile says something about. */
   coverage: number;
@@ -248,6 +282,16 @@ export interface MatchResult {
   why: string | null;
   /** How the candidate was retrieved before scoring. */
   retrieval: { textRank: number | null; vectorRank: number | null };
+  /** The model's expert assessment; absent when no model answered (text-only mode). */
+  assessment?: Assessment;
+  /**
+   * The criteria the verdicts and the assessment refer to, as they were
+   * when the search ran: carried by the snapshot a shortlist item keeps
+   * (shortlist_items.match) so the board and the dossier read it against
+   * the right brief. Absent in a search's own results (the row holds
+   * them) and in items stored before.
+   */
+  criteria?: BriefCriterion[];
 }
 
 export type SearchMethod = "hybrid" | "text";
@@ -261,6 +305,8 @@ export interface SearchRow {
   results: MatchResult[];
   result_count: number;
   method: SearchMethod;
+  /** Active candidates in the pool when the search ran; null for rows stored before the column existed. */
+  pool_size: number | null;
   ran_by: string | null;
   created_at: string;
 }
@@ -326,6 +372,7 @@ export type ActivityKind =
   | "document.processed"
   | "document.failed"
   | "document.needs_ocr"
+  | "document.rejected"
   | "candidate.active"
   | "candidate.archived"
   | "candidate.consent"
@@ -350,14 +397,42 @@ export interface ActivityRow {
   created_at: string;
 }
 
+/** One requirement of the brief as the dossier shows it for a candidate. */
+export interface ShareRequirement {
+  label: string;
+  required: boolean;
+  met: RequirementMet;
+  /** A short quote or fact from the CV; null when it says nothing about it. */
+  evidence: string | null;
+}
+
+/** The brief as it was when the share was created: the dossier's cover reads it. */
+export interface ShareBrief {
+  title: string;
+  /** The description, clipped: the cover's "what we looked for". */
+  summary: string;
+  requirements: { label: string; required: boolean }[];
+}
+
 export interface ShareItem {
   candidateId: string;
   name: string;
   headline: string | null;
+  location: string | null;
+  yearsExperience: number | null;
+  availability: string | null;
+  /** The first skills and the languages as the CV states them. */
+  skills: string[];
+  languages: string[];
   /** Edited by the team before sending; drafted by the model when one answers. */
   summary: string;
   strengths: string[];
   attention: string[];
+  /** The assessment's fit score 0..100, null when no model assessed the candidate. */
+  score: number | null;
+  decision: AssessmentDecision | null;
+  /** One row per requirement of the brief, from the assessment (or the deterministic verdicts). */
+  requirements: ShareRequirement[];
   /** The CV shown on the page through a signed link, when include_cvs. */
   documentId: string | null;
 }
@@ -369,6 +444,8 @@ export interface ShareRow {
   title: string;
   intro: string;
   items: ShareItem[];
+  /** Null for shares created before the dossier. */
+  brief: ShareBrief | null;
   include_cvs: boolean;
   expires_at: string;
   revoked_at: string | null;
@@ -396,7 +473,7 @@ export interface EmailSendRow {
   created_at: string;
 }
 
-export type AiUsageKind = "structure" | "embed" | "ocr" | "brief" | "explain" | "summary";
+export type AiUsageKind = "structure" | "embed" | "ocr" | "brief" | "explain" | "summary" | "assess";
 
 export interface AiUsageRow {
   id: number;

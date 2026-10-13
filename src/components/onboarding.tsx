@@ -6,6 +6,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
+import { LocaleChips } from "@/components/app-shell/locale-chips";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,12 +67,12 @@ export function Onboarding({ standalone = false }: { standalone?: boolean }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-md">
-        <BrandMark size="md" className="mb-8 justify-center" to={standalone ? "/app" : "/"} />
-        <form onSubmit={submit} className="sheet p-6 sm:p-8">
+        <BrandMark size="md" className="mb-10 justify-center" to={standalone ? "/app" : "/"} />
+        <form onSubmit={submit} className="sheet p-8">
           <h1 className="font-display text-2xl text-ink">{t("onboarding.title")}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{t("onboarding.text")}</p>
-          <div className="mt-6 space-y-4">
-            <div className="space-y-1.5">
+          <p className="mt-2 text-[15px] leading-6 text-muted-foreground">{t("onboarding.text")}</p>
+          <div className="mt-8 space-y-6">
+            <div className="space-y-2">
               <Label htmlFor="org-name">{t("onboarding.orgName")}</Label>
               <Input
                 id="org-name"
@@ -83,29 +84,16 @@ export function Onboarding({ standalone = false }: { standalone?: boolean }) {
                 required
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label>{t("onboarding.locale")}</Label>
-              <div className="flex gap-2">
-                {(["fr", "en"] as const).map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    variant={orgLocale === value ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setOrgLocale(value)}
-                    className="uppercase"
-                  >
-                    {value}
-                  </Button>
-                ))}
-              </div>
+              <LocaleChips value={orgLocale} onChange={setOrgLocale} disabled={busy} />
             </div>
           </div>
-          <Button type="submit" className="mt-6 w-full" disabled={busy || !name.trim()}>
+          <Button type="submit" className="mt-8 w-full" disabled={busy || !name.trim()}>
             {t("onboarding.create")}
           </Button>
           {!standalone ? (
-            <p className="mt-6 text-center text-xs text-muted-foreground">
+            <p className="mt-8 text-center text-[13px] leading-5 text-muted-foreground">
               <span className="font-medium text-ink">{t("onboarding.pending")}</span> {t("onboarding.pending.help")}
             </p>
           ) : null}

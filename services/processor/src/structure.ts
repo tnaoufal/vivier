@@ -9,7 +9,13 @@
  *   extracts only what is written, never guesses, answers null for what
  *   is not stated, and must not extract age, date of birth, gender,
  *   nationality, origin, photo, family, health, religion, union or
- *   political data. The answer is validated and normalised with zod.
+ *   political data. The answer is validated and normalised with zod. The
+ *   same call says what the document is (`document_kind`: a CV, or
+ *   something else such as a cover letter alone, a diploma, a form), so a
+ *   file that is not a CV is set aside at no extra cost; only an explicit
+ *   "other" sets a document aside, a missing or unknown answer counts as
+ *   a CV, because a doubt must never cost a person their place in the
+ *   pool. The heuristic path never classifies: it cannot tell.
  *
  * Then the derived values the schema needs: the dedup fingerprint, the
  * full-text `search_text`, the compact text an embedding is computed
@@ -28,6 +34,7 @@ import {
   type CandidateRow,
   type ConfidenceField,
   type ConfidenceMap,
+  type DocumentKind,
 } from "./types.js";
 
 export interface Profile {
@@ -374,7 +381,12 @@ export function heuristicProfile(text: string, fileName: string): Profile {
 /** What the model reads: the start of the CV, where the identity and the latest positions are. */
 export const MODEL_INPUT_CHARS = 14_000;
 
-export const STRUCTURE_SYSTEM_PROMPT = `You extract a structured profile from the text of one CV (résumé). Answer with a single JSON object and nothing else.
+export const STRUCTURE_SYSTEM_PROMPT = `You extract a structured profile from the text of one document that should be a CV (résumé). Answer with a single JSON object and nothing else.
+
+First say what the document is:
+- "document_kind": "cv" when the text presents one person's professional background: identity or contact details together with experiences, education or skills. "other" for a cover letter alone, a diploma or certificate, an identity document, an invoice, a job offer, a company brochure, a form, a list of several people, or text that is not about a person.
+- "kind_reason": one short sentence saying why.
+- When the document is "other", still fill the profile fields with what the text states (they may stay null or empty).
 
 Rules:
 - Extract ONLY what is written in the text. Never guess, infer or complete a field. When a field is not stated, answer null (or an empty list).
@@ -392,7 +404,7 @@ Rules:
 - Do NOT extract or infer age, date of birth, gender, nationality, origin, photo, marital or family status, number of children, health or disability, religion, union membership or political opinions. If the CV states any of these, leave them out of every field, including the summary.
 
 JSON shape:
-{ "full_name": string|null, "email": string|null, "phone": string|null, "headline": string|null, "location": string|null, "years_experience": number|null, "availability": string|null, "summary": string|null, "skills": string[], "languages": [{ "name": string, "level": string|null }], "experiences": [{ "title": string, "company": string|null, "start": string|null, "end": string|null, "description": string|null }], "education": [{ "degree": string, "school": string|null, "year": string|null }], "links": [{ "label": string, "url": string }], "tags": [], "confidence": { "<field>": number } }`;
+{ "document_kind": "cv"|"other", "kind_reason": string, "full_name": string|null, "email": string|null, "phone": string|null, "headline": string|null, "location": string|null, "years_experience": number|null, "availability": string|null, "summary": string|null, "skills": string[], "languages": [{ "name": string, "level": string|null }], "experiences": [{ "title": string, "company": string|null, "start": string|null, "end": string|null, "description": string|null }], "education": [{ "degree": string, "school": string|null, "year": string|null }], "links": [{ "label": string, "url": string }], "tags": [], "confidence": { "<field>": number } }`;
 
 const scalar = (max: number) =>
   z
@@ -402,8 +414,15 @@ const scalar = (max: number) =>
 
 const list = z.array(z.unknown()).nullable().optional();
 
+/** "other" only when the model says so; anything else, missing included, is a CV (a doubt never sets a document aside). */
+export function toDocumentKind(value: unknown): DocumentKind {
+  return typeof value === "string" && value.trim().toLowerCase() === "other" ? "other" : "cv";
+}
+
 /** The model's answer: scalars may be text, numbers or null; lists must be lists; the rest is normalised. */
 export const ModelProfileSchema = z.object({
+  document_kind: z.unknown().optional().transform((value): DocumentKind => toDocumentKind(value)),
+  kind_reason: scalar(300),
   full_name: scalar(160),
   email: scalar(254),
   phone: scalar(40),
@@ -430,6 +449,23 @@ export const ModelProfileSchema = z.object({
 
 export type ModelProfile = z.output<typeof ModelProfileSchema>;
 
+/** What the model said the document is, next to the profile it read. */
+export interface DocumentClassification {
+  kind: DocumentKind;
+  /** The model's one sentence; logged, never stored on the row. */
+  reason: string | null;
+}
+
+export interface StructuredAnswer {
+  profile: Profile;
+  usage: Usage;
+  classification: DocumentClassification;
+}
+
+export function classificationOfModelAnswer(value: ModelProfile): DocumentClassification {
+  return { kind: value.document_kind, reason: value.kind_reason };
+}
+
 export function profileOfModelAnswer(value: ModelProfile): Profile {
   return {
     full_name: value.full_name,
@@ -450,10 +486,7 @@ export function profileOfModelAnswer(value: ModelProfile): Profile {
   };
 }
 
-export async function modelProfile(
-  text: string,
-  config: ModelConfig,
-): Promise<{ profile: Profile; usage: Usage }> {
+export async function modelProfile(text: string, config: ModelConfig): Promise<StructuredAnswer> {
   const input =
     text.length > MODEL_INPUT_CHARS
       ? `${text.slice(0, MODEL_INPUT_CHARS)}\n\n[text truncated]`
@@ -466,7 +499,11 @@ export async function modelProfile(
     maxTokens: 3000,
     config,
   });
-  return { profile: profileOfModelAnswer(answer.value), usage: answer.usage };
+  return {
+    profile: profileOfModelAnswer(answer.value),
+    usage: answer.usage,
+    classification: classificationOfModelAnswer(answer.value),
+  };
 }
 
 /**
@@ -503,13 +540,40 @@ export function normaliseName(name: string | null | undefined): string {
     .trim();
 }
 
-/** The dedup key: the email, else name + phone digits, else null (no key, no merge). */
-export function fingerprintOf(profile: Pick<Profile, "email" | "full_name" | "phone">): string | null {
+/** Fewer phone digits than this make no key: a partial number is not a number. */
+const FINGERPRINT_MIN_PHONE_DIGITS = 6;
+
+/**
+ * The organisation that anchors a name when there is no contact detail:
+ * the latest experience's company (the model answers newest first), else
+ * the first school; normalised like a name.
+ */
+export function anchorOrganisationOf(
+  profile: Pick<Profile, "experiences" | "education">,
+): string | null {
+  const company = normaliseName(profile.experiences[0]?.company);
+  if (company) return company;
+  const school = normaliseName(profile.education[0]?.school);
+  return school || null;
+}
+
+/**
+ * The dedup key: the email, else name + phone digits, else name + the
+ * company of the latest experience (or the first school), else null. A
+ * name alone never makes a key: two people may share one, and no key
+ * means no merge.
+ */
+export function fingerprintOf(
+  profile: Pick<Profile, "email" | "full_name" | "phone" | "experiences" | "education">,
+): string | null {
   const email = profile.email?.trim().toLowerCase() ?? "";
   if (email) return email.slice(0, 254);
   const name = normaliseName(profile.full_name);
+  if (!name) return null;
   const digits = (profile.phone ?? "").replace(/\D/g, "");
-  if (name && digits.length >= 6) return `${name}|${digits}`;
+  if (digits.length >= FINGERPRINT_MIN_PHONE_DIGITS) return `${name}|${digits}`;
+  const organisation = anchorOrganisationOf(profile);
+  if (organisation) return `${name}|${organisation}`;
   return null;
 }
 

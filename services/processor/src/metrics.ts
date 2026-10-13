@@ -13,6 +13,8 @@ export interface DocumentCounters {
   needsOcr: number;
   duplicates: number;
   quotaRefused: number;
+  /** Classified by the model as something else than a CV, set aside. */
+  rejected: number;
   /** Claimed by someone else or no longer queued when the work started. */
   skipped: number;
 }
@@ -45,6 +47,7 @@ const documents: DocumentCounters = {
   needsOcr: 0,
   duplicates: 0,
   quotaRefused: 0,
+  rejected: 0,
   skipped: 0,
 };
 let pages = 0;

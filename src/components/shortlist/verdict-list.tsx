@@ -1,66 +1,74 @@
 /**
- * The explained match of a shortlist item, criterion by criterion: the
- * label from the brief, the verdict as a pill, the evidence the verdict
- * rests on (or that nothing in the profile says so), and the model's
- * sentences when a model answered. An item added without a match says
- * so instead of showing a score of zero.
+ * The match of a shortlist item against its brief, as the drawer shows
+ * it: the fit ring (the model's score, a dash when no model assessed the
+ * profile) with the analysis's decision, the deterministic score as a
+ * muted second reading, one row per requirement through the shared
+ * RequirementList (from the assessment when there is one, else from the
+ * deterministic verdicts), and the model's sentences introduced as the
+ * model's. An item added without a match says so instead of showing a
+ * score of zero.
  */
 import { Pill } from "@/components/app-shell/pill";
-import type { BriefCriterion, MatchResult } from "@/lib/db/types";
+import { RequirementList } from "@/components/app-shell/requirement-list";
+import { ScoreRing } from "@/components/app-shell/score-ring";
+import { DecisionPill } from "@/components/briefs/decision-pill";
+import type { BriefCriterion, MatchResult, RequirementMet } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
-
-import { ScoreLine, VERDICT_PILL_TONES, VerdictCounts } from "./item-bits";
+import { assessedScore, modelReading, requirementRowsOf } from "@/lib/shortlists/requirements";
+import { coveragePercent, scorePercent } from "@/lib/shortlists/tally";
 
 export function VerdictList({ match, criteria }: { match: MatchResult | null; criteria: BriefCriterion[] }) {
   const { t } = useI18n();
+  const heading = <h3 className="text-base font-semibold leading-6 text-ink">{t("shortlists.drawer.match")}</h3>;
   if (!match) {
     return (
-      <section>
-        <h3 className="label-caps mb-2">{t("shortlists.drawer.match")}</h3>
+      <section className="space-y-3">
+        {heading}
         <p className="text-sm text-muted-foreground">{t("shortlists.drawer.match.none")}</p>
       </section>
     );
   }
-  const verdicts = Array.isArray(match.verdicts) ? match.verdicts : [];
-  const why = typeof match.why === "string" ? match.why.trim() : "";
+  const rows = requirementRowsOf(criteria, match, t("shortlists.drawer.criterion.unknown"));
+  const score = assessedScore(match);
+  const scoreLabel = score === null ? t("shortlists.item.noAssessment") : t("shortlists.item.fitScore", { score });
+  const textScore = scorePercent(match);
+  const coverage = coveragePercent(match);
+  const reading = modelReading(match);
+  const markLabel = (met: RequirementMet) => t(`shortlists.met.${met}`);
   return (
-    <section>
-      <h3 className="label-caps mb-2">{t("shortlists.drawer.match")}</h3>
-      <div className="space-y-1">
-        <ScoreLine match={match} />
-        <VerdictCounts match={match} />
+    <section className="space-y-4">
+      {heading}
+      <div className="flex items-center gap-4">
+        <ScoreRing score={score} label={scoreLabel} size="lg" />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {match.assessment ? <DecisionPill decision={match.assessment.decision} /> : <Pill>{t("shortlists.item.noAssessment")}</Pill>}
+            {match.blocked ? (
+              <Pill tone="negative" dot>
+                {t("shortlists.item.blocked")}
+              </Pill>
+            ) : null}
+          </div>
+          <p className="text-[13px] leading-5 text-muted-foreground tabular-nums">
+            {textScore === null ? t("shortlists.item.noScore") : t("shortlists.item.score", { score: textScore })}
+            {coverage !== null ? ` · ${t("shortlists.item.coverage", { coverage })}` : ""}
+          </p>
+        </div>
       </div>
-      {verdicts.length ? (
-        <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
-          {verdicts.map((result, index) => {
-            const criterion = criteria.find((entry) => entry.id === result.criterionId);
-            const verdict = result.verdict in VERDICT_PILL_TONES ? result.verdict : "not_stated";
-            const evidence = typeof result.evidence === "string" ? result.evidence.trim() : "";
-            return (
-              <li key={`${result.criterionId}-${index}`} className="px-3 py-2">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="text-sm font-medium text-ink">
-                    {criterion?.label ?? t("shortlists.drawer.criterion.unknown")}
-                  </span>
-                  {criterion?.required ? <Pill>{t("shortlists.drawer.required")}</Pill> : null}
-                  <Pill tone={VERDICT_PILL_TONES[verdict]} className="ml-auto">
-                    {t(`shortlists.verdict.${verdict}`)}
-                  </Pill>
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {evidence || t("shortlists.drawer.evidence.none")}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
+      {rows.length ? (
+        <RequirementList
+          rows={rows}
+          markLabel={markLabel}
+          requiredLabel={t("shortlists.drawer.required")}
+          className="rounded-2xl border border-border px-4"
+        />
       ) : (
-        <p className="mt-3 text-sm text-muted-foreground">{t("shortlists.drawer.match.empty")}</p>
+        <p className="text-sm text-muted-foreground">{t("shortlists.drawer.match.empty")}</p>
       )}
-      <div className="mt-3">
-        <h4 className="text-xs font-medium text-ink">{t("shortlists.drawer.match.why")}</h4>
-        <p className="mt-0.5 whitespace-pre-line text-sm text-muted-foreground">
-          {why || t("shortlists.drawer.match.noWhy")}
+      <div>
+        <h4 className="label-caps">{t("shortlists.drawer.assessment")}</h4>
+        <p className="mt-1 whitespace-pre-line text-[15px] leading-6 text-ink">
+          {reading ?? <span className="text-muted-foreground">{t("shortlists.drawer.match.noWhy")}</span>}
         </p>
       </div>
     </section>

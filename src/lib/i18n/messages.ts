@@ -60,6 +60,12 @@ export const fr = {
   "common.home": "Accueil",
   "common.errorPage": "Cette page n'a pas pu se charger",
   "common.errorPage.text": "Quelque chose s'est mal passé de notre côté. Réessayez ou revenez à l'accueil.",
+  "common.actions": "Actions",
+  "common.menu": "Menu",
+  "common.closeMenu": "Fermer le menu",
+  "common.previous": "Précédent",
+  "common.locale.fr": "Français",
+  "common.locale.en": "English",
 
   // nav
   "nav.dashboard": "Tableau de bord",
@@ -189,6 +195,12 @@ export const en = {
   "common.home": "Home",
   "common.errorPage": "This page didn't load",
   "common.errorPage.text": "Something went wrong on our side. Try again or go back home.",
+  "common.actions": "Actions",
+  "common.menu": "Menu",
+  "common.closeMenu": "Close the menu",
+  "common.previous": "Previous",
+  "common.locale.fr": "Français",
+  "common.locale.en": "English",
 
   "nav.dashboard": "Dashboard",
   "nav.candidates": "Talent pool",

@@ -2,12 +2,14 @@
  * /app/candidates/:candidateId: one profile. What the structuring read,
  * with a confidence hint where it was unsure and "not stated" where it
  * read nothing; a form to correct it; the CVs behind it; the team's
- * comments; consent and retention; archive, export and erasure. Live
- * through realtime on documents and comments of this candidate.
+ * comments; consent and retention; archive, export and erasure; the
+ * profiles near this one, in a drawer. Live through realtime on
+ * documents and comments of this candidate. Layout per docs/DESIGN.md:
+ * a page header with one primary action, a two-column grid.
  */
 import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Archive, ArchiveRestore, ArrowLeft, Download, Pencil, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, Download, Pencil, Trash2, Users } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { EmptyState } from "@/components/app-shell/empty-state";
@@ -18,7 +20,9 @@ import { EraseCandidateDialog } from "@/components/candidates/erase-dialog";
 import { ProfileForm } from "@/components/candidates/profile-form";
 import { ProfileHeader } from "@/components/candidates/profile-header";
 import { ProfileSections } from "@/components/candidates/profile-sections";
+import { SimilarDrawer } from "@/components/candidates/similar-drawer";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { eraseCandidate } from "@/lib/candidates/candidates.functions";
 import { toDraft, toPatch, type CandidateDraft } from "@/lib/candidates/draft";
@@ -39,7 +43,14 @@ import { toast } from "@/lib/toast";
 
 export const Route = createFileRoute("/app/candidates/$candidateId")({
   component: CandidatePage,
+  // The similar-profiles drawer links to this same route with another id: a
+  // fresh mount per candidate, so no draft, open dialog or loaded profile of
+  // the previous one survives under the new URL.
+  remountDeps: ({ params }) => params,
 });
+
+/** The main column and the 22rem aside of the charter, one column under lg. */
+const GRID = "grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]";
 
 function CandidatePage() {
   const { candidateId } = Route.useParams();
@@ -54,6 +65,7 @@ function CandidatePage() {
   const [busy, setBusy] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [eraseOpen, setEraseOpen] = useState(false);
+  const [similarOpen, setSimilarOpen] = useState(false);
 
   const candidate = useQuery(`candidate:${org.id}:${candidateId}`, async () =>
     readCandidate(await requireSupabase(), org.id, candidateId),
@@ -180,7 +192,23 @@ function CandidatePage() {
     return (
       <div>
         {backLink}
-        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+        <p className="sr-only">{t("common.loading")}</p>
+        <div className="mb-8 flex items-start gap-4" aria-busy="true">
+          <Skeleton className="size-10 rounded-full" />
+          <div className="flex-1 space-y-3 pt-1">
+            <Skeleton className="h-7 w-1/3" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        </div>
+        <div className={GRID} aria-busy="true">
+          <div className="space-y-8">
+            <Skeleton className="h-36 rounded-2xl" />
+            <Skeleton className="h-36 rounded-2xl" />
+          </div>
+          <div className="space-y-6">
+            <Skeleton className="h-36 rounded-2xl" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -205,57 +233,67 @@ function CandidatePage() {
   const name = displayName(row, t("candidates.noName"));
   const documentList = documents.data ?? [];
 
+  // Every role may look around; the similar profiles are a reading aid, not a write.
+  const similarButton = (
+    <Button type="button" variant="outline" onClick={() => setSimilarOpen(true)} className="gap-1.5">
+      <Users />
+      {t("similar.button")}
+    </Button>
+  );
+  const exportButton = (
+    <Button type="button" variant="outline" onClick={exportProfile} className="gap-1.5">
+      <Download />
+      {t("candidates.export")}
+    </Button>
+  );
+  const actions = canEdit ? (
+    <>
+      {!editing ? (
+        <Button type="button" onClick={startEditing} className="gap-1.5">
+          <Pencil />
+          {t("common.edit")}
+        </Button>
+      ) : null}
+      {similarButton}
+      {row.status === "active" ? (
+        <Button type="button" variant="outline" onClick={() => setArchiveOpen(true)} disabled={busy} className="gap-1.5">
+          <Archive />
+          {t("candidates.archive")}
+        </Button>
+      ) : (
+        <Button type="button" variant="outline" onClick={() => void archive("active")} disabled={busy} className="gap-1.5">
+          <ArchiveRestore />
+          {t("candidates.unarchive")}
+        </Button>
+      )}
+      {exportButton}
+      {can("admin") ? (
+        <Button type="button" variant="ghost" onClick={() => setEraseOpen(true)} disabled={busy} className="gap-1.5 text-negative hover:text-negative">
+          <Trash2 />
+          {t("candidates.erase")}
+        </Button>
+      ) : null}
+    </>
+  ) : (
+    <>
+      {similarButton}
+      {exportButton}
+    </>
+  );
+
   return (
     <div>
       {backLink}
       <ProfileHeader
         candidate={row}
         canEdit={canEdit}
+        actions={actions}
         onRename={async (fullName) => {
           await update({ full_name: fullName }, t("common.saved"));
         }}
       />
 
-      {canEdit ? (
-        <div className="mb-6 flex flex-wrap gap-2">
-          {!editing ? (
-            <Button type="button" onClick={startEditing} className="gap-1.5">
-              <Pencil />
-              {t("common.edit")}
-            </Button>
-          ) : null}
-          {row.status === "active" ? (
-            <Button type="button" variant="outline" onClick={() => setArchiveOpen(true)} disabled={busy} className="gap-1.5">
-              <Archive />
-              {t("candidates.archive")}
-            </Button>
-          ) : (
-            <Button type="button" variant="outline" onClick={() => void archive("active")} disabled={busy} className="gap-1.5">
-              <ArchiveRestore />
-              {t("candidates.unarchive")}
-            </Button>
-          )}
-          <Button type="button" variant="outline" onClick={exportProfile} className="gap-1.5">
-            <Download />
-            {t("candidates.export")}
-          </Button>
-          {can("admin") ? (
-            <Button type="button" variant="ghost" onClick={() => setEraseOpen(true)} disabled={busy} className="gap-1.5 text-negative hover:text-negative">
-              <Trash2 />
-              {t("candidates.erase")}
-            </Button>
-          ) : null}
-        </div>
-      ) : (
-        <div className="mb-6 flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={exportProfile} className="gap-1.5">
-            <Download />
-            {t("candidates.export")}
-          </Button>
-        </div>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className={GRID}>
         <div className="min-w-0">
           {editing && draft ? (
             <ProfileForm
@@ -278,7 +316,7 @@ function CandidatePage() {
             />
           )}
         </div>
-        <aside className="space-y-4">
+        <aside className="min-w-0 space-y-6">
           <DocumentsCard
             candidate={{ id: row.id, name }}
             documents={documentList}
@@ -307,6 +345,13 @@ function CandidatePage() {
         </aside>
       </div>
 
+      <SimilarDrawer
+        open={similarOpen}
+        onOpenChange={setSimilarOpen}
+        orgId={org.id}
+        candidateId={row.id}
+        name={name}
+      />
       <ConfirmDialog
         open={archiveOpen}
         onOpenChange={(open) => {

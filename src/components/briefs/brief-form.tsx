@@ -69,12 +69,12 @@ export function BriefForm({
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="sheet space-y-4 p-4 sm:p-5">
+    <form onSubmit={(event) => void submit(event)} className="sheet space-y-6 p-6">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-lg text-ink">{t("briefs.part.brief")}</h2>
-        {canEdit && dirty ? <span className="text-xs text-muted-foreground">{t("briefs.form.unsaved")}</span> : null}
+        <h2 className="font-display text-xl text-ink">{t("briefs.part.brief")}</h2>
+        {canEdit && dirty ? <span className="text-[13px] text-muted-foreground">{t("briefs.form.unsaved")}</span> : null}
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <Label htmlFor="brief-title">{t("briefs.form.title")}</Label>
         <Input
           id="brief-title"
@@ -86,7 +86,7 @@ export function BriefForm({
           required
         />
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <Label htmlFor="brief-description">{t("briefs.form.description")}</Label>
         <Textarea
           id="brief-description"
@@ -97,9 +97,9 @@ export function BriefForm({
           rows={8}
           disabled={!canEdit || busy}
         />
-        <p className="text-xs text-muted-foreground">{t("briefs.form.description.help")}</p>
+        <p className="text-[13px] text-muted-foreground">{t("briefs.form.description.help")}</p>
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <Label htmlFor="brief-status">{t("briefs.form.status")}</Label>
         <Select
           value={status}
@@ -122,7 +122,7 @@ export function BriefForm({
       </div>
       {canEdit ? (
         <div className="flex justify-end">
-          <Button type="submit" disabled={busy || !dirty || !valid}>
+          <Button type="submit" variant="outline" disabled={busy || !dirty || !valid}>
             {t("common.save")}
           </Button>
         </div>
