@@ -1,0 +1,199 @@
+# GDPR: register, candidate notice, requests
+
+What a customer organisation needs to use Vivier lawfully: who is who,
+the register of processing to complete, the notice to give candidates
+(French and English), and the procedure for a candidate's request using
+the product's own actions. Facts about the product come from the code
+(`supabase/migrations`, `src/lib`, `services/processor`); the legal
+qualifications are a template for the organisation and its DPO or
+counsel to confirm, not advice. Paths are relative to `vivier/`.
+
+## Who is who
+
+| Party                              | Role                        | Notes                                                                                                                                     |
+| ---------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| The customer organisation          | Controller                  | Decides to collect CVs, for which positions, how long they are kept (`organizations.retention_months`), who in the team sees them.        |
+| The publisher of Vivier            | Processor (candidate data); controller (user accounts) | Acts on the organisation's instructions through the product; a data processing agreement binds it. Controller for the accounts of the organisation's users (email, name, language, activity). |
+| Supabase                           | Sub-processor               | Database, authentication, file storage, realtime; project in the EU region chosen at creation.                                            |
+| Cloudflare                         | Sub-processor               | Runs the web application (Workers, global edge) and holds the backups (R2 bucket, EU jurisdiction, thirty-day retention).                |
+| Railway                            | Sub-processor               | Runs the processor (reads the PDFs, structures them, runs the retention purge).                                                           |
+| The model vendor                   | Sub-processor               | Mistral by default (EU); any OpenAI-compatible vendor the organisation's deployment chooses. Receives CV text, briefs and profiles for the duration of each call; no training on the data (to be confirmed in the vendor's terms). |
+| Mistral (OCR)                      | Sub-processor, when enabled | Receives scanned PDFs to read their text.                                                                                                  |
+| Resend                             | Sub-processor               | Sends invitations to the organisation's users and shared shortlists to the addresses the organisation enters (hiring managers). Never emails a candidate. |
+| Hiring managers                    | Recipients                  | Open a shared page by link: a snapshot of the retained candidates, expiring, revocable, with CVs when the team chose to include them.     |
+
+## Register of processing: "Recruitment talent pool"
+
+One activity, to copy into the organisation's register (Art. 30) and
+complete where brackets appear.
+
+| Item                               | Content                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Controller                         | [Organisation, address, representative]; DPO: [name, address, email] when one is appointed.                                                                                                                                                                                                                                                                                                                 |
+| Purpose                            | Receiving and keeping applications (spontaneous or for a position), finding in the pool the candidates who answer a brief, deciding as a team whom to contact, presenting a shortlist to the hiring manager.                                                                                                                                                                                                 |
+| Legal basis                        | Steps prior to a contract at the candidate's request (Art. 6(1)(b)) for the position applied for; the organisation's legitimate interest in recruiting (Art. 6(1)(f)) for keeping an application in the pool for a bounded time, with the information below given to the candidate; the candidate's consent (Art. 6(1)(a)) when the organisation chooses to ask for it, recorded as `consent_status = given` with its date, withdrawable at any time (`withdrawn`: the profile and its files are deleted within the hour). |
+| Data subjects                      | Candidates (anyone whose CV the organisation uploads or whose profile it types in); the organisation's users (members of the team).                                                                                                                                                                                                                                                                         |
+| Categories of data: candidates     | Identity (name), contact (email, phone, links such as a portfolio), current title, location, years of experience, availability, a summary, skills, languages and levels, experiences (title, company, dates, description), education (degree, school, year), tags given by the team; the CV file as uploaded and the text read from it; the model's reading with a confidence per field; the team's comments, votes, decisions, notes and assignments; consent status and date, last contact date; the explained match against each brief (verdicts and the evidence quoted from the CV). |
+| Data explicitly excluded           | Age, date of birth, gender, nationality or origin, photo, family situation, health, religion, union membership, political opinions, sexual orientation: never extracted into a profile, never accepted as a criterion of a brief (a request naming one is dropped and reported), never mentioned in the model's explanations. The CV file itself is kept as the candidate sent it and may contain such data (a photo, a date of birth): it is read by the members who open it and by the model during structuring, not stored as fields. The organisation's notice tells candidates not to include them. |
+| Categories of data: users          | Email, display name, language, role in the organisation, actions in the organisation (`activities`), sessions.                                                                                                                                                                                                                                                                                              |
+| Recipients                         | The organisation's members by role (viewers read; members write; administrators delete and erase; owners manage). The sub-processors above. Hiring managers through a shared page (expiring, revocable, a snapshot of the retained candidates, CVs through links valid two minutes).                                                                                                                       |
+| Transfers outside the EU           | None with the default deployment (Supabase EU region, Cloudflare EU jurisdiction for backups, Mistral). Cloudflare Workers run at the edge nearest the user and keep no candidate data at rest. If the organisation's deployment chooses a vendor outside the EU (e.g. OpenAI, United States), the vendor's data processing terms and transfer mechanism (standard contractual clauses) apply and the notice is updated. |
+| Retention                          | Set by the organisation, 1 to 24 months after the last contact (24 by default, the ceiling the CNIL recommends for a recruitment pool); an hourly purge deletes the candidate and their files when the date is past, or at once when consent is withdrawn; the profile page shows the date. Backups: thirty days after deletion at most. Audit log (`activities`): kept with the organisation (a deletion leaves a line naming the deleted candidate). Shared pages: until their expiry or revocation (a snapshot; see "Requests"). User accounts: until the person deletes theirs; an organisation deleted by its owner takes everything with it. |
+| Security measures                  | Row Level Security on every table with the role as the only key; server-side checks of the caller's token and role before any privileged action; secrets in the hosting dashboards only, never in the code or the browser; TLS everywhere; encryption at rest by Supabase and Cloudflare; CV files in a private bucket, opened through signed links of five minutes (members) or two minutes (shared pages); share and invitation links as random tokens stored hashed; rate limits on every costly action; an audit log of actions written by the database; nightly backups with a thirty-day retention and a rehearsed restore; no automated decision; sensitive data excluded by design. |
+| Automated decision-making (Art. 22) | None. The model structures CVs, proposes criteria, ranks and explains; a criterion the CV says nothing about never counts against the candidate; every retain or dismiss is a person's, recorded with their identity and the moment. The organisation's users are told so on every page.                                                                                                                 |
+| Impact assessment (Art. 35)        | [To decide with the DPO.] Large-scale processing of applicants' data with a ranking step is a reason to carry one out; this register and `docs/ARCHITECTURE.md` provide its technical part.                                                                                                                                                                                                                 |
+
+## Candidate information notice
+
+To give at the moment of collection (the application form, the job
+advert, the acknowledgement email) or, for a CV received by other means,
+within a month of its upload at the latest. Replace the brackets. Both
+languages say the same thing.
+
+### Français
+
+> **Information sur le traitement de votre candidature**
+>
+> [Organisation], [adresse], traite les données de votre candidature
+> (identité, coordonnées, parcours, formation, compétences, langues,
+> localisation, disponibilité, et le CV que vous nous avez envoyé) pour
+> étudier votre candidature au poste visé et, pendant une durée limitée,
+> pour vous proposer d'autres postes correspondant à votre profil.
+>
+> Ce traitement repose sur les mesures précontractuelles prises à votre
+> demande et sur notre intérêt légitime à recruter [et, si nous vous l'avons
+> demandé, sur votre consentement, que vous pouvez retirer à tout moment].
+>
+> Nous utilisons le logiciel Vivier pour gérer notre vivier de candidats.
+> Le texte de votre CV est transmis à un fournisseur de modèle de langage
+> ([Mistral AI, hébergé dans l'Union européenne]) pour en extraire une fiche
+> structurée et pour expliquer en quelques phrases la correspondance entre
+> votre profil et un poste. Le modèle ne prend aucune décision : il
+> structure, classe et explique ; chaque décision est prise par une personne
+> de notre équipe et tracée. Le fournisseur n'utilise pas vos données pour
+> entraîner ses modèles. Aucune donnée sensible (âge, date de naissance,
+> genre, origine, photo, situation familiale, santé, religion, syndicat,
+> opinions politiques) n'est extraite ni utilisée comme critère ; nous vous
+> invitons à ne pas en faire figurer dans votre CV.
+>
+> Vos données sont accessibles aux membres de notre équipe de recrutement,
+> à nos sous-traitants techniques (hébergement de l'application et des
+> fichiers dans l'Union européenne, envoi d'emails, fournisseur de modèle)
+> et, sous la forme d'une présentation à durée limitée, aux responsables du
+> recrutement concernés.
+>
+> Vos données sont conservées [24] mois après notre dernier contact, puis
+> supprimées automatiquement avec votre CV. Les sauvegardes sont effacées
+> au plus tard trente jours après cette suppression.
+>
+> Vous disposez d'un droit d'accès, de rectification, d'effacement, de
+> limitation, d'opposition et de portabilité, et du droit de retirer votre
+> consentement. Pour l'exercer, écrivez à [adresse email], [ou au DPO :
+> adresse]. Vous pouvez introduire une réclamation auprès de la CNIL
+> (www.cnil.fr).
+
+### English
+
+> **How we process your application**
+>
+> [Organisation], [address], processes the data of your application
+> (identity, contact details, career, education, skills, languages,
+> location, availability, and the CV you sent us) to consider you for the
+> position you applied to and, for a limited time, to offer you other
+> positions matching your profile.
+>
+> This processing rests on the steps taken at your request before a
+> contract and on our legitimate interest in recruiting [and, where we
+> asked for it, on your consent, which you may withdraw at any time].
+>
+> We use the Vivier software to manage our talent pool. The text of your
+> CV is sent to a language-model vendor ([Mistral AI, hosted in the
+> European Union]) to extract a structured profile and to explain in a
+> few sentences how your profile matches a position. The model makes no
+> decision: it structures, ranks and explains; every decision is made by a
+> person on our team and recorded. The vendor does not use your data to
+> train its models. No sensitive data (age, date of birth, gender, origin,
+> photo, family situation, health, religion, union membership, political
+> opinions) is extracted or used as a criterion; please leave such data
+> out of your CV.
+>
+> Your data is accessible to the members of our recruiting team, to our
+> technical processors (hosting of the application and files in the
+> European Union, email sending, the model vendor) and, as a time-limited
+> presentation, to the hiring managers concerned.
+>
+> Your data is kept for [24] months after our last contact, then deleted
+> automatically together with your CV. Backups are erased at most thirty
+> days after that deletion.
+>
+> You have the right to access, rectify, erase, restrict, object to and
+> port your data, and to withdraw your consent. To do so, write to [email
+> address] [or to the DPO: address]. You may lodge a complaint with your
+> supervisory authority (in France, the CNIL, www.cnil.fr).
+
+## Requests from a candidate
+
+The organisation answers within one month (Art. 12; extendable by two
+months for complex requests, the candidate being told why), after a
+reasonable check of the requester's identity (reply to the address held
+in the profile, or ask for proof when the request comes from elsewhere).
+Keep a log of requests and answers outside the product (the product logs
+the actions, not the correspondence).
+
+**Find the candidate**: `/app/candidates`, search by name, then the
+Archived tab if nothing shows; the email in the profile confirms it is the
+right person. A candidate uploaded twice is one profile (fingerprint
+dedup), but check for a second row typed in by hand.
+
+| Request                     | What to do in Vivier                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Access, portability (Art. 15, 20) | On the profile page, **Export**: one JSON file built from the profile and its documents (the structured fields, the confidences, the consent and dates, the text read from each CV). Add the CV files themselves (Documents card → open each one and save it) and, when the candidate asks, the team's comments about them (the Comments card). Send the file, the CVs and a copy of the notice above, which lists the purposes, recipients and retention. Internal notes about the candidate are their data too; a comment about a colleague's opinion is not. |
+| Rectification (Art. 16)     | Edit the profile (a member): every field the structuring read can be corrected; the correction is kept over any later reading unless a new CV is uploaded with a confident value. Tell the candidate what was changed.                                                                                                                                                                                                                 |
+| Erasure (Art. 17)           | An administrator opens the profile and chooses **Erase**, types the candidate's name and confirms. The server removes the CV files from storage first, then the profile; shortlist entries, votes and comments about the candidate go with it (database cascade); the audit log keeps one line, `candidate.deleted`, with the name and who erased. Then revoke any **share** that includes the candidate (the shortlist board lists its shares with a revoke button), because a share is a snapshot of what was sent. Answer the candidate that the data is erased and that backups are purged within thirty days. |
+| Withdrawal of consent       | On the profile page, **Consent → withdrawn** (confirmed first). The hourly purge then deletes the profile and its files; the erasure steps above do it at once when the candidate asks for immediacy.                                                                                                                                                                                                                                 |
+| Objection, restriction (Art. 18, 21) | **Archive** the candidate (status `archived`): archived profiles are out of every search and shortlist addition while the request is examined, and the team sees the status on the profile. Note the reason in a comment. Then erase or reactivate.                                                                                                                                                                             |
+| Information about the model | Point to the notice above: which vendor (the deployment's `LLM_BASE_URL`, shown by name on `/status`), what is sent (the CV text, the brief, the profile), what comes back (a structured profile with confidences, explanations), and that no decision is automated.                                                                                                                                                                      |
+
+**What erasure leaves, said honestly** (so the answer to the candidate is
+exact):
+
+- `activities`: one line `candidate.deleted` with the candidate's name
+  and the person who erased; earlier lines about the candidate keep their
+  id, not their name.
+- `searches.results`: the stored results of past searches keep, for each
+  candidate id, the verdicts and the evidence quoted from the CV at the
+  time (a skill, a language, a snippet). The id no longer resolves to a
+  profile; the snippets remain. A deployment that must remove them runs,
+  with the service role, an update of `searches.results` dropping the
+  entries whose `candidateId` is the erased one (a later evolution should
+  do this inside `eraseCandidate`).
+- `shares.items`: the snapshot of a share that included the candidate
+  (name, headline, summary, strengths, attention) stays in the row until
+  the share is deleted; revoking makes the page unreachable. The same
+  later evolution should scrub the item from `items` on erasure.
+- Backups: the nightly dump taken before the erasure holds the data for
+  up to thirty days; the bucket mirror moves the CV into a dated deleted
+  set, removed thirty days later (`docs/BACKUPS.md`).
+- Emails already sent to hiring managers (a shared page) are in their
+  inboxes; the page they link to is revoked.
+
+**Reply template** (to adapt):
+
+> Nous avons bien reçu votre demande du [date] concernant vos données.
+> [Accès : vous trouverez ci-joint l'export de votre fiche et vos CV.]
+> [Effacement : votre fiche, vos CV et les échanges internes vous
+> concernant ont été supprimés le [date] ; les sauvegardes sont purgées
+> sous trente jours ; les présentations partagées qui vous incluaient ont
+> été révoquées.] [Rectification : les champs [liste] ont été corrigés.]
+> Pour toute question, [contact]. Vous pouvez introduire une réclamation
+> auprès de la CNIL.
+
+## Users of the organisation
+
+The organisation's own users are the publisher's data subjects: they
+read the product's privacy policy (`/privacy`), change their name and
+language on `/app/account`, and delete their account there
+(`delete_my_account()`: organisations they own alone go with it, their
+memberships elsewhere are removed, their comments and decisions keep
+their id with no name). The activity log of an organisation names its
+members by their display name while they are members.

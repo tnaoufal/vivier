@@ -1,0 +1,5 @@
+# Supabase project of Vivier. Set the project ref after `supabase link`.
+project_id = "vivier"
+
+[db]
+major_version = 17

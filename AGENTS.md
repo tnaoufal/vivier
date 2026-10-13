@@ -29,7 +29,7 @@ stack and nothing else.
   are never echoed by `/status`.
 - Every server function that calls a model, sends an email, creates a
   share or pokes the processor runs behind `enforceRateLimit()`
-  (`src/lib/server/rate-limit.server.ts`, `VIVIER_RATE_LIMITER` binding).
+  (`src/lib/platform/rate-limit.server.ts`, `VIVIER_RATE_LIMITER` binding).
 - Emails are transactional only (invitations, shared shortlists), through
   Resend, each one a row in `email_sends`; nothing marketing, nothing to a
   candidate.
