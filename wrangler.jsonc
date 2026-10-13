@@ -1,7 +1,10 @@
 {
   // Vivier on Cloudflare Workers. Variables and secrets live in the
   // dashboard (README "Environment variables"); keep_vars protects them on
-  // every deploy. Nothing secret is committed here.
+  // every deploy. Nothing secret is committed here. Nitro merges this file
+  // into the config it generates at build (.output/server/wrangler.json),
+  // which is what the deploy command points at.
+  "name": "vivier",
   "keep_vars": true,
   "vars": {
     // The processor's public URL (Railway); its secret PROCESSOR_SHARED_SECRET
