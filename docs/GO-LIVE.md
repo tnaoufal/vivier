@@ -21,7 +21,7 @@ provider accounts. Work it in one block before the first real CV.
 ## Cloudflare Workers (frontend)
 
 - [ ] Create the Worker from this repository with the Git integration
-      (root directory `/`, build `bun run build`, deploy with wrangler).
+      (root directory `vivier`, build `bun run build`, deploy with wrangler).
 - [ ] Variables: `SITE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`,
       `PROCESSOR_URL`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_EMBEDDING_MODEL`, `EMAIL_FROM`, `EMAIL_REPLY_TO`.
 - [ ] Secrets: `SUPABASE_SERVICE_ROLE_KEY`, `PROCESSOR_SHARED_SECRET`,
@@ -30,7 +30,7 @@ provider accounts. Work it in one block before the first real CV.
 
 ## Railway (processor)
 
-- [ ] New service from this repository: root directory `/`, Dockerfile
+- [ ] New service from this repository: root directory `vivier`, Dockerfile
       `services/processor/Dockerfile`, health check path `/health`.
 - [ ] Variables: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
       `PROCESSOR_SHARED_SECRET` (the same 32+ character secret as the Worker),
@@ -66,6 +66,7 @@ provider accounts. Work it in one block before the first real CV.
 ## Repository
 
 - [ ] Require the `Vivier frontend` and `Vivier processor` checks in the ruleset.
+- [ ] Move to a dedicated repository (`docs/EXTRACT.md`).
 - [ ] Allow `registry.npmjs.org` in the cloud environment's network settings so
       a session can install, typecheck and format; then run `bun run format`
       and commit `services/processor/package-lock.json`.
