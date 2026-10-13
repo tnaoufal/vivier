@@ -362,6 +362,7 @@ export type ActivityKind =
   | "document.processed"
   | "document.failed"
   | "document.needs_ocr"
+  | "document.rejected"
   | "candidate.active"
   | "candidate.archived"
   | "candidate.consent"
@@ -386,14 +387,42 @@ export interface ActivityRow {
   created_at: string;
 }
 
+/** One requirement of the brief as the dossier shows it for a candidate. */
+export interface ShareRequirement {
+  label: string;
+  required: boolean;
+  met: RequirementMet;
+  /** A short quote or fact from the CV; null when it says nothing about it. */
+  evidence: string | null;
+}
+
+/** The brief as it was when the share was created: the dossier's cover reads it. */
+export interface ShareBrief {
+  title: string;
+  /** The description, clipped: the cover's "what we looked for". */
+  summary: string;
+  requirements: { label: string; required: boolean }[];
+}
+
 export interface ShareItem {
   candidateId: string;
   name: string;
   headline: string | null;
+  location: string | null;
+  yearsExperience: number | null;
+  availability: string | null;
+  /** The first skills and the languages as the CV states them. */
+  skills: string[];
+  languages: string[];
   /** Edited by the team before sending; drafted by the model when one answers. */
   summary: string;
   strengths: string[];
   attention: string[];
+  /** The assessment's fit score 0..100, null when no model assessed the candidate. */
+  score: number | null;
+  decision: AssessmentDecision | null;
+  /** One row per requirement of the brief, from the assessment (or the deterministic verdicts). */
+  requirements: ShareRequirement[];
   /** The CV shown on the page through a signed link, when include_cvs. */
   documentId: string | null;
 }
@@ -405,6 +434,8 @@ export interface ShareRow {
   title: string;
   intro: string;
   items: ShareItem[];
+  /** Null for shares created before the dossier. */
+  brief: ShareBrief | null;
   include_cvs: boolean;
   expires_at: string;
   revoked_at: string | null;
@@ -432,7 +463,7 @@ export interface EmailSendRow {
   created_at: string;
 }
 
-export type AiUsageKind = "structure" | "embed" | "ocr" | "brief" | "explain" | "summary";
+export type AiUsageKind = "structure" | "embed" | "ocr" | "brief" | "explain" | "summary" | "assess";
 
 export interface AiUsageRow {
   id: number;

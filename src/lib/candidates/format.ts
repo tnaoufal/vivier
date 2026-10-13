@@ -136,6 +136,9 @@ export function documentTone(status: DocumentStatus): PillToneName {
       return "primary";
     case "queued":
       return "neutral";
+    case "rejected":
+      // Not a failure of the service: the file was read and is not a CV.
+      return "neutral";
     default:
       return "neutral";
   }
