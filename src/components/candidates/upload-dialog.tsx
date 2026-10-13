@@ -127,13 +127,21 @@ export function UploadDialog({
     }
     const ids = uploadedIds(latest.current);
     if (ids.length) {
+      let reached = false;
       try {
-        await notifyProcessor({ data: { ...(await withToken()), orgId: org.id, documentIds: ids } });
+        const poke = await notifyProcessor({ data: { ...(await withToken()), orgId: org.id, documentIds: ids } });
+        reached = poke.reached;
       } catch (error) {
         // The service polls the queue itself; a missed poke only delays the work.
         console.warn("[upload] poke failed", error);
       }
-      setNote(candidate ? t("candidates.upload.queuedFor") : t("candidates.upload.queued"));
+      setNote(
+        !reached
+          ? t("candidates.upload.queuedUnreached")
+          : candidate
+            ? t("candidates.upload.queuedFor")
+            : t("candidates.upload.queued"),
+      );
       onUploaded?.(ids);
     } else {
       setNote(t("candidates.upload.nothing"));

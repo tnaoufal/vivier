@@ -8,7 +8,13 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Create the project `vivier_prod` in `eu-west-1` (or Frankfurt); note the
       project ref, the URL and the publishable key.
 - [ ] Apply `supabase/migrations/20261013090000_vivier_init.sql`
-      (`supabase link` then `supabase db push`, or the SQL editor).
+      (`supabase link` then `supabase db push`, or the SQL editor). The dev
+      project `vivier_dev` (ref `qtujdeolcdvlzwvpqpuv`, eu-west-1, free tier)
+      already carries it; reset its database password in the dashboard before
+      using it from a machine.
+- [ ] Default privileges for `anon` and `authenticated` are revoked by the
+      migration: every later table or RPC meant for the browser needs its own
+      `GRANT` (the migration shows the pattern).
 - [ ] Auth: enable Email (confirmation on) and Google; add
       `https://<site>/app`, `https://<site>/app/account` and
       `https://<site>/invite/*` to the redirect allow list; set the site URL.

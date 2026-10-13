@@ -42,7 +42,7 @@ import {
   type DraftCandidate,
 } from "./draft";
 import { MESSAGE_MAX, shareEmail } from "./email";
-import { isShareUrl, shareUrlOf } from "./links";
+import { SHARE_PATH, isShareUrl, shareUrlOf } from "./links";
 import {
   briefIdOf,
   errorText,
@@ -295,6 +295,9 @@ export const sendShare = createServerFn({ method: "POST" })
     const setup = emailSetup();
     // The token is not stored, so the browser sends the link back: it must be this site's share link.
     if (!isShareUrl(data.url, setup.siteUrl)) throw new AppError("INPUT:invalid");
+    // And it must be this share's link: the token hashes to the row's token_hash.
+    const token = new URL(data.url).pathname.slice(SHARE_PATH.length);
+    if ((await sha256Hex(token)) !== share.token_hash) throw new AppError("INPUT:invalid");
 
     const [org, sender] = await Promise.all([loadOrg(client, member.orgId), senderName(client, member)]);
     const content = shareEmail({

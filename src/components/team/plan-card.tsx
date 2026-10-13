@@ -43,7 +43,7 @@ export function PlanCard({
           </dd>
         </div>
         <div className="rounded-xl bg-muted/60 p-3">
-          <dt className="label-caps">{t("shell.dashboard.processing")}</dt>
+          <dt className="label-caps">{t("settings.plan.cvs")}</dt>
           <dd className="mt-1 text-sm text-ink">
             {loading ? (
               <Skeleton className="h-4 w-24" />

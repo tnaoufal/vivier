@@ -82,6 +82,7 @@ export function ProfileSections({
         <ChipEditor
           values={candidate.skills ?? []}
           canEdit={canEdit}
+          emptyKey="common.unknown"
           placeholder={t("candidates.skills.placeholder")}
           onChange={(values) => onChips("skills", values)}
         />

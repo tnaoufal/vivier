@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "@tanstack/react-router";
 import type { Session } from "@supabase/supabase-js";
 
+import { useI18n } from "@/lib/i18n";
 import { toast } from "@/lib/toast";
 
 import {
@@ -24,8 +25,6 @@ import { friendlyAuthError } from "./auth-errors";
 import { setCurrentAccessToken } from "./session-token";
 import { hasStoredSupabaseSession, isSupabaseConfigured, loadSupabase } from "./supabase-client";
 
-const NOT_CONFIGURED_ERROR = "Authentication is not configured for this environment.";
-
 /** Where an email link (confirmation, Google, reset) brings the browser back. */
 function callbackUrl(path = "/app"): string {
   return `${window.location.origin}${path}`;
@@ -38,6 +37,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const router = useRouter();
   const hadSessionRef = useRef(false);
+  // The locale through a ref: the auth subscription is created once and must not follow it.
+  const { locale, t } = useI18n();
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
+  const tRef = useRef(t);
+  tRef.current = t;
 
   useEffect(() => {
     const description = consumeOAuthErrorFromUrl();
@@ -89,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (event === "SIGNED_OUT") {
             const expected = consumeExpectedSignOut();
             if (!expected && hadSessionRef.current) {
-              toast.error("Your session ended. Sign in again.");
+              toast.error(tRef.current("auth.sessionEnded"));
             }
             hadSessionRef.current = false;
           }
@@ -113,14 +118,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signInWithPassword: async (email, password) => {
         const supabase = await loadSupabase();
-        if (!supabase) return { error: NOT_CONFIGURED_ERROR };
+        if (!supabase) return { error: tRef.current("auth.notConfigured") };
         setListening(true);
         const { error } = await supabase.auth.signInWithPassword({ email, password });
-        return error ? { error: friendlyAuthError(error), code: error.code } : { error: null };
+        return error ? { error: friendlyAuthError(error, localeRef.current), code: error.code } : { error: null };
       },
       signUpWithPassword: async (email, password) => {
         const supabase = await loadSupabase();
-        if (!supabase) return { error: NOT_CONFIGURED_ERROR, existingAccount: false, signedIn: false };
+        if (!supabase) return { error: tRef.current("auth.notConfigured"), existingAccount: false, signedIn: false };
         setListening(true);
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -128,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           options: { emailRedirectTo: callbackUrl("/app") },
         });
         if (error) {
-          return { error: friendlyAuthError(error), code: error.code, existingAccount: false, signedIn: false };
+          return { error: friendlyAuthError(error, localeRef.current), code: error.code, existingAccount: false, signedIn: false };
         }
         // An address that already has an account answers a user without identities.
         const existingAccount = Boolean(data.user && (data.user.identities?.length ?? 0) === 0);
@@ -136,28 +141,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signInWithGoogle: async () => {
         const supabase = await loadSupabase();
-        if (!supabase) return { error: NOT_CONFIGURED_ERROR };
+        if (!supabase) return { error: tRef.current("auth.notConfigured") };
         setListening(true);
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: { redirectTo: callbackUrl("/app") },
         });
-        return error ? { error: friendlyAuthError(error), code: error.code } : { error: null };
+        return error ? { error: friendlyAuthError(error, localeRef.current), code: error.code } : { error: null };
       },
       sendPasswordReset: async (email) => {
         const supabase = await loadSupabase();
-        if (!supabase) return { error: NOT_CONFIGURED_ERROR };
+        if (!supabase) return { error: tRef.current("auth.notConfigured") };
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: callbackUrl("/app/account"),
         });
-        return error ? { error: friendlyAuthError(error), code: error.code } : { error: null };
+        return error ? { error: friendlyAuthError(error, localeRef.current), code: error.code } : { error: null };
       },
       updatePassword: async (password) => {
         const supabase = await loadSupabase();
-        if (!supabase) return { error: NOT_CONFIGURED_ERROR };
+        if (!supabase) return { error: tRef.current("auth.notConfigured") };
         const { error } = await supabase.auth.updateUser({ password });
         if (!error) setPasswordRecovery(false);
-        return error ? { error: friendlyAuthError(error), code: error.code } : { error: null };
+        return error ? { error: friendlyAuthError(error, localeRef.current), code: error.code } : { error: null };
       },
       signOut: async () => {
         const supabase = await loadSupabase();

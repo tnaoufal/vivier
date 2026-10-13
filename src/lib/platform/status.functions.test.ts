@@ -27,6 +27,7 @@ describe("describeSetup", () => {
       LLM_API_KEY: "secret",
       LLM_BASE_URL: "https://api.mistral.ai/v1",
       RESEND_API_KEY: "secret",
+      SITE_URL: "https://vivier.example",
     });
     expect(JSON.stringify(setup)).not.toContain("secret");
     expect(setup.accounts).toBe(true);

@@ -58,6 +58,7 @@ const fr = {
   "candidates.upload.queued": "Les CV sont dans la file : les profils apparaîtront dans la liste au fur et à mesure.",
   "candidates.upload.queuedFor": "Le CV est dans la file : cette fiche sera complétée quand le service l'aura lu.",
   "candidates.upload.nothing": "Aucun fichier n'a été envoyé.",
+  "candidates.upload.queuedUnreached": "Les CV sont enregistrés dans la file, mais le service de traitement n'a pas répondu : ils seront lus dès qu'il tournera (voir l'état du service).",
   "candidates.upload.again": "Nouveau lot",
 
   // manual entry
@@ -228,6 +229,7 @@ const en = {
   "candidates.upload.queued": "The CVs are in the queue: profiles will appear in the list as they are read.",
   "candidates.upload.queuedFor": "The CV is in the queue: this profile is completed once the service has read it.",
   "candidates.upload.nothing": "No file was uploaded.",
+  "candidates.upload.queuedUnreached": "The CVs are saved in the queue, but the processing service did not answer: they will be read as soon as it runs (see the service status).",
   "candidates.upload.again": "New batch",
 
   "candidates.manual.title": "Enter a candidate",

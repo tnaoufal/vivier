@@ -76,13 +76,15 @@ export async function loadShortlist(client: ServiceClient, orgId: string, shortl
 }
 
 export type ShareLookup = Pick<ShareRow, "id" | "org_id" | "shortlist_id" | "title" | "expires_at" | "revoked_at"> & {
+  /** Read by the service role to check a link against the share; never answered to the browser. */
+  token_hash: string;
   shortlists: { brief_id: string } | { brief_id: string }[] | null;
 };
 
 /** A share of the organisation, or NOT_FOUND. */
 export async function loadShare(client: ServiceClient, orgId: string, shareId: string): Promise<ShareLookup> {
   const rows = await client.select<ShareLookup>(
-    `shares?select=id,org_id,shortlist_id,title,expires_at,revoked_at,shortlists(brief_id)&org_id=eq.${encodeURIComponent(orgId)}&id=eq.${encodeURIComponent(shareId)}&limit=1`,
+    `shares?select=id,org_id,shortlist_id,title,expires_at,revoked_at,token_hash,shortlists(brief_id)&org_id=eq.${encodeURIComponent(orgId)}&id=eq.${encodeURIComponent(shareId)}&limit=1`,
   );
   const share = rows[0];
   if (!share) throw new AppError("NOT_FOUND");

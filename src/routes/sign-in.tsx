@@ -49,6 +49,17 @@ function SignInPage() {
     if (!loading && user) router.history.replace(safeNext(next));
   }, [loading, next, router, user]);
 
+  async function google() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await signInWithGoogle();
+      if (result.error) toast.error(result.error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
@@ -93,7 +104,7 @@ function SignInPage() {
             <form onSubmit={submit} className="mt-6 space-y-4">
               {mode !== "reset" ? (
                 <>
-                  <Button type="button" variant="outline" className="w-full gap-2" onClick={() => void signInWithGoogle()} disabled={busy}>
+                  <Button type="button" variant="outline" className="w-full gap-2" onClick={() => void google()} disabled={busy}>
                     <GoogleIcon />
                     {t("auth.continueWithGoogle")}
                   </Button>

@@ -16,12 +16,15 @@ export function ChipEditor({
   canEdit,
   placeholder,
   tone = "primary",
+  emptyKey = "common.none",
   onChange,
 }: {
   values: string[];
   canEdit: boolean;
   placeholder: string;
   tone?: "primary" | "neutral";
+  /** What an empty list says: "none" for the team's own tags, "not stated" for what a CV did not say. */
+  emptyKey?: "common.none" | "common.unknown";
   onChange: (values: string[]) => Promise<void>;
 }) {
   const t = useT();
@@ -80,7 +83,7 @@ export function ChipEditor({
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-muted-foreground">{t("common.none")}</p>
+        <p className="text-sm text-muted-foreground">{t(emptyKey)}</p>
       )}
       {canEdit ? (
         <form onSubmit={(event) => void add(event)} className="flex gap-2">

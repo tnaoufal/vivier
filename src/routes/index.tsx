@@ -48,7 +48,7 @@ const COPY = {
 } as const;
 
 function LandingPage() {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const copy = COPY[locale];
@@ -81,7 +81,7 @@ function LandingPage() {
               <Link to="/sign-in">{copy.cta}</Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link to="/status">Status</Link>
+              <Link to="/status">{t("nav.status")}</Link>
             </Button>
           </div>
         </section>
@@ -103,7 +103,7 @@ function LandingPage() {
           <span className="flex gap-4">
             <Link to="/privacy" className="hover:underline">{locale === "fr" ? "Confidentialité" : "Privacy"}</Link>
             <Link to="/terms" className="hover:underline">{locale === "fr" ? "Conditions" : "Terms"}</Link>
-            <Link to="/status" className="hover:underline">Status</Link>
+            <Link to="/status" className="hover:underline">{t("nav.status")}</Link>
           </span>
         </div>
       </footer>

@@ -34,6 +34,31 @@ const NETWORK_TEXT =
   /failed to fetch|load failed|networkerror|network request failed|fetch failed/i;
 
 export const GENERIC_AUTH_ERROR = "Something went wrong. Try again.";
+export const GENERIC_AUTH_ERROR_FR = "Une erreur est survenue. Réessayez.";
+
+/** The same sentences in French; a code missing here falls back to the generic sentence. */
+const MESSAGES_FR: Record<string, string> = {
+  invalid_credentials: "Email ou mot de passe incorrect.",
+  email_not_confirmed: "Confirmez d'abord votre adresse email : le lien est dans votre boîte de réception.",
+  user_already_exists: "Un compte existe déjà pour cette adresse. Connectez-vous, ou utilisez Mot de passe oublié.",
+  email_exists: "Un compte existe déjà pour cette adresse. Connectez-vous, ou utilisez Mot de passe oublié.",
+  weak_password: "Choisissez un mot de passe plus robuste.",
+  same_password: "Choisissez un mot de passe différent de l'actuel.",
+  over_email_send_rate_limit: "Trop d'emails ont été envoyés à cette adresse. Patientez une minute et réessayez.",
+  over_request_rate_limit: "Trop de tentatives. Patientez une minute et réessayez.",
+  manual_linking_disabled: "La connexion et la déconnexion de méthodes de connexion ne sont pas encore activées.",
+  identity_already_exists: "Cette méthode de connexion est déjà rattachée à un autre compte.",
+  reauthentication_needed: "Reconnectez-vous pour faire cette modification.",
+  session_not_found: "Votre session a expiré. Reconnectez-vous.",
+  session_expired: "Votre session a expiré. Reconnectez-vous.",
+  refresh_token_not_found: "Votre session a expiré. Reconnectez-vous.",
+  validation_failed: "Vérifiez ce que vous avez saisi et réessayez.",
+  signup_disabled: "Les nouveaux comptes ne sont pas acceptés pour le moment.",
+  provider_disabled: "Cette méthode de connexion n'est pas encore activée.",
+  email_address_invalid: "Saisissez une adresse email valide.",
+  otp_expired: "Ce lien a expiré. Demandez-en un nouveau.",
+  bad_jwt: "Votre session a expiré. Reconnectez-vous.",
+};
 
 function codeOf(error: unknown): string | null {
   if (!error || typeof error !== "object") return null;
@@ -55,13 +80,16 @@ function messageOf(error: unknown): string {
  * fetch failure). The original is logged with `console.warn` so support can
  * still see what the service said.
  */
-export function friendlyAuthError(error: unknown): string {
+export function friendlyAuthError(error: unknown, locale: "fr" | "en" = "en"): string {
   const code = codeOf(error);
   const message = messageOf(error);
   if (message || code) console.warn("[auth]", code ?? "", message);
-  if (code && MESSAGES[code]) return MESSAGES[code];
+  const table = locale === "fr" ? MESSAGES_FR : MESSAGES;
+  if (code && table[code]) return table[code];
   if (NETWORK_TEXT.test(message)) {
-    return "Could not reach the sign-in service. Check your connection and try again.";
+    return locale === "fr"
+      ? "Le service de connexion est injoignable. Vérifiez votre connexion et réessayez."
+      : "Could not reach the sign-in service. Check your connection and try again.";
   }
-  return GENERIC_AUTH_ERROR;
+  return locale === "fr" ? GENERIC_AUTH_ERROR_FR : GENERIC_AUTH_ERROR;
 }

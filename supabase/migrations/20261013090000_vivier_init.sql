@@ -30,6 +30,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON SEQUEN
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 BEGIN
   NEW.updated_at = now();
@@ -47,6 +48,10 @@ SET search_path = extensions, public
 AS $$
   SELECT extensions.unaccent('extensions.unaccent', p_text);
 $$;
+
+-- The generated column candidates.fts and the trigram index call it for
+-- whoever writes a candidate; search_candidates runs it as its caller.
+GRANT EXECUTE ON FUNCTION public.immutable_unaccent(TEXT) TO authenticated, service_role;
 
 -- ---------------------------------------------------------------------
 -- profiles: one per auth user, created by trigger
@@ -199,18 +204,18 @@ GRANT EXECUTE ON FUNCTION public.org_role(UUID), public.is_org_member(UUID), pub
 CREATE POLICY "profiles: own and co-members" ON public.profiles
   FOR SELECT TO authenticated
   USING (
-    id = auth.uid()
+    id = (select auth.uid())
     OR EXISTS (
       SELECT 1 FROM public.memberships mine
       JOIN public.memberships theirs ON theirs.org_id = mine.org_id
-      WHERE mine.user_id = auth.uid() AND theirs.user_id = public.profiles.id
+      WHERE mine.user_id = (select auth.uid()) AND theirs.user_id = public.profiles.id
     )
   );
 
 CREATE POLICY "profiles: update own" ON public.profiles
   FOR UPDATE TO authenticated
-  USING (id = auth.uid())
-  WITH CHECK (id = auth.uid());
+  USING (id = (select auth.uid()))
+  WITH CHECK (id = (select auth.uid()));
 
 GRANT SELECT, UPDATE (display_name, locale) ON public.profiles TO authenticated;
 GRANT ALL ON public.profiles TO service_role;
@@ -251,7 +256,7 @@ CREATE POLICY "memberships: admins update" ON public.memberships
 CREATE POLICY "memberships: admins remove, anyone leaves" ON public.memberships
   FOR DELETE TO authenticated
   USING (
-    user_id = auth.uid()
+    user_id = (select auth.uid())
     OR public.has_org_role(org_id, 'owner')
     OR (public.has_org_role(org_id, 'admin') AND role <> 'owner')
   );
@@ -284,6 +289,25 @@ $$;
 CREATE TRIGGER memberships_keep_last_owner
   BEFORE UPDATE OR DELETE ON public.memberships
   FOR EACH ROW EXECUTE FUNCTION public.keep_last_owner();
+
+-- A departure (removal or leaving) is in the organisation's log; arrivals
+-- are written by accept_invitation() and invitations by the server.
+CREATE OR REPLACE FUNCTION public.track_memberships()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM public.log_activity(OLD.org_id, 'member.removed', 'membership', OLD.user_id, NULL, NULL,
+    jsonb_build_object('userId', OLD.user_id, 'role', OLD.role));
+  RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER memberships_track
+  AFTER DELETE ON public.memberships
+  FOR EACH ROW EXECUTE FUNCTION public.track_memberships();
 
 -- Creates an organisation with the caller as owner. The only way a person
 -- creates one: a direct insert is not granted.
@@ -381,6 +405,8 @@ BEGIN
   INSERT INTO public.memberships (org_id, user_id, role)
     VALUES (v_inv.org_id, auth.uid(), v_inv.role)
     ON CONFLICT (org_id, user_id) DO NOTHING;
+  INSERT INTO public.activities (org_id, actor_id, kind, target_type, target_id, payload)
+    VALUES (v_inv.org_id, auth.uid(), 'member.joined', 'membership', auth.uid(), jsonb_build_object('role', v_inv.role));
   UPDATE public.invitations SET accepted_at = now(), accepted_by = auth.uid() WHERE id = v_inv.id;
   RETURN v_inv.org_id;
 END;
@@ -454,7 +480,7 @@ CREATE POLICY "candidates: members read" ON public.candidates
 
 CREATE POLICY "candidates: members insert" ON public.candidates
   FOR INSERT TO authenticated
-  WITH CHECK (public.has_org_role(org_id, 'member') AND created_by = auth.uid());
+  WITH CHECK (public.has_org_role(org_id, 'member') AND created_by = (select auth.uid()));
 
 CREATE POLICY "candidates: members update" ON public.candidates
   FOR UPDATE TO authenticated
@@ -516,7 +542,7 @@ CREATE POLICY "documents: members insert" ON public.documents
   FOR INSERT TO authenticated
   WITH CHECK (
     public.has_org_role(org_id, 'member')
-    AND uploaded_by = auth.uid()
+    AND uploaded_by = (select auth.uid())
     AND storage_path LIKE org_id::text || '/%'
   );
 
@@ -542,6 +568,7 @@ GRANT ALL ON public.documents TO service_role;
 CREATE OR REPLACE FUNCTION public.guard_document_update()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 BEGIN
   IF (auth.jwt() ->> 'role') = 'authenticated' THEN
@@ -591,7 +618,7 @@ CREATE TRIGGER briefs_set_updated_at BEFORE UPDATE ON public.briefs
 CREATE POLICY "briefs: members read" ON public.briefs
   FOR SELECT TO authenticated USING (public.is_org_member(org_id));
 CREATE POLICY "briefs: members insert" ON public.briefs
-  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(org_id, 'member') AND created_by = auth.uid());
+  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(org_id, 'member') AND created_by = (select auth.uid()));
 CREATE POLICY "briefs: members update" ON public.briefs
   FOR UPDATE TO authenticated USING (public.has_org_role(org_id, 'member')) WITH CHECK (public.has_org_role(org_id, 'member'));
 CREATE POLICY "briefs: admins delete" ON public.briefs
@@ -618,13 +645,14 @@ CREATE TABLE public.searches (
 );
 
 CREATE INDEX searches_brief_idx ON public.searches (brief_id, created_at DESC);
+CREATE INDEX searches_org_idx ON public.searches (org_id, created_at DESC);
 
 ALTER TABLE public.searches ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "searches: members read" ON public.searches
   FOR SELECT TO authenticated USING (public.is_org_member(org_id));
 CREATE POLICY "searches: members insert" ON public.searches
-  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(org_id, 'member') AND ran_by = auth.uid());
+  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(org_id, 'member') AND ran_by = (select auth.uid()));
 
 GRANT SELECT ON public.searches TO authenticated;
 GRANT INSERT (org_id, brief_id, query, criteria, results, result_count, method, ran_by) ON public.searches TO authenticated;
@@ -689,6 +717,10 @@ CREATE TABLE public.shortlists (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- org_id cascades when an organisation is deleted (delete_my_account) and
+-- scopes every listing: indexed here and on the tables below.
+CREATE INDEX shortlists_org_idx ON public.shortlists (org_id, updated_at DESC);
+
 ALTER TABLE public.shortlists ENABLE ROW LEVEL SECURITY;
 
 CREATE TRIGGER shortlists_set_updated_at BEFORE UPDATE ON public.shortlists
@@ -697,7 +729,7 @@ CREATE TRIGGER shortlists_set_updated_at BEFORE UPDATE ON public.shortlists
 CREATE POLICY "shortlists: members read" ON public.shortlists
   FOR SELECT TO authenticated USING (public.is_org_member(org_id));
 CREATE POLICY "shortlists: members insert" ON public.shortlists
-  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(org_id, 'member') AND created_by = auth.uid());
+  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(org_id, 'member') AND created_by = (select auth.uid()));
 
 GRANT SELECT ON public.shortlists TO authenticated;
 GRANT INSERT (org_id, brief_id, created_by) ON public.shortlists TO authenticated;
@@ -724,6 +756,9 @@ CREATE TABLE public.shortlist_items (
 );
 
 CREATE INDEX shortlist_items_list_idx ON public.shortlist_items (shortlist_id, status, position);
+CREATE INDEX shortlist_items_org_idx ON public.shortlist_items (org_id);
+-- The hourly GDPR purge deletes candidates, which cascades here.
+CREATE INDEX shortlist_items_candidate_idx ON public.shortlist_items (candidate_id);
 
 ALTER TABLE public.shortlist_items ENABLE ROW LEVEL SECURITY;
 
@@ -734,6 +769,7 @@ CREATE TRIGGER shortlist_items_set_updated_at BEFORE UPDATE ON public.shortlist_
 CREATE OR REPLACE FUNCTION public.stamp_shortlist_decision()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 BEGIN
   IF NEW.status IS DISTINCT FROM OLD.status THEN
@@ -750,7 +786,7 @@ CREATE TRIGGER shortlist_items_stamp_decision BEFORE UPDATE ON public.shortlist_
 CREATE POLICY "shortlist_items: members read" ON public.shortlist_items
   FOR SELECT TO authenticated USING (public.is_org_member(org_id));
 CREATE POLICY "shortlist_items: members insert" ON public.shortlist_items
-  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(org_id, 'member') AND added_by = auth.uid());
+  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(org_id, 'member') AND added_by = (select auth.uid()));
 CREATE POLICY "shortlist_items: members update" ON public.shortlist_items
   FOR UPDATE TO authenticated USING (public.has_org_role(org_id, 'member')) WITH CHECK (public.has_org_role(org_id, 'member'));
 CREATE POLICY "shortlist_items: members delete" ON public.shortlist_items
@@ -778,6 +814,7 @@ CREATE TABLE public.comments (
 CREATE INDEX comments_item_idx ON public.comments (shortlist_item_id, created_at);
 CREATE INDEX comments_candidate_idx ON public.comments (candidate_id, created_at);
 CREATE INDEX comments_brief_idx ON public.comments (brief_id, created_at);
+CREATE INDEX comments_org_idx ON public.comments (org_id, created_at DESC);
 
 ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
 
@@ -787,11 +824,11 @@ CREATE TRIGGER comments_set_updated_at BEFORE UPDATE ON public.comments
 CREATE POLICY "comments: members read" ON public.comments
   FOR SELECT TO authenticated USING (public.is_org_member(org_id));
 CREATE POLICY "comments: members write" ON public.comments
-  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(org_id, 'member') AND author_id = auth.uid());
+  FOR INSERT TO authenticated WITH CHECK (public.has_org_role(org_id, 'member') AND author_id = (select auth.uid()));
 CREATE POLICY "comments: author edits" ON public.comments
-  FOR UPDATE TO authenticated USING (author_id = auth.uid()) WITH CHECK (author_id = auth.uid());
+  FOR UPDATE TO authenticated USING (author_id = (select auth.uid())) WITH CHECK (author_id = (select auth.uid()));
 CREATE POLICY "comments: author or admin deletes" ON public.comments
-  FOR DELETE TO authenticated USING (author_id = auth.uid() OR public.has_org_role(org_id, 'admin'));
+  FOR DELETE TO authenticated USING (author_id = (select auth.uid()) OR public.has_org_role(org_id, 'admin'));
 
 GRANT SELECT, DELETE ON public.comments TO authenticated;
 GRANT INSERT (org_id, shortlist_item_id, candidate_id, brief_id, author_id, body, mentions) ON public.comments TO authenticated;
@@ -807,14 +844,16 @@ CREATE TABLE public.votes (
   PRIMARY KEY (shortlist_item_id, user_id)
 );
 
+CREATE INDEX votes_org_idx ON public.votes (org_id);
+
 ALTER TABLE public.votes ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "votes: members read" ON public.votes
   FOR SELECT TO authenticated USING (public.is_org_member(org_id));
 CREATE POLICY "votes: own vote" ON public.votes
   FOR ALL TO authenticated
-  USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid() AND public.has_org_role(org_id, 'member'));
+  USING (user_id = (select auth.uid()))
+  WITH CHECK (user_id = (select auth.uid()) AND public.has_org_role(org_id, 'member'));
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.votes TO authenticated;
 GRANT ALL ON public.votes TO service_role;
@@ -858,8 +897,13 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+  -- Nothing is logged for an organisation that is being deleted: its
+  -- candidates and shortlist items cascade away and their triggers would
+  -- otherwise insert a row against a parent that is already gone (the
+  -- organisation's log goes with it, activities cascade on org_id).
   INSERT INTO public.activities (org_id, actor_id, kind, target_type, target_id, brief_id, candidate_id, payload)
-  VALUES (p_org, auth.uid(), p_kind, p_target_type, p_target_id, p_brief, p_candidate, coalesce(p_payload, '{}'::jsonb));
+  SELECT p_org, auth.uid(), p_kind, p_target_type, p_target_id, p_brief, p_candidate, coalesce(p_payload, '{}'::jsonb)
+  WHERE EXISTS (SELECT 1 FROM public.organizations WHERE id = p_org);
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.log_activity(UUID, TEXT, TEXT, UUID, UUID, UUID, JSONB) FROM PUBLIC, anon, authenticated;
@@ -874,6 +918,8 @@ DECLARE
   v_brief UUID;
 BEGIN
   SELECT brief_id INTO v_brief FROM public.shortlists WHERE id = COALESCE(NEW.shortlist_id, OLD.shortlist_id);
+  -- The board's own updated_at follows its items, so a list sorted by it is honest.
+  UPDATE public.shortlists SET updated_at = now() WHERE id = COALESCE(NEW.shortlist_id, OLD.shortlist_id);
   IF TG_OP = 'INSERT' THEN
     PERFORM public.log_activity(NEW.org_id, 'shortlist.added', 'shortlist_item', NEW.id, v_brief, NEW.candidate_id, '{}'::jsonb);
     RETURN NEW;
@@ -1008,6 +1054,7 @@ CREATE TABLE public.shares (
 );
 
 CREATE INDEX shares_shortlist_idx ON public.shares (shortlist_id, created_at DESC);
+CREATE INDEX shares_org_idx ON public.shares (org_id, created_at DESC);
 
 ALTER TABLE public.shares ENABLE ROW LEVEL SECURITY;
 
@@ -1193,15 +1240,21 @@ ALTER TABLE public.shortlist_items REPLICA IDENTITY FULL;
 ALTER TABLE public.comments REPLICA IDENTITY FULL;
 ALTER TABLE public.votes REPLICA IDENTITY FULL;
 ALTER TABLE public.documents REPLICA IDENTITY FULL;
+ALTER TABLE public.briefs REPLICA IDENTITY FULL;
+ALTER TABLE public.shortlists REPLICA IDENTITY FULL;
+ALTER TABLE public.searches REPLICA IDENTITY FULL;
 
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.shortlist_items, public.comments, public.votes, public.documents, public.activities;
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.shortlist_items, public.comments, public.votes, public.documents, public.activities, public.briefs, public.shortlists, public.searches;
   END IF;
 END;
 $$;
 
--- No table is reachable by the anonymous role.
+-- No table and no function is reachable by the anonymous role. Postgres
+-- lets PUBLIC execute every function by default, which a revoke from anon
+-- alone does not undo: EXECUTE is withdrawn from PUBLIC and holds only
+-- where this file granted it.
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM anon;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC, anon;

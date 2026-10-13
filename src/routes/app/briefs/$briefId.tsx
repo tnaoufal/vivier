@@ -49,7 +49,8 @@ function BriefPage() {
   const capabilities = useQuery(`brief-capabilities:${org.id}`, async () =>
     briefCapabilities({ data: { ...(await withToken()), orgId: org.id } }),
   );
-  const modelAvailable: ModelAvailability = capabilities.error ? false : (capabilities.data?.model ?? null);
+  // Unknown (null) while loading or when the read failed: "no model" is only said when the server said so.
+  const modelAvailable: ModelAvailability = capabilities.error ? null : (capabilities.data?.model ?? null);
 
   const refreshBrief = brief.refresh;
   useEffect(

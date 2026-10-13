@@ -123,6 +123,7 @@ const fr = {
   "settings.plan.current": "Formule actuelle : {plan}.",
   "settings.plan.billing": "La facturation est réglée par le propriétaire ; le paiement en ligne n'est pas encore disponible.",
   "settings.plan.unread": "Les compteurs n'ont pas pu être lus.",
+  "settings.plan.cvs": "CV traités ce mois",
   "settings.danger": "Zone dangereuse",
   "settings.danger.text":
     "Supprimer l'organisation efface ses candidats et leurs fichiers, ses briefs, ses shortlists et son historique. C'est définitif.",
@@ -263,6 +264,7 @@ const en = {
   "settings.plan.current": "Current plan: {plan}.",
   "settings.plan.billing": "Billing is handled by the owner; online checkout is not available yet.",
   "settings.plan.unread": "The counters could not be read.",
+  "settings.plan.cvs": "CVs processed this month",
   "settings.danger": "Danger zone",
   "settings.danger.text":
     "Deleting the organisation erases its candidates and their files, its briefs, its shortlists and its history. This is permanent.",

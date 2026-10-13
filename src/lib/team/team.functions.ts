@@ -21,7 +21,7 @@ import { seatsAvailable } from "./seats";
 import { isTokenShaped, randomToken, sha256Hex } from "./token";
 
 const inviteInput = z.object({
-  accessToken: z.string(),
+  accessToken: z.string().min(1).max(4096),
   orgId: z.uuid(),
   email: z.email().max(254),
   role: z.enum(["admin", "member", "viewer"]),

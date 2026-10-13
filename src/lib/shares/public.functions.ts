@@ -15,7 +15,9 @@ import { db } from "@/lib/platform/supabase.server";
 import { errorText, findShareByToken, itemsOf, log, orgOf } from "./shares.server";
 import { shareState } from "./state";
 
-const tokenInput = z.object({ token: z.string().min(16).max(128) });
+// Any string: a malformed or truncated link answers "missing" (findShareByToken
+// checks the shape), never a validation error that would land on the error page.
+const tokenInput = z.object({ token: z.string().max(128) });
 
 export type PublicShare =
   | { state: "missing" }

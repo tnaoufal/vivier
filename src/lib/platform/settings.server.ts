@@ -85,7 +85,8 @@ export function describeSetup(env: NodeJS.ProcessEnv = process.env): Setup {
       model: s.llm.apiKey ? (s.llm.model ?? "default") : null,
       embeddingModel: s.llm.apiKey ? (s.llm.embeddingModel ?? "default") : null,
     },
-    email: Boolean(s.resend.apiKey),
+    // What emailSetup() decides: a key and the site origin the links are built on.
+    email: Boolean(s.resend.apiKey && siteOriginOf(s.siteUrl)),
     rateLimit: !s.rateLimitOff,
   };
 }
