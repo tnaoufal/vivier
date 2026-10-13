@@ -13,17 +13,18 @@ provider accounts. Work it in one block before the first real CV.
       `documents.document_kind`, `similar_candidates()`),
       `20261013190000_vivier_dossier` (`shares.brief`, `candidates.phone_digits`
       and the dedup indexes, the `assess` usage kind, the re-embed index) and
-      `20261013200000_vivier_pool` (`searches.pool_size`). All four are safe to
-      re-run. The dev project `vivier_dev` (ref `qtujdeolcdvlzwvpqpuv`,
-      eu-west-1, free tier) carries the first three (checked on its schema on
-      2026-10-13: `document_kind`, `shares.brief`, `phone_digits` and
-      `similar_candidates()` exist) but **not `…200000_vivier_pool`**: apply it
-      before deploying evolution 2, or every analysis fails on the insert of
-      `pool_size`. The two evolution-2 files were applied outside the CLI, so
-      `supabase_migrations.schema_migrations` lists only `vivier_init`: run
-      `supabase migration repair --status applied 20261013180000 20261013190000`
-      before a `db push`, or let the push re-run them. Reset the dev database
-      password in the dashboard before using it from a machine.
+      `20261013200000_vivier_pool` (`searches.pool_size`, and
+      `cvs_processed_this_month()` no longer counts rejected documents). All
+      four are safe to re-run. The dev project `vivier_dev` (ref
+      `qtujdeolcdvlzwvpqpuv`, eu-west-1, free tier) carries all four (checked
+      on its schema on 2026-10-13: `document_kind`, `shares.brief`,
+      `phone_digits`, `similar_candidates()`, `searches.pool_size` exist and
+      the quota function excludes `rejected`). The three evolution-2 files were
+      applied outside the CLI, so `supabase_migrations.schema_migrations` lists
+      only `vivier_init`: run `supabase migration repair --status applied
+      20261013180000 20261013190000 20261013200000` before a `db push`, or let
+      the push re-run them. Reset the dev database password in the dashboard
+      before using it from a machine.
 - [ ] Default privileges for `anon` and `authenticated` are revoked by the
       migration: every later table or RPC meant for the browser needs its own
       `GRANT` (the migration shows the pattern).
