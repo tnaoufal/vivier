@@ -53,7 +53,7 @@ const NAV: NavItem[] = [
   { to: "/app/activity", key: "nav.activity", icon: <Activity /> },
 ];
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
   const { t } = useI18n();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
@@ -166,7 +166,7 @@ function UserMenu() {
   );
 }
 
-function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+function Sidebar({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
   return (
     <div className="flex h-full flex-col gap-4 p-3">
       <div className="flex items-center justify-between px-1 pt-1">

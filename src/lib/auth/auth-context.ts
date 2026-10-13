@@ -9,7 +9,8 @@ import type { Session, User } from "@supabase/supabase-js";
 export interface AuthResult {
   /** A sentence for the person (see auth-errors.ts), null on success. */
   error: string | null;
-  code?: string;
+  /** Supabase's error code when it gave one (e.g. `email_not_confirmed`). */
+  code?: string | undefined;
 }
 
 export interface SignUpResult extends AuthResult {

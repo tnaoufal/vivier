@@ -15,9 +15,8 @@ sets how long its candidates are kept.
   `fr`, tested).
 - **Fonts**: Geist, Geist Mono and Poppins 600, self-hosted from
   `public/fonts/` under the SIL Open Font License. No third-party stylesheet.
-- **Where it lives**: inside `brand-genesis-studio` under `vivier/` until it
-  moves to its own repository (see "Moving to a dedicated repository").
-  Every path below is relative to `vivier/`.
+- **Where it lives**: its own repository, `tnaoufal/vivier`, apart from
+  Namearly; the two share a stack and nothing else.
 
 ## Principles
 
@@ -96,7 +95,7 @@ npm run dev
 
 ### Scripts
 
-Frontend (from `vivier/`):
+Frontend (from the repository root):
 
 | Command             | What it does                                                                      |
 | ------------------- | --------------------------------------------------------------------------------- |
@@ -495,8 +494,8 @@ process started.
 - Processor: `npm install` (`npm ci` once `package-lock.json` is
   committed), `npm run typecheck`, `npm test`, `npm run build` from
   `services/processor`; `docker build -f services/processor/Dockerfile .`
-  from `vivier/`; `GET /health` answers 200.
-- CI: `.github/workflows/vivier-ci.yml` runs the `Vivier frontend` and
+  from the repository root; `GET /health` answers 200.
+- CI: `.github/workflows/ci.yml` runs the `Vivier frontend` and
   `Vivier processor` jobs on every pull request. Each job checks only when
   its paths changed and reports green in seconds otherwise, so both checks
   can be required in the main branch ruleset. The processor job builds the
@@ -506,17 +505,10 @@ process started.
 ## Backups
 
 Supabase's Point-in-Time Recovery is the primary line; a nightly workflow
-(`.github/workflows/vivier-backup.yml`, `scripts/backup.sh`) adds a logical
+(`.github/workflows/backup.yml`, `scripts/backup.sh`) adds a logical
 dump of the database and a copy of the `cvs` bucket to an R2 bucket, kept
 thirty days, with a restore drill to run before go-live and every quarter.
 Doctrine, setup and the drill: `docs/BACKUPS.md`.
-
-## Moving to a dedicated repository
-
-Vivier is self-contained under `vivier/` (its own package.json, lockfile,
-Supabase project, Worker, Railway service and CI workflow); nothing imports
-anything from outside it. The mechanical move with `git subtree split` and
-what to adjust afterwards is in `docs/EXTRACT.md`.
 
 ## Not built yet
 

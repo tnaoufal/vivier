@@ -3,7 +3,7 @@
 What runs where, how the four main flows cross the pieces, which trust
 boundary each piece sits behind, and what every secret unlocks. The
 README says what the product does; this page says how the parts hold
-together. Paths are relative to `vivier/`.
+together. Paths are relative to the repository root.
 
 ## Components
 

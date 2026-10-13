@@ -1,8 +1,7 @@
 # Backups
 
 What protects the data, where the copies live, how they are made, how
-they are restored, and when the restore is rehearsed. Paths are relative
-to `vivier/`.
+they are restored, and when the restore is rehearsed. Paths are relative to the repository root.
 
 ## Doctrine
 
@@ -18,7 +17,7 @@ Two lines, different providers, different credentials:
    days. PITR covers the database only: Storage objects are not part of
    it, and a deleted object is gone.
 2. **A nightly logical dump and a mirror of the bucket, on Cloudflare R2**,
-   made by `.github/workflows/vivier-backup.yml` running
+   made by `.github/workflows/backup.yml` running
    `scripts/backup.sh` at 03:17 UTC: `pg_dump --format=custom` of the
    database through its connection string, and an `rclone sync` of the
    `cvs` bucket from Supabase Storage's S3 endpoint to the R2 bucket. This
@@ -102,10 +101,9 @@ committed. Tick the lines in `docs/GO-LIVE.md` ("Backups").
    | `VIVIER_SUPABASE_S3_SECRET_ACCESS_KEY`  | the Storage S3 secret                                        |
 
    and one variable (the Variables tab): `VIVIER_SUPABASE_S3_REGION`, the
-   project's region (`eu-west-1` when unset). The `VIVIER_` prefix keeps
-   the names apart from the other product's secrets while both share this
-   repository; after the move (`docs/EXTRACT.md`) the workflow's
-   `secrets.VIVIER_*` references can keep the prefix or drop it.
+   project's region (`eu-west-1` when unset). The `VIVIER_` prefix
+   keeps the names apart from any other product's secrets an account may
+   hold.
 6. **Run it once by hand**: Actions → Vivier backup → Run workflow. The
    job summary ends with the report, e.g.
    `{"ok":true,"stamp":"…","dump":"vivier-….dump","dumpBytes":…,"storageObjects":…,"prunedDumps":0,…}`;
