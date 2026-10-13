@@ -57,13 +57,16 @@ provider accounts. Work it in one block before the first real CV.
       `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_EMBEDDING_MODEL`,
       optionally `MISTRAL_OCR_API_KEY` for scanned PDFs. `PROCESSOR_CONCURRENCY`
       now defaults to 4 (was 2): set it only to lower it when the model answers 429.
-- [ ] **Set `LLM_EMBEDDING_MODEL=mistral-embed` on the Railway service** (the
-      current deployment runs without it, so the candidates processed so far
-      have no vector), then **redeploy the processor** so the startup probe
-      runs: the logs show `embedding_ok { dimensions: 1024 }` and `GET /health`
-      answers `"embedding": "ok"`. A `mismatch` or `unavailable` there names
-      what to fix. The hourly re-embed pass then gives the existing candidates
-      a vector (100 a pass); `POST /maintenance` with the bearer runs it now.
+- [ ] `LLM_EMBEDDING_MODEL=mistral-embed` is set on the Railway service. The
+      candidates processed on 2026-10-13 had no vector for another reason: the
+      processor's `openai` SDK asked Mistral for base64 embeddings, Mistral
+      answered floats, and the SDK decoded them into a 256-wide vector (fixed:
+      both embedding calls now state `encoding_format: "float"`). After each
+      processor deploy, the startup probe must log
+      `embedding_ok { dimensions: 1024 }` and `GET /health` must answer
+      `"embedding": "ok"`; a `mismatch` or `unavailable` names what to fix. The
+      hourly re-embed pass then gives the existing candidates a vector (100 a
+      pass); `POST /maintenance` with the bearer runs it now.
 - [ ] After the first deploy: check the logs show `polling: true` and `/status` sees it.
 
 ## Model vendor
