@@ -163,7 +163,9 @@ export type CandidateInsert = Pick<CandidateRow, "org_id" | "created_by"> &
     >
   >;
 
-export type DocumentStatus = "queued" | "processing" | "processed" | "needs_ocr" | "failed";
+export type DocumentStatus = "queued" | "processing" | "processed" | "needs_ocr" | "failed" | "rejected";
+/** What the classifier decided before structuring; null when never classified. */
+export type DocumentKind = "cv" | "other";
 export type ExtractionMethod = "pdf-text" | "ocr" | "none";
 export type StructuringMethod = "model" | "heuristic";
 
@@ -184,6 +186,7 @@ export interface DocumentRow {
   extracted_text: string | null;
   extraction_method: ExtractionMethod | null;
   structuring_method: StructuringMethod | null;
+  document_kind: DocumentKind | null;
   processed_at: string | null;
   uploaded_by: string | null;
   created_at: string;
@@ -235,9 +238,40 @@ export interface CriterionResult {
   evidence: string | null;
 }
 
+/** The model's answer on one requirement of the brief, with the evidence it quotes from the CV. */
+export type RequirementMet = "yes" | "partial" | "no" | "unknown";
+
+export interface RequirementAssessment {
+  criterionId: string;
+  met: RequirementMet;
+  /** A short quote or fact from the profile; null when nothing in the CV speaks to it. */
+  evidence: string | null;
+}
+
+/** The model's expert reading of a candidate against the whole brief. */
+export type AssessmentDecision = "fit" | "borderline" | "no_fit";
+
+export interface Assessment {
+  decision: AssessmentDecision;
+  /** 0..100, the model's overall fit; a required requirement at "no" forces no_fit. */
+  score: number;
+  /** Two to four factual sentences for a hiring manager, in the brief's language. */
+  summary: string;
+  requirements: RequirementAssessment[];
+  /** Which model answered, for the audit. */
+  model: string;
+}
+
+/** A candidate near another one (similar_candidates). */
+export interface SimilarCandidate {
+  candidate_id: string;
+  similarity: number;
+  method: "embedding" | "skills";
+}
+
 export interface MatchResult {
   candidateId: string;
-  /** 0..100 over the criteria that could be evaluated. */
+  /** 0..100 over the criteria that could be evaluated (the deterministic pass). */
   score: number;
   /** 0..1: the share of criteria the profile says something about. */
   coverage: number;
@@ -248,6 +282,8 @@ export interface MatchResult {
   why: string | null;
   /** How the candidate was retrieved before scoring. */
   retrieval: { textRank: number | null; vectorRank: number | null };
+  /** The model's expert assessment; absent when no model answered (text-only mode). */
+  assessment?: Assessment;
 }
 
 export type SearchMethod = "hybrid" | "text";
