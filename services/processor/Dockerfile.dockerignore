@@ -1,0 +1,20 @@
+# Read by BuildKit next to the Dockerfile (paths are relative to the build
+# context, the vivier/ directory). The image only needs services/processor;
+# the web app, its dependencies and build outputs stay out of the context.
+**/node_modules
+**/dist
+**/.git
+**/.env
+**/.env.*
+**/*.log
+.wrangler
+.output
+.nitro
+.tanstack
+.cache
+public
+src
+supabase
+docs
+bun.lock
+services/processor/test

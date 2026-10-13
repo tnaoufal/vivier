@@ -1,0 +1,9 @@
+# Build context for services/processor/Dockerfile is the vivier/ directory;
+# only the processor's source enters the context.
+*
+!services/processor
+services/processor/node_modules
+services/processor/dist
+services/processor/test
+services/processor/.env
+services/processor/.env.*

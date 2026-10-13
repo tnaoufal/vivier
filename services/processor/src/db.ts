@@ -1,0 +1,336 @@
+/**
+ * The database, behind one small typed interface. supabase-js with the
+ * service role key (RLS bypassed: every query names the organisation it
+ * works on), untyped on the wire: results are cast to the row shapes of
+ * types.ts here and nowhere else, so the pipeline stays strictly typed
+ * and the fake in the tests implements the same `Db` interface.
+ *
+ * The claim is atomic through the `status = 'queued'` condition: two
+ * processors asking for the same document see one empty answer. A
+ * unique violation (23505) on `documents.sha256` is surfaced as
+ * DuplicateFileError, the pipeline's "same file, same organisation" case.
+ */
+import { createClient } from "@supabase/supabase-js";
+
+import type { SupabaseConfig } from "./config.js";
+import { FAILURE_MESSAGES } from "./messages.js";
+import type { AiUsageKind, CandidateRow, DocumentRow, OrganizationLimits } from "./types.js";
+
+export const STORAGE_BUCKET = "cvs";
+/** Claims before a stale document is left failed instead of re-queued. */
+export const MAX_ATTEMPTS = 3;
+/** A document in `processing` for longer than this lost its processor (crash, restart). */
+export const STALE_AFTER_MS = 10 * 60_000;
+
+export class DbError extends Error {
+  readonly code: string | null;
+
+  constructor(operation: string, message: string, code: string | null = null) {
+    super(`${operation}: ${message}`);
+    this.name = "DbError";
+    this.code = code;
+  }
+}
+
+/** Another document of the organisation already holds this sha256. */
+export class DuplicateFileError extends DbError {
+  constructor() {
+    super("updateDocument", "another document of this organisation has the same content", "23505");
+    this.name = "DuplicateFileError";
+  }
+}
+
+export type DocumentPatch = Partial<
+  Pick<
+    DocumentRow,
+    | "candidate_id"
+    | "sha256"
+    | "status"
+    | "error"
+    | "attempts"
+    | "page_count"
+    | "text_chars"
+    | "extracted_text"
+    | "extraction_method"
+    | "structuring_method"
+    | "processed_at"
+  >
+>;
+
+export type CandidateFields = Pick<
+  CandidateRow,
+  | "full_name"
+  | "email"
+  | "phone"
+  | "headline"
+  | "location"
+  | "years_experience"
+  | "availability"
+  | "summary"
+  | "skills"
+  | "languages"
+  | "experiences"
+  | "education"
+  | "links"
+  | "tags"
+  | "confidence"
+>;
+
+export type CandidateWrite = Partial<CandidateFields> & {
+  fingerprint?: string | null;
+  search_text?: string | null;
+  /** A pgvector literal ("[0.1,0.2,...]"); absent keeps the stored vector. */
+  embedding?: string;
+};
+
+export type CandidateInsert = CandidateWrite & {
+  org_id: string;
+  created_by: string | null;
+  source: "upload";
+};
+
+export interface ExpiredCandidate {
+  candidate_id: string;
+  org_id: string;
+  reason: string;
+}
+
+export interface Db {
+  /** Moves a queued document to processing (attempts + 1); null when it is not queued any more. */
+  claimDocument(id: string): Promise<DocumentRow | null>;
+  /** Oldest queued documents first. */
+  listQueued(limit: number): Promise<string[]>;
+  countQueued(): Promise<number>;
+  /** Processing documents older than STALE_AFTER_MS: back to queued, or failed past MAX_ATTEMPTS. */
+  resetStale(now: Date): Promise<{ requeued: number; failed: number }>;
+  getDocument(id: string): Promise<DocumentRow | null>;
+  updateDocument(id: string, patch: DocumentPatch): Promise<void>;
+  findDocumentBySha256(orgId: string, sha256: string, excludeId: string): Promise<DocumentRow | null>;
+  findCandidateByFingerprint(orgId: string, fingerprint: string): Promise<CandidateRow | null>;
+  /** Answers the new row's id. */
+  insertCandidate(values: CandidateInsert): Promise<string>;
+  updateCandidate(id: string, patch: CandidateWrite): Promise<void>;
+  getOrganization(orgId: string): Promise<OrganizationLimits | null>;
+  cvsProcessedThisMonth(orgId: string): Promise<number>;
+  expiredCandidates(limit: number): Promise<ExpiredCandidate[]>;
+  listDocumentsOfCandidate(candidateId: string): Promise<Array<{ id: string; storage_path: string }>>;
+  deleteCandidate(id: string): Promise<void>;
+  recordUsage(
+    orgId: string,
+    kind: AiUsageKind,
+    model: string | null,
+    tokensIn: number,
+    tokensOut: number,
+  ): Promise<void>;
+  /** The bytes of an object of the `cvs` bucket. */
+  downloadObject(path: string): Promise<Buffer>;
+  removeObjects(paths: string[]): Promise<void>;
+}
+
+interface QueryFailure {
+  message: string;
+  code?: string | null;
+}
+
+function fail(operation: string, error: QueryFailure): never {
+  const code = typeof error.code === "string" ? error.code : null;
+  throw new DbError(operation, error.message, code);
+}
+
+function rowsOf<T>(data: unknown): T[] {
+  return Array.isArray(data) ? (data as T[]) : [];
+}
+
+function rowOf<T>(data: unknown): T | null {
+  return data && typeof data === "object" ? (data as T) : null;
+}
+
+export function createDb(config: SupabaseConfig): Db {
+  const client = createClient(config.url, config.serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+
+  const getDocument: Db["getDocument"] = async (id) => {
+    const { data, error } = await client.from("documents").select("*").eq("id", id).maybeSingle();
+    if (error) fail("getDocument", error);
+    return rowOf<DocumentRow>(data);
+  };
+
+  const updateDocument: Db["updateDocument"] = async (id, patch) => {
+    const { error } = await client.from("documents").update(patch).eq("id", id);
+    if (error) {
+      if (error.code === "23505") throw new DuplicateFileError();
+      fail("updateDocument", error);
+    }
+  };
+
+  return {
+    getDocument,
+    updateDocument,
+
+    claimDocument: async (id) => {
+      // PostgREST cannot add one to a column in place: the row is read for
+      // its attempts, and the `status = 'queued'` condition keeps the
+      // claim atomic (a second claimer updates no row).
+      const current = await getDocument(id);
+      if (!current || current.status !== "queued") return null;
+      const { data, error } = await client
+        .from("documents")
+        .update({ status: "processing", attempts: current.attempts + 1 })
+        .eq("id", id)
+        .eq("status", "queued")
+        .select("*");
+      if (error) fail("claimDocument", error);
+      return rowsOf<DocumentRow>(data)[0] ?? null;
+    },
+
+    listQueued: async (limit) => {
+      const { data, error } = await client
+        .from("documents")
+        .select("id")
+        .eq("status", "queued")
+        .order("created_at", { ascending: true })
+        .limit(Math.max(1, Math.floor(limit)));
+      if (error) fail("listQueued", error);
+      return rowsOf<{ id: string }>(data).map((row) => row.id);
+    },
+
+    countQueued: async () => {
+      const { count, error } = await client
+        .from("documents")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "queued");
+      if (error) fail("countQueued", error);
+      return typeof count === "number" ? count : 0;
+    },
+
+    resetStale: async (now) => {
+      const cutoff = new Date(now.getTime() - STALE_AFTER_MS).toISOString();
+      const exhausted = await client
+        .from("documents")
+        .update({ status: "failed", error: FAILURE_MESSAGES.generic })
+        .eq("status", "processing")
+        .lt("updated_at", cutoff)
+        .gte("attempts", MAX_ATTEMPTS)
+        .select("id");
+      if (exhausted.error) fail("resetStale", exhausted.error);
+      const requeued = await client
+        .from("documents")
+        .update({ status: "queued" })
+        .eq("status", "processing")
+        .lt("updated_at", cutoff)
+        .lt("attempts", MAX_ATTEMPTS)
+        .select("id");
+      if (requeued.error) fail("resetStale", requeued.error);
+      return {
+        requeued: rowsOf(requeued.data).length,
+        failed: rowsOf(exhausted.data).length,
+      };
+    },
+
+    findDocumentBySha256: async (orgId, sha256, excludeId) => {
+      const { data, error } = await client
+        .from("documents")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("sha256", sha256)
+        .neq("id", excludeId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (error) fail("findDocumentBySha256", error);
+      return rowOf<DocumentRow>(data);
+    },
+
+    findCandidateByFingerprint: async (orgId, fingerprint) => {
+      const { data, error } = await client
+        .from("candidates")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("fingerprint", fingerprint)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) fail("findCandidateByFingerprint", error);
+      return rowOf<CandidateRow>(data);
+    },
+
+    insertCandidate: async (values) => {
+      const { data, error } = await client.from("candidates").insert(values).select("id").single();
+      if (error) fail("insertCandidate", error);
+      const id = rowOf<{ id?: unknown }>(data)?.id;
+      if (typeof id !== "string") throw new DbError("insertCandidate", "no id answered");
+      return id;
+    },
+
+    updateCandidate: async (id, patch) => {
+      const { error } = await client.from("candidates").update(patch).eq("id", id);
+      if (error) fail("updateCandidate", error);
+    },
+
+    getOrganization: async (orgId) => {
+      const { data, error } = await client
+        .from("organizations")
+        .select("id, plan, cv_quota_month, retention_months")
+        .eq("id", orgId)
+        .maybeSingle();
+      if (error) fail("getOrganization", error);
+      return rowOf<OrganizationLimits>(data);
+    },
+
+    cvsProcessedThisMonth: async (orgId) => {
+      const { data, error } = await client.rpc("cvs_processed_this_month", { p_org: orgId });
+      if (error) fail("cvsProcessedThisMonth", error);
+      const count = Number(data ?? 0);
+      return Number.isFinite(count) ? count : 0;
+    },
+
+    expiredCandidates: async (limit) => {
+      const { data, error } = await client.rpc("expired_candidates", {
+        p_limit: Math.max(1, Math.floor(limit)),
+      });
+      if (error) fail("expiredCandidates", error);
+      return rowsOf<ExpiredCandidate>(data).filter(
+        (row) => typeof row.candidate_id === "string" && typeof row.org_id === "string",
+      );
+    },
+
+    listDocumentsOfCandidate: async (candidateId) => {
+      const { data, error } = await client
+        .from("documents")
+        .select("id, storage_path")
+        .eq("candidate_id", candidateId);
+      if (error) fail("listDocumentsOfCandidate", error);
+      return rowsOf<{ id: string; storage_path: string }>(data);
+    },
+
+    deleteCandidate: async (id) => {
+      const { error } = await client.from("candidates").delete().eq("id", id);
+      if (error) fail("deleteCandidate", error);
+    },
+
+    recordUsage: async (orgId, kind, model, tokensIn, tokensOut) => {
+      const { error } = await client.from("ai_usage").insert({
+        org_id: orgId,
+        kind,
+        model,
+        tokens_in: Math.max(0, Math.floor(tokensIn)),
+        tokens_out: Math.max(0, Math.floor(tokensOut)),
+      });
+      if (error) fail("recordUsage", error);
+    },
+
+    downloadObject: async (path) => {
+      const { data, error } = await client.storage.from(STORAGE_BUCKET).download(path);
+      if (error) fail("downloadObject", { message: error.message });
+      if (!data) throw new DbError("downloadObject", "no content answered");
+      return Buffer.from(await data.arrayBuffer());
+    },
+
+    removeObjects: async (paths) => {
+      if (paths.length === 0) return;
+      const { error } = await client.storage.from(STORAGE_BUCKET).remove(paths);
+      if (error) fail("removeObjects", { message: error.message });
+    },
+  };
+}

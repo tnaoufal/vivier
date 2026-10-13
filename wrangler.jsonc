@@ -1,0 +1,20 @@
+{
+  // Vivier on Cloudflare Workers. Variables and secrets live in the
+  // dashboard (README "Environment variables"); keep_vars protects them on
+  // every deploy. Nothing secret is committed here.
+  "keep_vars": true,
+  "vars": {
+    // The processor's public URL (Railway); its secret PROCESSOR_SHARED_SECRET
+    // is set in the dashboard only. Empty until the service is deployed.
+    "PROCESSOR_URL": "",
+  },
+  // Per-client throttle on the server functions that call a model or send
+  // email (src/lib/server/rate-limit.server.ts). Counted per data centre.
+  "ratelimits": [
+    {
+      "name": "VIVIER_RATE_LIMITER",
+      "namespace_id": "2001",
+      "simple": { "limit": 60, "period": 60 },
+    },
+  ],
+}
