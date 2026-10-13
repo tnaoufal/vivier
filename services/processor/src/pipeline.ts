@@ -288,7 +288,11 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
   }
 
   const fingerprint = fingerprintOf(profile);
-  const existing = fingerprint ? await db.findCandidateByFingerprint(doc.org_id, fingerprint) : null;
+  // A document uploaded from a profile page carries that candidate's id: the
+  // person chose the target, so the fingerprint only decides when nothing was chosen.
+  const pinned = doc.candidate_id ? await db.getCandidateById(doc.org_id, doc.candidate_id) : null;
+  const existing =
+    pinned ?? (fingerprint ? await db.findCandidateByFingerprint(doc.org_id, fingerprint) : null);
   const merged = existing ? mergeProfiles(profileOfRow(existing), profile) : profile;
   const searchText = searchTextOf(merged);
 

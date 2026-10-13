@@ -11,6 +11,18 @@ CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
 
+-- Supabase grants every new table, function and sequence of public to
+-- anon, authenticated and service_role by default (ALTER DEFAULT
+-- PRIVILEGES FOR ROLE postgres IN SCHEMA public), which would void the
+-- column-level grants below (a person could set organizations.plan or
+-- documents.extracted_text). The grants in this file are the whole truth:
+-- the defaults are switched off for anon and authenticated before any
+-- table exists; the service role keeps them. A later migration that adds
+-- a table must grant it explicitly, as this one does.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated;
+
 -- ---------------------------------------------------------------------
 -- helpers
 -- ---------------------------------------------------------------------
@@ -296,18 +308,6 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.create_organization(TEXT, TEXT, TEXT) TO authenticated;
 
--- Seats: the plan's limit counts members plus pending invitations.
-CREATE OR REPLACE FUNCTION public.seats_used(p_org UUID)
-RETURNS INTEGER
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT (SELECT count(*) FROM public.memberships WHERE org_id = p_org)::INTEGER
-       + (SELECT count(*) FROM public.invitations WHERE org_id = p_org AND accepted_at IS NULL AND expires_at > now())::INTEGER;
-$$;
-
 -- ---------------------------------------------------------------------
 -- invitations: by email, token hashed at rest
 -- ---------------------------------------------------------------------
@@ -340,6 +340,20 @@ CREATE POLICY "invitations: admins revoke" ON public.invitations
 
 GRANT SELECT (id, org_id, email, role, invited_by, expires_at, accepted_at, created_at), DELETE ON public.invitations TO authenticated;
 GRANT ALL ON public.invitations TO service_role;
+
+-- Seats: the plan's limit counts members plus pending invitations. Defined
+-- after invitations: the body of a SQL function is checked when it is
+-- created (check_function_bodies), so the table must already exist.
+CREATE OR REPLACE FUNCTION public.seats_used(p_org UUID)
+RETURNS INTEGER
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT (SELECT count(*) FROM public.memberships WHERE org_id = p_org)::INTEGER
+       + (SELECT count(*) FROM public.invitations WHERE org_id = p_org AND accepted_at IS NULL AND expires_at > now())::INTEGER;
+$$;
 
 GRANT EXECUTE ON FUNCTION public.seats_used(UUID) TO authenticated, service_role;
 
@@ -522,13 +536,15 @@ GRANT INSERT (id, org_id, candidate_id, storage_path, file_name, mime_type, byte
 GRANT UPDATE (status, candidate_id) ON public.documents TO authenticated;
 GRANT ALL ON public.documents TO service_role;
 
--- The browser may only move a document back to the queue.
+-- The browser may only move a document back to the queue. The caller's
+-- role is read from the JWT claims (auth.jwt()): PostgREST on Postgres 14+
+-- no longer sets the legacy request.jwt.claim.role setting.
 CREATE OR REPLACE FUNCTION public.guard_document_update()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF current_setting('request.jwt.claim.role', true) = 'authenticated' THEN
+  IF (auth.jwt() ->> 'role') = 'authenticated' THEN
     IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status <> 'queued' THEN
       RAISE EXCEPTION 'DOC:status_not_allowed';
     END IF;

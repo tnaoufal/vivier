@@ -49,6 +49,14 @@ provider accounts. Work it in one block before the first real CV.
 ## Resend
 
 - [ ] Verify the sending domain; set `EMAIL_FROM` (e.g. `Vivier <hello@vivier.app>`).
+- [ ] `SITE_URL` is required for sharing by email: the link in the email is
+      built from it and `sendShare` refuses a link on another origin; without it
+      the share dialog only offers the link to copy. Share emails set Reply-To
+      to the sender's confirmed address (`EMAIL_REPLY_TO` is the fallback).
+- [ ] Without `LLM_API_KEY` the brief page says no model is set up, criteria
+      are typed by hand and every search runs on text only (shown on the page);
+      with a key, proposals, hybrid retrieval and explanations record
+      `ai_usage` rows of kinds `brief`, `embed` and `explain`.
 
 ## Legal
 
@@ -70,3 +78,28 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Allow `registry.npmjs.org` in the cloud environment's network settings so
       a session can install, typecheck and format; then run `bun run format`
       and commit `services/processor/package-lock.json`.
+
+## Backups (docs/BACKUPS.md)
+
+- [ ] Supabase: Pro plan with the Point-in-Time Recovery add-on (note the retention window).
+- [ ] Supabase → Database: the **Session pooler** connection string (port 5432, IPv4) with
+      `?sslmode=require`; not the transaction pooler, not the direct host.
+- [ ] Supabase → Storage → Settings → S3 connection enabled; one pair of S3 access keys made
+      for the backup only; note the endpoint (`https://<ref>.storage.supabase.co/storage/v1/s3`)
+      and the project's region.
+- [ ] Cloudflare R2: bucket `vivier-backups` (EU jurisdiction) and an API token scoped to it
+      with Object Read & Write; endpoint `https://<account_id>.r2.cloudflarestorage.com`.
+- [ ] GitHub → Settings → Secrets and variables → Actions, secrets: `VIVIER_DATABASE_URL`,
+      `VIVIER_R2_ENDPOINT`, `VIVIER_R2_BUCKET`, `VIVIER_R2_ACCESS_KEY_ID`,
+      `VIVIER_R2_SECRET_ACCESS_KEY`, `VIVIER_SUPABASE_S3_ENDPOINT`,
+      `VIVIER_SUPABASE_S3_ACCESS_KEY_ID`, `VIVIER_SUPABASE_S3_SECRET_ACCESS_KEY`;
+      variable `VIVIER_SUPABASE_S3_REGION` (e.g. `eu-west-1`).
+- [ ] Actions → "Vivier backup" → Run workflow once by hand: the summary shows `"ok":true`,
+      the bucket shows `vivier/db/` and `vivier/storage/cvs/`. Until the secrets exist the
+      workflow ends green with a "skipped" notice; the schedule (03:17 UTC) runs from `main` only.
+- [ ] Restore drill before go-live, on a fresh project, following docs/BACKUPS.md; record
+      here: date ______, dump stamp ______, time taken ______, what failed ______.
+- [ ] Quarterly drill in the calendar; a monthly glance at the Actions tab (GitHub pauses a
+      schedule after sixty days without a commit).
+- [ ] Cloudflare's DPA covers R2 as a sub-processor and the privacy policy lists backups
+      (docs/RGPD.md "Who is who").

@@ -66,21 +66,32 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const loadMembers = useCallback(async (orgId: string) => {
     const supabase = await loadSupabase();
     if (!supabase) return;
+    // memberships.user_id points at auth.users, so PostgREST cannot embed
+    // profiles through it: two reads, joined here.
     const { data, error } = await supabase
       .from("memberships")
-      .select("user_id, role, profiles(*)")
+      .select("user_id, role")
       .eq("org_id", orgId);
     if (error) {
       console.error(error);
       return;
     }
+    const rows = (data ?? []) as unknown as { user_id: string; role: OrgRole }[];
+    const ids = rows.map((row) => row.user_id);
     const map = new Map<string, ProfileRow & { role: OrgRole }>();
-    for (const row of (data ?? []) as unknown as {
-      user_id: string;
-      role: OrgRole;
-      profiles: ProfileRow | null;
-    }[]) {
-      if (row.profiles) map.set(row.user_id, { ...row.profiles, role: row.role });
+    if (ids.length) {
+      const profiles = await supabase.from("profiles").select("*").in("id", ids);
+      if (profiles.error) {
+        console.error(profiles.error);
+        return;
+      }
+      const byId = new Map(
+        ((profiles.data ?? []) as unknown as ProfileRow[]).map((profile) => [profile.id, profile]),
+      );
+      for (const row of rows) {
+        const profile = byId.get(row.user_id);
+        if (profile) map.set(row.user_id, { ...profile, role: row.role });
+      }
     }
     setMembers(map);
   }, []);

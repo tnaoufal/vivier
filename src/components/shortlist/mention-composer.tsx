@@ -4,7 +4,7 @@
  * Escape closes the list, Ctrl+Enter submits. The mentions themselves
  * are read from the final text (mentions.ts) when the comment is sent.
  */
-import { useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { useId, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,7 +48,7 @@ export function MentionComposer({
   const [active, setActive] = useState(0);
   const suggestions = useMemo(() => (query ? filterMembers(members, query.query) : []), [members, query]);
   const open = query !== null && suggestions.length > 0;
-  const listId = "mention-suggestions";
+  const listId = `${useId()}-mentions`;
 
   function sync(element: HTMLTextAreaElement) {
     const caret = element.selectionStart ?? element.value.length;

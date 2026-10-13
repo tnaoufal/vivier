@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/lib/auth/auth-context";
 import type { ShortlistItemStatus } from "@/lib/db/types";
-import { useI18n } from "@/lib/i18n";
+import { formatDateTime, formatRelative, useI18n } from "@/lib/i18n";
 import type { BoardItem } from "@/lib/shortlists/queries";
 import type { VoteTally } from "@/lib/shortlists/tally";
 import { useItemActions } from "@/lib/shortlists/use-item-actions";
@@ -48,7 +48,7 @@ export function ItemCard({
   onChanged: () => void;
   onOpen: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { user } = useAuth();
   const members = useTeamMembers();
   const nameOf = useMemberNamer();
@@ -85,7 +85,13 @@ export function ItemCard({
         <VerdictCounts match={item.match} />
       </div>
 
-      <DecisionTrace status={item.status} decidedBy={item.decided_by} decidedAt={item.decided_at} className="mt-2" />
+      {item.decided_at ? (
+        <DecisionTrace status={item.status} decidedBy={item.decided_by} decidedAt={item.decided_at} className="mt-2" />
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground" title={formatDateTime(locale, item.created_at)}>
+          {t("shortlists.item.addedBy", { name: nameOf(item.added_by), when: formatRelative(locale, item.created_at) })}
+        </p>
+      )}
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <VoteButtons tally={tally} canVote={canAct} busy={actions.busy} onVote={(value) => void actions.vote(value, tally.mine)} />

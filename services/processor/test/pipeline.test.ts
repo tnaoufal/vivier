@@ -131,6 +131,11 @@ class FakeDb implements Db {
     return [...this.candidates.values()].find((c) => c.org_id === orgId && c.fingerprint === fingerprint) ?? null;
   }
 
+  async getCandidateById(orgId: string, id: string): Promise<CandidateRow | null> {
+    const row = this.candidates.get(id);
+    return row && row.org_id === orgId ? row : null;
+  }
+
   async insertCandidate(values: CandidateInsert): Promise<string> {
     this.counter += 1;
     const id = `44444444-4444-4444-8444-${String(this.counter).padStart(12, "0")}`;

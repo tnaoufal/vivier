@@ -95,7 +95,6 @@ const fr = {
   "shortlists.comments.edited": "modifié",
   "shortlists.comments.deleteTitle": "Supprimer ce commentaire ?",
   "shortlists.comments.deleteText": "Le commentaire disparaît pour toute l'équipe.",
-  "shortlists.comments.noMatch": "Aucun membre ne correspond.",
   "shortlists.comments.suggestions": "Membres à mentionner",
 
   // drawer
@@ -207,7 +206,6 @@ const en = {
   "shortlists.comments.edited": "edited",
   "shortlists.comments.deleteTitle": "Delete this comment?",
   "shortlists.comments.deleteText": "The comment disappears for the whole team.",
-  "shortlists.comments.noMatch": "No member matches.",
   "shortlists.comments.suggestions": "Members to mention",
 
   "shortlists.drawer.openCandidate": "See the full profile",

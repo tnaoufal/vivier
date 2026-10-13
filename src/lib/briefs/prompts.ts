@@ -7,7 +7,7 @@
  * guard that drops a criterion about a protected characteristic.
  * Prompts are in English; the model answers in the brief's language.
  */
-import type { BriefCriterion, BriefRow, MatchResult } from "@/lib/db/types";
+import type { BriefRow, MatchResult } from "@/lib/db/types";
 
 import { normalise, type MatchProfile } from "./matching";
 

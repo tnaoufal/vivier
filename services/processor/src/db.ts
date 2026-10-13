@@ -107,6 +107,8 @@ export interface Db {
   updateDocument(id: string, patch: DocumentPatch): Promise<void>;
   findDocumentBySha256(orgId: string, sha256: string, excludeId: string): Promise<DocumentRow | null>;
   findCandidateByFingerprint(orgId: string, fingerprint: string): Promise<CandidateRow | null>;
+  /** The candidate a document was attached to before processing (same organisation), or null. */
+  getCandidateById(orgId: string, id: string): Promise<CandidateRow | null>;
   /** Answers the new row's id. */
   insertCandidate(values: CandidateInsert): Promise<string>;
   updateCandidate(id: string, patch: CandidateWrite): Promise<void>;
@@ -252,6 +254,17 @@ export function createDb(config: SupabaseConfig): Db {
         .limit(1)
         .maybeSingle();
       if (error) fail("findCandidateByFingerprint", error);
+      return rowOf<CandidateRow>(data);
+    },
+
+    getCandidateById: async (orgId, id) => {
+      const { data, error } = await client
+        .from("candidates")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("id", id)
+        .maybeSingle();
+      if (error) fail("getCandidateById", error);
       return rowOf<CandidateRow>(data);
     },
 

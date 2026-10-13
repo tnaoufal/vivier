@@ -9,7 +9,7 @@
     "PROCESSOR_URL": "",
   },
   // Per-client throttle on the server functions that call a model or send
-  // email (src/lib/server/rate-limit.server.ts). Counted per data centre.
+  // email (src/lib/platform/rate-limit.server.ts). Counted per data centre.
   "ratelimits": [
     {
       "name": "VIVIER_RATE_LIMITER",
