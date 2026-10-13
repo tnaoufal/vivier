@@ -1,3 +1,9 @@
+/**
+ * A small rounded label: a status, a verdict, a role. Tones carry
+ * meaning only (positive, caution, negative, neutral, primary); `dot`
+ * adds a leading dot so colour is never the only signal when the
+ * caller has no icon of its own.
+ */
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -12,13 +18,30 @@ const TONES: Record<PillTone, string> = {
   primary: "bg-primary/12 text-primary",
 };
 
-/** A small rounded label: a status, a verdict, a role. */
-export function Pill({ tone = "neutral", children, className, title }: { tone?: PillTone; children: ReactNode; className?: string; title?: string }) {
+export function Pill({
+  tone = "neutral",
+  dot = false,
+  children,
+  className,
+  title,
+}: {
+  tone?: PillTone;
+  /** A leading dot in the tone's colour, for a pill without an icon. */
+  dot?: boolean;
+  children: ReactNode;
+  className?: string;
+  title?: string;
+}) {
   return (
     <span
       title={title}
-      className={cn("inline-flex h-6 items-center gap-1 rounded-full px-2.5 text-xs font-medium whitespace-nowrap [&_svg]:size-3", TONES[tone], className)}
+      className={cn(
+        "inline-flex h-6 max-w-full items-center gap-1.5 rounded-full px-2.5 text-xs font-medium whitespace-nowrap tabular-nums [&_svg]:size-3.5 [&_svg]:shrink-0",
+        TONES[tone],
+        className,
+      )}
     >
+      {dot ? <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" /> : null}
       {children}
     </span>
   );

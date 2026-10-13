@@ -43,7 +43,12 @@ Reads in components go through `useQuery(key, read)` (`src/lib/data/use-query.ts
 live updates through `subscribeToTable(table, filter, onChange)` with
 `debounce(refresh)` (`src/lib/data/realtime.ts`). Inserts set `created_by`
 / `added_by` / `author_id` / `uploaded_by` to `user.id` from `useAuth()`;
-RLS checks it.
+RLS checks it. An RPC the browser calls (`similar_candidates`) is SECURITY
+INVOKER, so RLS decides what it answers; its rows are guarded at the
+boundary like any query result (`src/lib/candidates/similar.ts`). A loop
+the browser drives (an import, an analysis) sends bounded batches
+(`LOT_SIZE`, `ASSESS_BATCH_MAX`), renders progress, and can be stopped and
+resumed from what is stored.
 
 Errors from supabase-js are objects with `code` and `message`; show
 `t("common.error")` (or a specific sentence for a known code) with
@@ -80,15 +85,27 @@ email call in the browser. Server-only modules end in `.server.ts`
 (the bundler keeps them out of the client).
 
 Service-role access is `db()` (`src/lib/platform/supabase.server.ts`): a
-PostgREST client (`select(path)`, `insert`, `patch`, `delete`, `rpc`,
-`signUrl`, `removeObjects`). Because it bypasses RLS, every handler calls
-`requireMember()` first and filters by the organisation it verified.
+PostgREST client (`select(path)`, `count(path)` (a HEAD with
+`count=exact`), `insert`, `patch`, `delete`, `rpc`, `signUrl`,
+`removeObjects`). Because it bypasses RLS, every handler calls
+`requireMember()` first and filters by the organisation it verified. A
+list of ids in a query string stays at 100 or fewer (`planLots()`): the
+gateway refuses a URL past 16 KB.
 
-The model: `completeJson({ system, user, schema })` and `embed(texts)`
-(`src/lib/model/model.server.ts`), both throwing `SETUP:model` when no key
-is set; check `modelConfigured()` first when a feature has a no-model
-path (it always should: the search runs on text alone, a summary is left
-for the person to write). Record every call with `recordUsage(orgId, kind, usage)`.
+The model: `completeJson({ system, user, schema, model? })` and
+`embed(texts)` (`src/lib/model/model.server.ts`), both throwing
+`SETUP:model` when no key is set; `model` names another chat model of the
+same endpoint for one call (the assessment reads
+`settings().llm.assessmentModel`). Check `modelConfigured()` first when a
+feature has a no-model path (it always should: the analysis runs on text
+alone, a dossier is written from the verdicts). Record every call with
+`recordUsage(orgId, kind, usage)`, `kind` one of `structure`, `embed`,
+`ocr`, `brief`, `assess`, `summary`. A payload that carries a candidate's
+text goes through `redactIdentity()` (`src/lib/briefs/prompts.ts`) first:
+the model reads a profile, never a name, an e-mail or a phone number; and
+an answer that a page will show is bound by pure rules before it is stored
+(`enforceAssessment()` is the pattern). Rate-limit scopes are `model`,
+`email`, `share`, `processor`, `search` and `assess`.
 
 ## Sentences
 
@@ -104,10 +121,16 @@ Dates: `formatDate`, `formatDateTime`, `formatRelative` from `@/lib/i18n`.
 shadcn/ui primitives in `src/components/ui` (button, card, dialog,
 dropdown-menu, input, label, popover, select, separator, sheet, skeleton,
 tabs, textarea, tooltip, command). App-shell pieces in
-`src/components/app-shell`: `PageHeader`, `EmptyState`, `Pill` (tones:
-neutral, positive, caution, negative, primary), `Avatar`, `ConfirmDialog`.
-Utilities: `sheet` (a bordered card), `label-caps`, `font-display`,
-`skeleton`, `surface-float`, `surface-dialog`. Icons from `lucide-react`.
+`src/components/app-shell`: `PageHeader`, `Section`, `EmptyState`, `Pill`
+(tones: neutral, positive, caution, negative, primary; `dot` for a leading
+mark), `StatTile`, `FilterChip`, `LocaleChips`, `ScoreRing`,
+`RequirementList`, `Avatar`, `ConfirmDialog`. A verdict or a decision is
+always a pill or a mark with an icon and a text alternative, never colour
+alone (`docs/DESIGN.md`). Utilities: `sheet` (a bordered card),
+`sheet-row`, `sheet-link` (a card that leads somewhere), `label-caps`,
+`stat-number`, `font-display`, `skeleton`, `surface-float`,
+`surface-dialog`; `share-sheet` for the public dossier only. Icons from
+`lucide-react`.
 Tailwind v4 tokens: `bg-background`, `text-ink`, `text-muted-foreground`,
 `border-border`, `text-positive` / `text-caution` / `text-negative`
 (verdicts), `bg-primary`.

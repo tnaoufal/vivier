@@ -3,7 +3,7 @@
  * contact, and the date the hourly purge deletes the profile, read from
  * retention_due_at() and never computed in the browser. Withdrawing
  * consent is confirmed first, because the purge then deletes the
- * profile at once.
+ * profile at once. Spacing and type follow docs/DESIGN.md.
  */
 import { useEffect, useState } from "react";
 
@@ -86,9 +86,9 @@ export function ConsentCard({
   }
 
   return (
-    <section className="sheet space-y-4 p-4 sm:p-5">
-      <h2 className="label-caps">{t("candidates.consent.title")}</h2>
-      <div className="space-y-1.5">
+    <section className="sheet space-y-4 p-6">
+      <h2 className="text-base font-semibold text-ink">{t("candidates.consent.title")}</h2>
+      <div className="space-y-2">
         <Label htmlFor="consent-status">{t("candidates.consent.status")}</Label>
         <Select value={candidate.consent_status} onValueChange={changeConsent} disabled={!canEdit || busy}>
           <SelectTrigger id="consent-status">
@@ -103,15 +103,15 @@ export function ConsentCard({
           </SelectContent>
         </Select>
         {candidate.consent_status === "given" && candidate.consent_at ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[13px] leading-5 text-muted-foreground">
             {t("candidates.consent.givenAt", { date: formatDate(locale, candidate.consent_at) })}
           </p>
         ) : null}
         {candidate.consent_status === "withdrawn" ? (
-          <p className="text-xs text-negative">{t("candidates.consent.withdrawn.note")}</p>
+          <p className="text-[13px] leading-5 text-negative">{t("candidates.consent.withdrawn.note")}</p>
         ) : null}
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <Label htmlFor="last-contact">{t("candidates.consent.lastContact")}</Label>
         <Input
           id="last-contact"
@@ -122,7 +122,7 @@ export function ConsentCard({
           disabled={!canEdit || busy}
         />
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-[13px] leading-5 text-muted-foreground">
         {retentionDueAt
           ? t("candidates.consent.retention", {
               date: formatDate(locale, retentionDueAt),

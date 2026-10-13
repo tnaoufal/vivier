@@ -1,8 +1,11 @@
 /**
- * First step of the share dialog: which candidates go into the
- * presentation (the retained ones are ticked), the title, an
- * introduction, whether the CVs are included, when the link expires and,
- * when this deployment has a model, whether it drafts the summaries.
+ * First step of the share dialog: which candidates go into the dossier
+ * (the retained ones are ticked), the title, an introduction, whether
+ * the CVs are included, when the link expires and, when this deployment
+ * has a model, whether it drafts the syntheses. Laid out per the design
+ * charter: the list scrolls inside the dialog, labels at 13px, fields
+ * spaced evenly. The buttons are a component of their own so the dialog
+ * can keep them below the scrolling box, in view whatever the height.
  */
 import type { ReactNode } from "react";
 import { Users } from "lucide-react";
@@ -23,11 +26,18 @@ import type { ShareableItem } from "@/lib/shares/queries";
 import type { ShareCapabilities } from "@/lib/shares/shares.functions";
 import { EXPIRY_CHOICES, isExpiryDays } from "@/lib/shares/state";
 
+import { FIELD_LABEL } from "./field-label";
+
 const STATUS_TONE: Record<ShortlistItemStatus, PillTone> = {
   to_review: "neutral",
   retained: "positive",
   dismissed: "negative",
 };
+
+/** The shortlist items that still have a candidate: the ones the list offers and the footer counts. */
+export function presentItems(items: readonly ShareableItem[] | null): ShareableItem[] {
+  return (items ?? []).filter((item) => item.candidates !== null);
+}
 
 export function ContentStep({
   state,
@@ -36,7 +46,6 @@ export function ContentStep({
   loading,
   error,
   capabilities,
-  onPrepare,
 }: {
   state: DialogState;
   dispatch: (action: DialogAction) => void;
@@ -44,11 +53,10 @@ export function ContentStep({
   loading: boolean;
   error: string | null;
   capabilities: ShareCapabilities | null;
-  onPrepare: () => void;
 }) {
   const t = useT();
   const busy = state.busy;
-  const present = (items ?? []).filter((item) => item.candidates !== null);
+  const present = presentItems(items);
 
   let list: ReactNode;
   if (error) {
@@ -56,21 +64,21 @@ export function ContentStep({
   } else if (loading && !items) {
     list = (
       <div className="space-y-2" aria-busy="true">
-        <div className="skeleton h-9 w-full rounded-xl" />
-        <div className="skeleton h-9 w-full rounded-xl" />
+        <div className="skeleton h-10 w-full rounded-xl" />
+        <div className="skeleton h-10 w-full rounded-xl" />
       </div>
     );
   } else if (!present.length) {
     list = <EmptyState icon={<Users />} title={t("shares.content.empty.title")} text={t("shares.content.empty.text")} />;
   } else {
     list = (
-      <ul className="sheet divide-y divide-border">
+      <ul className="sheet max-h-[40vh] divide-y divide-border overflow-y-auto">
         {present.map((item) => {
           const candidate = item.candidates;
           const checked = state.selected.includes(item.candidate_id);
           return (
             <li key={item.id}>
-              <label className="flex cursor-pointer items-center gap-3 px-3 py-2">
+              <label className="flex min-h-10 cursor-pointer items-center gap-3 px-4 py-2.5">
                 <input
                   type="checkbox"
                   className="size-4 shrink-0 accent-primary"
@@ -83,7 +91,7 @@ export function ContentStep({
                     {candidate?.full_name?.trim() || t("shares.item.noName")}
                   </span>
                   {candidate?.headline ? (
-                    <span className="block truncate text-xs text-muted-foreground">{candidate.headline}</span>
+                    <span className="block truncate text-[13px] text-muted-foreground">{candidate.headline}</span>
                   ) : null}
                 </span>
                 <Pill tone={STATUS_TONE[item.status]}>{t(`shares.item.status.${item.status}`)}</Pill>
@@ -96,18 +104,22 @@ export function ContentStep({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <section className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <Label>{t("shares.content.candidates")}</Label>
-          <span className="text-xs text-muted-foreground">{t("shares.content.selected", { count: state.selected.length })}</span>
+          <Label className={FIELD_LABEL}>{t("shares.content.candidates")}</Label>
+          <span className="text-[13px] tabular-nums text-muted-foreground">
+            {t("shares.content.selected", { count: state.selected.length })}
+          </span>
         </div>
-        <p className="text-xs text-muted-foreground">{t("shares.content.candidates.help", { max: SHARE_ITEMS_MAX })}</p>
+        <p className="text-[13px] text-muted-foreground">{t("shares.content.candidates.help", { max: SHARE_ITEMS_MAX })}</p>
         {list}
       </section>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="share-title">{t("shares.content.title")}</Label>
+      <div className="space-y-2">
+        <Label htmlFor="share-title" className={FIELD_LABEL}>
+          {t("shares.content.title")}
+        </Label>
         <Input
           id="share-title"
           value={state.title}
@@ -118,9 +130,9 @@ export function ContentStep({
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="share-intro">
-          {t("shares.content.intro")} <span className="font-normal text-muted-foreground">({t("common.optional")})</span>
+      <div className="space-y-2">
+        <Label htmlFor="share-intro" className={FIELD_LABEL}>
+          {t("shares.content.intro")} <span className="font-normal">({t("common.optional")})</span>
         </Label>
         <Textarea
           id="share-intro"
@@ -133,19 +145,21 @@ export function ContentStep({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex cursor-pointer items-start gap-3 text-sm text-ink">
+      <div className="grid gap-6 sm:grid-cols-2">
+        <label className="flex min-h-10 cursor-pointer items-start gap-3 text-sm text-ink">
           <input
             type="checkbox"
-            className="mt-0.5 size-4 shrink-0 accent-primary"
+            className="mt-1 size-4 shrink-0 accent-primary"
             checked={state.includeCvs}
             disabled={busy}
             onChange={(event) => dispatch({ type: "setIncludeCvs", value: event.target.checked })}
           />
-          <span>{t("shares.content.includeCvs")}</span>
+          <span className="leading-6">{t("shares.content.includeCvs")}</span>
         </label>
-        <div className="space-y-1.5">
-          <Label htmlFor="share-expiry">{t("shares.content.expiry")}</Label>
+        <div className="space-y-2">
+          <Label htmlFor="share-expiry" className={FIELD_LABEL}>
+            {t("shares.content.expiry")}
+          </Label>
           <Select
             value={String(state.expiresInDays)}
             disabled={busy}
@@ -172,25 +186,41 @@ export function ContentStep({
         <label className="flex cursor-pointer items-start gap-3 text-sm text-ink">
           <input
             type="checkbox"
-            className="mt-0.5 size-4 shrink-0 accent-primary"
+            className="mt-1 size-4 shrink-0 accent-primary"
             checked={state.useModel}
             disabled={busy}
             onChange={(event) => dispatch({ type: "setUseModel", value: event.target.checked })}
           />
-          <span>
+          <span className="leading-6">
             {t("shares.content.useModel")}
-            <span className="mt-0.5 block text-xs text-muted-foreground">{t("shares.content.useModel.help")}</span>
+            <span className="mt-0.5 block text-[13px] leading-5 text-muted-foreground">{t("shares.content.useModel.help")}</span>
           </span>
         </label>
       ) : capabilities ? (
-        <p className="text-xs text-muted-foreground">{t("shares.content.noModel")}</p>
+        <p className="text-[13px] leading-5 text-muted-foreground">{t("shares.content.noModel")}</p>
       ) : null}
-
-      <DialogFooter>
-        <Button type="button" onClick={onPrepare} disabled={!canPrepare(state) || loading || !present.length}>
-          {busy ? t("common.loading") : t("shares.content.prepare")}
-        </Button>
-      </DialogFooter>
     </div>
+  );
+}
+
+/** The one button of the first step, rendered by the dialog under the scrolling box. */
+export function ContentFooter({
+  state,
+  items,
+  loading,
+  onPrepare,
+}: {
+  state: DialogState;
+  items: ShareableItem[] | null;
+  loading: boolean;
+  onPrepare: () => void;
+}) {
+  const t = useT();
+  return (
+    <DialogFooter className="gap-2">
+      <Button type="button" onClick={onPrepare} disabled={!canPrepare(state) || loading || !presentItems(items).length}>
+        {state.busy ? t("common.loading") : t("shares.content.prepare")}
+      </Button>
+    </DialogFooter>
   );
 }

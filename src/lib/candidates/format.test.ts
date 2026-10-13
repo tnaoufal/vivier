@@ -8,6 +8,7 @@ import {
   distinctTags,
   documentTone,
   formatBytes,
+  formatCount,
   formatDateRange,
   languagesLine,
   needsReview,
@@ -50,6 +51,16 @@ describe("formatBytes", () => {
     expect(formatBytes(26214400, "en")).toBe("25 MB");
     expect(formatBytes(26214400, "fr")).toBe("25 Mo");
     expect(formatBytes(-5, "en")).toBe("0 B");
+  });
+});
+
+describe("formatCount", () => {
+  it("groups thousands the way the locale does and never shows a negative count", () => {
+    expect(formatCount("en", 10000)).toBe("10,000");
+    expect(formatCount("fr", 10000)).toMatch(/^10\s000$/);
+    expect(formatCount("en", 7)).toBe("7");
+    expect(formatCount("en", -3)).toBe("0");
+    expect(formatCount("fr", Number.NaN)).toBe("0");
   });
 });
 
@@ -115,6 +126,8 @@ describe("row summaries", () => {
     expect(documentTone("needs_ocr")).toBe("caution");
     expect(documentTone("processing")).toBe("primary");
     expect(documentTone("queued")).toBe("neutral");
+    // Set aside is not a failure of the service: the file was read and is not a CV.
+    expect(documentTone("rejected")).toBe("neutral");
   });
 });
 

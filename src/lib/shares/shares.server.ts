@@ -3,15 +3,27 @@
  * route: the lookups (an organisation, a shortlist with its brief, a
  * share of the organisation, the share behind the token a link carries,
  * hashed first and never compared raw), the reading of a share's
- * organisation and items, the sender's name, and the activity row
- * every change writes. Only ever imported by server-function handlers
- * and API routes.
+ * organisation, items and brief snapshot (guarded: the columns are
+ * JSON, and shares created before the dossier lack the new fields), the
+ * sender's name, and the activity row every change writes. Only ever
+ * imported by server-function handlers and API routes.
  */
-import type { ActivityKind, BriefRow, Locale, OrganizationRow, ProfileRow, ShareItem, ShareRow } from "@/lib/db/types";
+import type {
+  ActivityKind,
+  BriefRow,
+  Locale,
+  OrganizationRow,
+  ProfileRow,
+  ShareBrief,
+  ShareItem,
+  ShareRequirement,
+  ShareRow,
+} from "@/lib/db/types";
+import { parseCriteria } from "@/lib/briefs/criteria";
 import { AppError } from "@/lib/platform/errors";
 import type { Member, ServiceClient } from "@/lib/platform/supabase.server";
 
-import type { DraftBrief } from "./draft";
+import { cleanScore, isDecision, isMet, type DraftBrief } from "./draft";
 import { isTokenShaped, sha256Hex } from "./token";
 
 export function log(event: string, detail: Record<string, unknown>): void {
@@ -56,7 +68,7 @@ export interface LoadedShortlist {
   brief: DraftBrief;
 }
 
-/** The shortlist of the organisation with its brief, or NOT_FOUND. */
+/** The shortlist of the organisation with its brief (criteria read as the brief page reads them), or NOT_FOUND. */
 export async function loadShortlist(client: ServiceClient, orgId: string, shortlistId: string): Promise<LoadedShortlist> {
   const rows = await client.select<ShortlistLookup>(
     `shortlists?select=id,brief_id,briefs(id,title,description,criteria)&org_id=eq.${encodeURIComponent(orgId)}&id=eq.${encodeURIComponent(shortlistId)}&limit=1`,
@@ -70,7 +82,7 @@ export async function loadShortlist(client: ServiceClient, orgId: string, shortl
     brief: {
       title: brief?.title ?? "",
       description: brief?.description ?? "",
-      criteria: brief && Array.isArray(brief.criteria) ? brief.criteria : [],
+      criteria: parseCriteria(brief?.criteria),
     },
   };
 }
@@ -117,13 +129,23 @@ export interface ShareOrg {
 export interface TokenShareRow
   extends Pick<
     ShareRow,
-    "id" | "org_id" | "title" | "intro" | "items" | "include_cvs" | "expires_at" | "revoked_at" | "created_at" | "view_count"
+    | "id"
+    | "org_id"
+    | "title"
+    | "intro"
+    | "items"
+    | "brief"
+    | "include_cvs"
+    | "expires_at"
+    | "revoked_at"
+    | "created_at"
+    | "view_count"
   > {
   organizations: ShareOrg | ShareOrg[] | null;
 }
 
 const TOKEN_SHARE_COLUMNS =
-  "id,org_id,title,intro,items,include_cvs,expires_at,revoked_at,created_at,view_count,organizations(name,locale)";
+  "id,org_id,title,intro,items,brief,include_cvs,expires_at,revoked_at,created_at,view_count,organizations(name,locale)";
 
 /** The share behind a link, whatever its state; null when the token is not shaped like one or matches nothing. */
 export async function findShareByToken(client: ServiceClient, token: string): Promise<TokenShareRow | null> {
@@ -146,19 +168,75 @@ function isItem(value: unknown): value is ShareItem {
   return typeof item["candidateId"] === "string" && typeof item["name"] === "string";
 }
 
-/** The stored items, guarded (the column is JSON), with the CV link only when CVs are included. */
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
+/** A stored requirement row, or null when the JSON does not hold one. */
+function requirementOf(value: unknown): ShareRequirement | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const label = text(row["label"]);
+  const met = row["met"];
+  if (!label || !isMet(met)) return null;
+  return { label, required: row["required"] === true, met, evidence: text(row["evidence"]) };
+}
+
+/**
+ * The stored items, guarded (the column is JSON), with the CV link only
+ * when CVs are included. A share created before the dossier holds none
+ * of the facts, the score, the decision or the requirement table: they
+ * read as empty and null, and the page says so rather than inventing.
+ */
 export function itemsOf(row: Pick<TokenShareRow, "items" | "include_cvs">): ShareItem[] {
   const raw: unknown = row.items;
   if (!Array.isArray(raw)) return [];
-  return raw.filter(isItem).map((item) => ({
-    candidateId: item.candidateId,
-    name: item.name,
-    headline: typeof item.headline === "string" ? item.headline : null,
-    summary: typeof item.summary === "string" ? item.summary : "",
-    strengths: Array.isArray(item.strengths) ? item.strengths.filter((p): p is string => typeof p === "string") : [],
-    attention: Array.isArray(item.attention) ? item.attention.filter((p): p is string => typeof p === "string") : [],
-    documentId: row.include_cvs && typeof item.documentId === "string" ? item.documentId : null,
-  }));
+  return raw.filter(isItem).map((item) => {
+    const stored = item as unknown as Record<string, unknown>;
+    const years = stored["yearsExperience"];
+    return {
+      candidateId: item.candidateId,
+      name: item.name,
+      headline: text(stored["headline"]),
+      location: text(stored["location"]),
+      yearsExperience: typeof years === "number" && Number.isFinite(years) ? years : null,
+      availability: text(stored["availability"]),
+      skills: strings(stored["skills"]),
+      languages: strings(stored["languages"]),
+      summary: typeof stored["summary"] === "string" ? stored["summary"] : "",
+      strengths: strings(stored["strengths"]),
+      attention: strings(stored["attention"]),
+      score: cleanScore(stored["score"]),
+      decision: isDecision(stored["decision"]) ? stored["decision"] : null,
+      requirements: Array.isArray(stored["requirements"])
+        ? stored["requirements"].map(requirementOf).filter((entry): entry is ShareRequirement => entry !== null)
+        : [],
+      documentId: row.include_cvs && typeof stored["documentId"] === "string" ? stored["documentId"] : null,
+    };
+  });
+}
+
+/** The brief's snapshot, guarded; null for a share created before the dossier or a malformed column. */
+export function briefOf(row: Pick<TokenShareRow, "brief">): ShareBrief | null {
+  const raw: unknown = row.brief;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const brief = raw as Record<string, unknown>;
+  const title = typeof brief["title"] === "string" ? brief["title"] : "";
+  const summary = typeof brief["summary"] === "string" ? brief["summary"] : "";
+  const requirements: ShareBrief["requirements"] = Array.isArray(brief["requirements"])
+    ? brief["requirements"].flatMap((entry: unknown) => {
+        if (!entry || typeof entry !== "object") return [];
+        const row = entry as Record<string, unknown>;
+        const label = text(row["label"]);
+        return label ? [{ label, required: row["required"] === true }] : [];
+      })
+    : [];
+  if (!title && !summary && !requirements.length) return null;
+  return { title, summary, requirements };
 }
 
 // ---------------------------------------------------------------------

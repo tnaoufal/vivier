@@ -18,7 +18,7 @@ import { EducationRows, ExperienceRows, LanguageRows, LinkRows } from "./profile
 
 function Field({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-2">
       <Label htmlFor={id}>{label}</Label>
       {children}
     </div>
@@ -27,8 +27,8 @@ function Field({ id, label, children }: { id: string; label: string; children: R
 
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="sheet p-4 sm:p-5">
-      <h2 className="label-caps mb-3">{title}</h2>
+    <section className="sheet p-6">
+      <h2 className="mb-5 text-base font-semibold leading-6 text-ink">{title}</h2>
       {children}
     </section>
   );
@@ -59,9 +59,9 @@ export function ProfileForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4">
+    <form onSubmit={submit} className="space-y-6">
       <Block title={t("candidates.field.contact")}>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-6 sm:grid-cols-2">
           <Field id="cand-name" label={t("candidates.field.full_name")}>
             <Input id="cand-name" value={draft.full_name} onChange={(e) => set("full_name", e.target.value)} maxLength={200} disabled={busy} />
           </Field>
@@ -106,7 +106,7 @@ export function ProfileForm({
         <LinkRows rows={draft.links} onChange={(rows) => set("links", rows)} disabled={busy} />
       </Block>
 
-      <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-background/90 py-3 backdrop-blur">
+      <div className="sticky bottom-0 flex flex-wrap justify-end gap-3 border-t border-border bg-background/90 py-4 backdrop-blur">
         <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
           {t("common.cancel")}
         </Button>

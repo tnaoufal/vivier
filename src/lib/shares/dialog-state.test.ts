@@ -18,11 +18,21 @@ const item = (candidateId: string, name = "Ana"): ShareItem => ({
   candidateId,
   name,
   headline: null,
+  location: "Lyon",
+  yearsExperience: 8,
+  availability: null,
+  skills: ["Node.js", "PostgreSQL"],
+  languages: ["Anglais (C1)"],
   summary: "",
   strengths: ["Node"],
   attention: [],
+  score: 72,
+  decision: "fit",
+  requirements: [{ label: "Node.js en production", required: true, met: "yes", evidence: "API Node depuis 2018" }],
   documentId: null,
 });
+
+const brief = { title: "Back-end senior", summary: "API Node en prod.", requirements: [{ label: "Node.js en production", required: true }] };
 
 function run(state: DialogState, ...actions: Parameters<typeof dialogReducer>[1][]): DialogState {
   return actions.reduce(dialogReducer, state);
@@ -71,17 +81,18 @@ describe("review step", () => {
   const drafted = run(
     initialState("t"),
     { type: "setBusy", value: true },
-    { type: "drafted", items: [item("a"), item("b", "Bo")], modelUsed: true, modelFailed: false },
+    { type: "drafted", items: [item("a"), item("b", "Bo")], brief, modelUsed: true, modelFailed: false },
   );
 
-  it("moves to the review with the items and clears busy", () => {
+  it("moves to the review with the items, the brief's snapshot, and clears busy", () => {
     expect(drafted.step).toBe("review");
     expect(drafted.items).toHaveLength(2);
+    expect(drafted.brief).toEqual(brief);
     expect(drafted.busy).toBe(false);
     expect(drafted.modelUsed).toBe(true);
   });
 
-  it("edits a summary, a headline and the points of one item only", () => {
+  it("edits a summary, a headline and the points of one item only, never its assessment", () => {
     const state = run(
       drafted,
       { type: "setItemSummary", index: 1, summary: "Résumé" },
@@ -91,6 +102,8 @@ describe("review step", () => {
       { type: "removePoint", index: 1, field: "strengths", at: 0 },
     );
     expect(state.items[1]).toEqual({ ...item("b", "Bo"), summary: "Résumé", headline: "Titre", strengths: [], attention: ["Non précisé"] });
+    expect(state.items[1]?.requirements).toEqual(item("b").requirements);
+    expect(state.items[1]?.score).toBe(72);
     expect(state.items[0]).toEqual(item("a"));
   });
 
@@ -103,7 +116,7 @@ describe("review step", () => {
   });
 
   it("refuses to create with a nameless item and goes back to the content step", () => {
-    const blank = run(drafted, { type: "drafted", items: [item("a", "  ")], modelUsed: false, modelFailed: false });
+    const blank = run(drafted, { type: "drafted", items: [item("a", "  ")], brief: null, modelUsed: false, modelFailed: false });
     expect(canCreate(blank)).toBe(false);
     expect(run(blank, { type: "backToContent" }).step).toBe("content");
     expect(run(initialState("t"), { type: "backToContent" }).step).toBe("content");
@@ -113,7 +126,7 @@ describe("review step", () => {
 describe("send step", () => {
   const created = run(
     initialState("t"),
-    { type: "drafted", items: [item("a")], modelUsed: false, modelFailed: false },
+    { type: "drafted", items: [item("a")], brief, modelUsed: false, modelFailed: false },
     { type: "created", share: { shareId: "s1", url: "https://vivier.app/share/x", expiresAt: "2026-10-27T10:00:00Z" } },
   );
 
@@ -147,6 +160,7 @@ describe("send step", () => {
   it("resets everything for the next opening", () => {
     const state = run(created, { type: "reset", title: "Nouveau" });
     expect(state).toEqual(initialState("Nouveau"));
+    expect(state.brief).toBeNull();
   });
 });
 

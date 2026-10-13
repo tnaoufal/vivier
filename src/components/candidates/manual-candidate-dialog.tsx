@@ -2,7 +2,7 @@
  * A candidate typed in by hand (source "manual"): name, email, phone,
  * headline, location. Nothing is inferred; the rest of the profile is
  * filled on its page. At least a name or an email is needed so the row
- * can be found again.
+ * can be found again. A wide dialog with roomy fields: nothing is cut.
  */
 import { useState, type FormEvent } from "react";
 
@@ -109,30 +109,31 @@ export function ManualCandidateDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <form onSubmit={(event) => void submit(event)} className="space-y-4">
+      {/* A column, not the primitive's grid: the fields scroll inside on a short screen so the buttons stay reachable. */}
+      <DialogContent className="flex max-w-2xl flex-col">
+        <form onSubmit={(event) => void submit(event)} className="flex min-h-0 min-w-0 flex-col gap-6">
           <DialogHeader>
             <DialogTitle>{t("candidates.manual.title")}</DialogTitle>
             <DialogDescription>{t("candidates.manual.text")}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
+          <div className="-m-1 grid min-h-0 min-w-0 gap-6 overflow-y-auto p-1 sm:grid-cols-2">
+            <div className="min-w-0 space-y-2 sm:col-span-2">
               <Label htmlFor="manual-name">{t("candidates.field.full_name")}</Label>
               <Input id="manual-name" value={fields.full_name} onChange={(e) => set("full_name", e.target.value)} maxLength={200} autoFocus />
             </div>
-            <div className="space-y-1.5">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="manual-email">{t("common.email")}</Label>
               <Input id="manual-email" type="email" value={fields.email} onChange={(e) => set("email", e.target.value)} maxLength={200} />
             </div>
-            <div className="space-y-1.5">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="manual-phone">{t("candidates.field.phone")}</Label>
               <Input id="manual-phone" type="tel" value={fields.phone} onChange={(e) => set("phone", e.target.value)} maxLength={60} />
             </div>
-            <div className="space-y-1.5">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="manual-headline">{t("candidates.field.headline")}</Label>
               <Input id="manual-headline" value={fields.headline} onChange={(e) => set("headline", e.target.value)} maxLength={200} />
             </div>
-            <div className="space-y-1.5">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="manual-location">{t("candidates.field.location")}</Label>
               <Input id="manual-location" value={fields.location} onChange={(e) => set("location", e.target.value)} maxLength={200} />
             </div>

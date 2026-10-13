@@ -24,8 +24,9 @@ together. Paths are relative to the repository root.
             ┌───────────────────────┐   ┌──────────────────────────────┐
             │ Supabase (EU)         │◀──│ Processor (Railway, Node)    │──▶ model vendor, Mistral OCR
             │ Postgres 17 + RLS     │   │ services/processor           │
-            │ Auth, Storage `cvs`,  │   │ polls documents, structures, │
-            │ Realtime, pgvector    │   │ embeds, purges               │
+            │ Auth, Storage `cvs`,  │   │ polls documents, classifies, │
+            │ Realtime, pgvector    │   │ structures, dedups, embeds,  │
+            │                       │   │ re-embeds, purges            │
             └───────────────────────┘   └──────────────────────────────┘
 ```
 
@@ -36,7 +37,7 @@ together. Paths are relative to the repository root.
 | Database  | `supabase/migrations`                  | Postgres with policies, triggers and SECURITY DEFINER helpers  | everything: one `org_id` on every row                                                   |
 | Processor | `services/processor/src`               | one Node process on Railway, service role                      | the service role key, the model key, the OCR key, the shared secret                     |
 | Resend    | `src/lib/email/email.server.ts`        | called by the Worker only                                      | nothing of ours beyond the emails sent                                                  |
-| Model     | `src/lib/model/model.server.ts`, `services/processor/src/model.ts` | called by the Worker and the processor only  | the text it is sent (CV text, briefs, profiles) for the duration of the call            |
+| Model     | `src/lib/model/model.server.ts`, `services/processor/src/model.ts` | called by the Worker and the processor only  | the text it is sent (CV text, briefs; for the assessment a profile without name, e-mail or phone) for the duration of the call |
 
 ## Flows
 
@@ -45,42 +46,55 @@ together. Paths are relative to the repository root.
 ```
 Browser (member)                 Supabase                          Processor
 ──────────────────               ────────────────────────          ─────────────────────────────
-validate batch
-  (PDF, 25 MB, 200 files)
-hash file (SHA-256)
-select documents                 RLS: org member
-  where org_id, sha256  ──────▶  ─ same hash? tell the person
-upload object           ──────▶  storage: cvs/<org>/<doc>.pdf
+validate the selection once
+  (PDF, 25 MB, 10 000 files)
+lots of 100; in a lot, three files at a time:
+  hash file (SHA-256)
+  select documents               RLS: org member
+    where org_id, sha256 ──────▶ ─ same hash? "duplicate", stop
+  upload object         ──────▶  storage: cvs/<org>/<doc>.pdf
                                  (policy: member of <org>)
-insert documents row    ──────▶  status = queued
+  insert documents row  ──────▶  status = queued
                                  (policy: uploaded_by = me,
                                   storage_path LIKE '<org>/%')
                                  trigger: activity document.uploaded
-notifyProcessor() ───▶ Worker ─▶ requireMember, rate limit ─▶ POST /process {documentIds}   (best effort)
-                                                                 ─ or the poll, every 20 s ─
-                                 queued → processing     ◀──────  claim (atomic on status)
+after each lot:
+notifyProcessor(ids) ─▶ Worker ─▶ requireMember, rate limit ─▶ POST /process {documentIds} ×50   (best effort)
+"stop after this lot" │ "resume" │ "retry the failures"         ─ or the poll, every 20 s ─
+                                 queued → processing     ◀──────  claim (atomic on status), 4 at a time
                                  cvs_processed_this_month ◀─────  quota check (fail with a sentence when reached)
                                  download object          ◀─────  sha256 → documents.sha256
                                                                   (23505 on (org, sha256): attach to the
-                                                                   existing candidate, processed, stop)
+                                                                   existing candidate, processed, stop;
+                                                                   set aside too when the original was)
                                                                   text layer (unpdf) │ scanned?
                                                                     ├─ OCR key: Mistral OCR
                                                                     └─ none: needs_ocr + sentence
-                                                                  structure: model JSON (zod) │ heuristics
-                                                                  fingerprint → existing candidate? merge : insert
-                                                                  search_text; embedding (best effort, 1024)
+                                                                  structure + classify: model JSON (zod) │ heuristics
+                                                                    └─ document_kind "other": rejected + sentence,
+                                                                       text kept, no candidate touched, stop
+                                                                  ┌ one organisation at a time (mutex.ts) ┐
+                                                                  │ pinned? else email, else phone digits, │
+                                                                  │ else fingerprint; a hit whose name     │
+                                                                  │ disagrees is refused, next key tried   │
+                                                                  │ found? merge (reactivate) : insert     │
+                                                                  └ search_text, fingerprint ──────────────┘
                                  candidates upsert        ◀─────
-                                 documents processed      ◀─────  page_count, text_chars, methods, processed_at
-                                 trigger: activity document.processed | failed | needs_ocr
+                                 candidates.embedding     ◀─────  embedding (best effort, 1024, outside the lock)
+                                 documents processed      ◀─────  page_count, text_chars, methods, document_kind, processed_at
+                                 trigger: activity document.processed | rejected | failed | needs_ocr
 Realtime (documents) ◀────────── change
-list banner and profile page refresh
+list banner (failed, set aside) and profile page refresh
 ```
 
-A member may send a `failed` or `needs_ocr` document back to `queued`
-(`guard_document_update()` allows that transition only and clears
-`error`); every other status is the processor's.
+A member may send a `failed`, `needs_ocr` or `rejected` document back to
+`queued` (`guard_document_update()` allows that transition only and clears
+`error`); every other status is the processor's. The lots, the stop
+between lots, the resume and the retry are the pure state machine of
+`src/lib/candidates/upload.ts`, run by `upload-runner.ts` with every
+outside effect injected.
 
-### Search: a brief against the pool
+### Analysis: a brief against the pool
 
 ```
 Browser (member)             Worker                                   Supabase                 Model
@@ -89,43 +103,77 @@ runSearch({token, org,
   briefId})          ──────▶ requireMember(member)
                              enforceRateLimit("search")
                              load brief (service role, org filter) ─▶ briefs
-                             queryTextOf(brief)                                           ──▶ embed (1024) │ none
-                             rpc search_candidates(org, terms,
-                               embedding | null, 80)              ─▶ full text (fts, simple, unaccent)
-                                                                     ⊕ cosine over HNSW
-                                                                     reciprocal rank fusion 1/(60+r)
-                             select the profiles returned         ─▶ candidates (org filter, active)
+                             no criteria? derive them (a proposal)                        ──▶ JSON {criteria} │ skipped
+                               saved into the brief                 ─▶ briefs.criteria
+                             count active candidates                ─▶ candidates (HEAD, count=exact)
+                             ≤ 200: load the whole pool             ─▶ candidates (org filter, active)
+                             > 200: queryTextOf(brief)                                    ──▶ embed (1024) │ none
+                               rpc search_candidates(org, terms,
+                                 embedding | null, 120)             ─▶ full text (fts, simple, unaccent)
+                                                                       ⊕ cosine over HNSW
+                                                                       reciprocal rank fusion 1/(60+r)
+                               select the profiles returned         ─▶ candidates (org filter, active)
                              scoreCandidate() per profile:
                                verdict per criterion + evidence
+                               (missing only with contradicting evidence)
                                score over evaluable, coverage,
                                blocked when a required one is missing
                              rankResults()
-                             explainTop(12)                                               ──▶ JSON {why} │ skipped
-                             insert searches row                  ─▶ query, criteria, results, method, ran_by
-                             return {results, criteria, method}
-cards: verdict chips, "not stated", blocked named, why when a model answered
+                             insert searches row                    ─▶ query, criteria, results, method, pool_size, ran_by
+                             return {results, criteria, poolSize, criteriaDerived}
+cards "not analysed"; the line says the pool's size and how many profiles were read
+then, six at a time, until done or interrupted ("resume" sends what is left):
+assessCandidates({token,
+  org, briefId, searchId,
+  candidateIds[≤6]})  ──────▶ requireMember(member)
+                             enforceRateLimit("assess")
+                             load brief, load search (org filter)   ─▶ briefs, searches
+                             load the profiles (active)             ─▶ candidates
+                             per candidate, in parallel:
+                               assessmentPayload(): fields + CV text,
+                                 name / e-mail / phone redacted                           ──▶ JSON {requirements, decision,
+                               enforceAssessment(): a row per                                 score, summary}
+                                 criterion, no evidence → unknown,                            (LLM_ASSESSMENT_MODEL | LLM_MODEL)
+                                 required "no" → no_fit, score ≤ 39, …
+                               recordUsage("assess")                ─▶ ai_usage
+                             re-read the row, write the entries     ─▶ searches.results (assessment per entry)
+                             carry to unassessed shortlist items    ─▶ shortlist_items.match (+ criteria)
+                             return {results, failed}
+cards move to matching / to check / set aside (collapsed)
 "add to shortlist"   ──────▶ (browser, RLS) shortlists (first use) + shortlist_items with the match snapshot
 ```
 
-`search_candidates()` is SECURITY INVOKER: even called with the service
-role, the Worker filters by the organisation it verified, and the browser
-could call it directly only for the organisations it belongs to.
+`search_candidates()` and `similar_candidates()` (the "similar profiles"
+drawer of a profile page, which the browser calls directly) are SECURITY
+INVOKER: even called with the service role, the Worker filters by the
+organisation it verified, and the browser can call them only for the
+organisations it belongs to.
 
-### Share: a shortlist to a hiring manager
+### Share: a dossier to a hiring manager
 
 ```
 Browser (member)               Worker                                      Supabase / Resend
 ──────────────────             ─────────────────────────────────────       ───────────────────────────────
+draftShare({token, org,
+  shortlistId, candidateIds,
+  useModel})            ──────▶ requireMember(member)
+                               load shortlist + brief, the candidates, their latest CV
+                                 and their shortlist match (org filter)
+                               one sheet per candidate (draft.ts): facts, requirement table
+                                 (assessment, else verdicts), score, decision, synthesis,
+                                 strengths / attention read off the table
+                               with a model: rewrite the prose only (ai_usage: summary)
+                               return { items, brief snapshot }
+team edits the prose (table, score and decision are read-only),
 createShare({token, org,
   shortlistId, title, intro,
   items, includeCvs, expiry}) ─▶ requireMember(member), enforceRateLimit("share")
-                               load shortlist + retained candidates (org filter)
-                               draft summaries with the model when configured (ai_usage: summary)
+                               re-verify every candidate and CV id (org filter)
+                               brief = briefSnapshot(the shortlist's brief)   never from the browser
                                token = random bytes (base64url)
-                               insert shares { token_hash = sha256(token), items snapshot, expires_at }
+                               insert shares { token_hash = sha256(token), items, brief, expires_at }
                                insert activities share.created
                                return { link: SITE_URL/share/<token> } ─ shown once; the raw token is never stored
-team edits summaries,
 sends                  ──────▶ sendShare: requireMember, enforceRateLimit("email")
                                emailLayout(), sendRecorded()           ─▶ email_sends (queued → sent | failed), Resend
                                activities share.sent
@@ -137,18 +185,20 @@ GET /share/<token>     ──────▶ enforceRateLimit("share")
                                hash the token, select shares by token_hash (service role)
                                refuse when revoked_at is set or expires_at is past (and say which)
                                view_count + 1, last_viewed_at
-                               render the snapshot; each CV button opens
+                               render the snapshot (items and brief, guarded: a share stored before
+                                 the dossier reads as sheets without a table, and says so); each CV button opens
                                GET /api/share/<token>/cv/<documentId>, which hashes the token again,
                                checks the share is active, includes CVs and carries that document,
                                then redirects to a 120-second signed URL (404 otherwise)
-print to PDF from the browser
+print to PDF from the browser (A4, one sheet per page)
 ```
 
-### Purge: retention and withdrawn consent
+### Maintenance: stale reset, retention, re-embed
 
 ```
-Processor (hourly, and POST /maintenance)          Supabase
-──────────────────────────────────────────         ─────────────────────────────────────────────
+Processor (hourly, 30 s after start, and POST /maintenance)   Supabase
+───────────────────────────────────────────────────────────   ─────────────────────────────────────────────
+stale reset: processing > 10 min → queued; after 3 claims → failed
 expired_candidates(100)                  ────────▶ candidates past
                                                    coalesce(last_contact_at, created_at) + retention_months,
                                                    or consent_status = 'withdrawn'
@@ -158,8 +208,21 @@ for each:
   on failure: skip, leave for the next pass (a row never outlives its files)
   delete candidates row                  ────────▶ cascade: documents, shortlist_items, comments
                                                    trigger: activities candidate.deleted (name in payload)
-stale reset (same pass): processing > 10 min → queued; after 3 claims → failed
+re-embed (with a model):                 ◀──────── active candidates without a vector, newest first
+  100 calls a pass, page by page past                (candidates_missing_embedding_idx)
+  the profiles with nothing to embed,
+  one ai_usage embed per call            ────────▶ candidates.embedding
+  a wrong width stops the pass; /health says "mismatch"
 ```
+
+At start, when a model is configured, the processor embeds one short
+probe text and logs `embedding_ok`, `embedding_mismatch` (with the sentence
+naming `LLM_EMBEDDING_MODEL`, the width answered and the 1024 the schema
+holds) or `embedding_unavailable`; `GET /health` shows the same state
+(`embedding`) without waiting for the probe, and the pipeline and the
+re-embed pass keep it current. A document set aside or failed that is
+pinned to no candidate is reached by neither pass: an administrator
+deletes it through the API (no page does yet).
 
 The same removal, on demand, is `eraseCandidate` (an administrator, from
 the profile page): files first, then the row, then one log line naming
@@ -180,7 +243,11 @@ runs beyond the caller's reach.
    `confidence`, `organizations.plan` / `seat_limit` / `cv_quota_month`,
    cannot insert `shares`, `email_sends`, `activities`, `ai_usage`,
    `invitations` or `memberships`, and only moves a document back to
-   `queued`. Triggers stamp `decided_by`, log activities and keep the last
+   `queued` (from `failed`, `needs_ocr` or `rejected`). `candidates.phone_digits`
+   is computed by the database and written by nobody; `shares.brief` and
+   the assessment in `searches.results` are written by the Worker alone
+   (a member inserts a shortlist item's match, never updates one; the
+   Worker fills only an unassessed one). Triggers stamp `decided_by`, log activities and keep the last
    owner. Supabase's default privileges (every new table granted to `anon`
    and `authenticated`) are revoked at the top of the migration, so the
    grants written in it are the whole truth. `anon` has no grant on any
@@ -194,20 +261,28 @@ runs beyond the caller's reach.
    refuses below the minimum. Only then does the handler use `db()` (the
    service role, which bypasses RLS), and every query it runs names the
    organisation it verified. Costly handlers call `enforceRateLimit()`
-   first. An `AppError` reaches the browser as a code (`AUTH:required`,
+   first (one scope each: `model`, `search`, `assess`, `share`, `email`,
+   `processor`). What leaves for the model is built by pure, tested
+   modules: the assessment payload carries no name, e-mail or phone
+   (`redactIdentity()`), and the answer is bound by rules before it is
+   stored (`enforceAssessment()`). An `AppError` reaches the browser as a code (`AUTH:required`,
    `ORG:forbidden`, `RATE:limited`, `SETUP:model`…) that `errorMessage()`
    turns into a sentence; never free text from the server.
 3. **The processor.** Server-to-server only: every route but `GET /health`
    needs the bearer secret (compared on SHA-256 digests in constant time),
    no CORS, every answer JSON, every error a sentence. It holds the service
    role key and works on rows the database hands it (`documents` queued,
-   `expired_candidates()`), naming the organisation of each row in every
-   query. It writes the columns the browser may not.
+   `expired_candidates()`, the candidates without a vector), naming the
+   organisation of each row in every query. It writes the columns the
+   browser may not, and serialises the candidate lookup and write per
+   organisation in process (one instance on Railway; a second one would
+   need a database key).
 4. **The public share page.** The only unauthenticated reader of
    organisation data. It receives a token, never an id; hashes it; reads
    one `shares` row by `token_hash` with the service role; refuses expired
-   and revoked shares; serves the snapshot in the row (not the live
-   profiles) and mints short signed URLs for the CVs it lists. It is rate
+   and revoked shares; serves the snapshot in the row (the sheets and the
+   brief's snapshot, not the live profiles or the live brief) and mints
+   short signed URLs for the CVs it lists. It is rate
    limited by address so a token cannot be guessed at speed; tokens are
    random bytes, hashed at rest, so a database read does not reveal a
    link.
@@ -224,7 +299,7 @@ never a body, a key or a token.
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
 | `SUPABASE_SERVICE_ROLE_KEY`                           | Every row of every organisation, storage signing and removal, the SECURITY DEFINER functions reserved to it (`expired_candidates`, `sync_plan_from_billing`) | Cloudflare dashboard (Worker), Railway (processor), `scripts/backup.sh` never (it uses the database URL) | the browser, git, `/status`, logs          |
 | `PROCESSOR_SHARED_SECRET`                             | `POST /process`, `POST /maintenance`, `GET /metrics` on the processor                                | Cloudflare dashboard and Railway (the same value, 32+ characters)                           | git, the browser, health answers           |
-| `LLM_API_KEY` (with `LLM_BASE_URL`, models)           | The model vendor: structuring, embeddings, criteria, explanations, summaries                         | Cloudflare dashboard, Railway                                                               | git, the browser, `/status` (names only)   |
+| `LLM_API_KEY` (with `LLM_BASE_URL`, models, `LLM_ASSESSMENT_MODEL` on the Worker) | The model vendor: structuring and classification, embeddings, criteria, assessments, dossier drafts | Cloudflare dashboard, Railway                                                     | git, the browser, `/status` (names only)   |
 | `MISTRAL_OCR_API_KEY`                                 | OCR of scanned PDFs                                                                                  | Railway                                                                                     | the Worker, git                            |
 | `RESEND_API_KEY`                                      | Sending email (invitations, shares)                                                                  | Cloudflare dashboard                                                                        | git, the processor, the browser            |
 | Supabase Auth secrets (JWT secret, OAuth client)      | Issuing and verifying sessions                                                                       | Supabase only; the Worker verifies tokens through Auth's `/user`, it never holds the JWT secret | anywhere of ours                        |

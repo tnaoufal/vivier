@@ -1,17 +1,19 @@
 /**
- * The dashboard: a greeting, four counts read under RLS, the fifteen
- * most recent activities, and the two actions that fill a talent pool.
- * The feed and the counts refresh when the activity log or the documents
- * table changes.
+ * The dashboard: a greeting, four counts read under RLS, then two
+ * columns from lg: the fifteen most recent activities and a "to begin"
+ * card with the three steps that fill a talent pool (upload, brief,
+ * share). The feed and the counts refresh when the activity log or the
+ * documents table changes. The page's one primary action is a new brief.
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { Activity, Briefcase, FileText, ListChecks, Plus, Upload, Users } from "lucide-react";
+import { Activity, Briefcase, FileText, ListChecks, Plus, Share2, Upload, Users } from "lucide-react";
 
 import { ActivityList } from "@/components/activity/activity-list";
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
-import { StatGrid, StatTile } from "@/components/team/stat-tiles";
+import { Section } from "@/components/app-shell/section";
+import { StatGrid, StatTile } from "@/components/app-shell/stat-tile";
 import { Button } from "@/components/ui/button";
 import { memberNames, readActivities, readActivityTargets } from "@/lib/activity/activity";
 import type { ActivityNames } from "@/lib/activity/describe";
@@ -29,6 +31,22 @@ export const Route = createFileRoute("/app/")({
 });
 
 const RECENT = 15;
+
+/** One of the three steps of the "to begin" card: a number, a title, a sentence, its button. */
+function StartStep({ index, title, text, action }: { index: number; title: string; text: string; action: ReactNode }) {
+  return (
+    <li className="flex gap-4">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 font-display text-sm text-primary tabular-nums">
+        {index}
+      </span>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-base font-semibold leading-6 text-ink">{title}</h3>
+        <p className="mt-1 text-sm leading-5 text-muted-foreground">{text}</p>
+        <div className="mt-3">{action}</div>
+      </div>
+    </li>
+  );
+}
 
 function DashboardPage() {
   const { t } = useI18n();
@@ -72,27 +90,20 @@ function DashboardPage() {
   return (
     <>
       <PageHeader
+        eyebrow={t("nav.dashboard")}
         title={t("shell.dashboard.title", { name })}
         description={t("shell.dashboard.subtitle")}
         actions={
-          <>
-            <Button asChild variant="outline">
-              <Link to={CANDIDATES_PATH}>
-                <Upload />
-                {t("shell.dashboard.uploadCta")}
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link to={NEW_BRIEF_PATH}>
-                <Plus />
-                {t("shell.dashboard.briefCta")}
-              </Link>
-            </Button>
-          </>
+          <Button asChild>
+            <Link to={NEW_BRIEF_PATH}>
+              <Plus />
+              {t("shell.dashboard.briefCta")}
+            </Link>
+          </Button>
         }
       />
 
-      {error ? <p className="mb-3 text-sm text-negative">{t("dashboard.statsUnread")}</p> : null}
+      {error ? <p className="mb-4 text-sm text-negative">{t("dashboard.statsUnread")}</p> : null}
 
       <StatGrid>
         <StatTile label={t("shell.dashboard.candidates")} value={stats?.candidates ?? null} icon={<Users />} to={CANDIDATES_PATH} loading={loading} />
@@ -101,21 +112,46 @@ function DashboardPage() {
         <StatTile label={t("shell.dashboard.retained")} value={stats?.retainedThisMonth ?? null} icon={<ListChecks />} to={SHORTLISTS_PATH} loading={loading} />
       </StatGrid>
 
-      <section className="mt-8">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="font-display text-lg text-ink">{t("shell.dashboard.recentActivity")}</h2>
-          <Link to="/app/activity" className="text-sm text-primary hover:underline">
-            {t("dashboard.viewAll")}
-          </Link>
-        </div>
-        <ActivityList
-          rows={data?.rows ?? []}
-          names={names}
-          loading={loading}
-          emptyState={
-            <EmptyState
-              icon={<Activity />}
-              title={t("shell.dashboard.noActivity")}
+      <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
+        <Section
+          title={t("shell.dashboard.recentActivity")}
+          action={
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/app/activity">{t("dashboard.viewAll")}</Link>
+            </Button>
+          }
+        >
+          <ActivityList
+            rows={data?.rows ?? []}
+            names={names}
+            loading={loading}
+            emptyState={
+              <EmptyState
+                icon={<Activity />}
+                title={t("shell.dashboard.noActivity")}
+                action={
+                  <Button asChild variant="outline">
+                    <Link to={CANDIDATES_PATH}>
+                      <Upload />
+                      {t("shell.dashboard.uploadCta")}
+                    </Link>
+                  </Button>
+                }
+              />
+            }
+          />
+        </Section>
+
+        <aside className="sheet p-6" aria-labelledby="dashboard-start-title">
+          <h2 id="dashboard-start-title" className="font-display text-xl text-ink">
+            {t("shell.dashboard.start.title")}
+          </h2>
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">{t("shell.dashboard.start.text")}</p>
+          <ol className="mt-6 space-y-6">
+            <StartStep
+              index={1}
+              title={t("shell.dashboard.step.upload.title")}
+              text={t("shell.dashboard.step.upload.text")}
               action={
                 <Button asChild variant="outline">
                   <Link to={CANDIDATES_PATH}>
@@ -125,9 +161,35 @@ function DashboardPage() {
                 </Button>
               }
             />
-          }
-        />
-      </section>
+            <StartStep
+              index={2}
+              title={t("shell.dashboard.step.brief.title")}
+              text={t("shell.dashboard.step.brief.text")}
+              action={
+                <Button asChild variant="outline">
+                  <Link to={NEW_BRIEF_PATH}>
+                    <Briefcase />
+                    {t("shell.dashboard.briefCta")}
+                  </Link>
+                </Button>
+              }
+            />
+            <StartStep
+              index={3}
+              title={t("shell.dashboard.step.share.title")}
+              text={t("shell.dashboard.step.share.text")}
+              action={
+                <Button asChild variant="outline">
+                  <Link to={SHORTLISTS_PATH}>
+                    <Share2 />
+                    {t("shell.dashboard.step.share.cta")}
+                  </Link>
+                </Button>
+              }
+            />
+          </ol>
+        </aside>
+      </div>
     </>
   );
 }

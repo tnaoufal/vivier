@@ -82,6 +82,9 @@ describe("describeActivity", () => {
     expect(describeActivity(heuristic, "en", names)).toBe("cv.pdf was read without a model (text only).");
     const failed = row({ kind: "document.failed", actor_id: null, payload: { fileName: "cv.pdf" } });
     expect(describeActivity(failed, "en", names)).toBe("Processing of cv.pdf failed.");
+    const rejected = row({ kind: "document.rejected", actor_id: null, payload: { fileName: "lettre.pdf", kind: "other" } });
+    expect(describeActivity(rejected, "fr", names)).toBe("lettre.pdf a été écarté : ce n'est pas un CV.");
+    expect(describeActivity(rejected, "en", names)).toBe("lettre.pdf was set aside: not a CV.");
     const other = row({ kind: "candidate.archived", actor_id: null, candidate_id: "c1" });
     expect(describeActivity(other, "en", names)).toBe("System archived Jean Dupont.");
   });

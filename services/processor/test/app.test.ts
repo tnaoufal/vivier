@@ -37,6 +37,7 @@ describe("config", () => {
     expect(sound.supabase).toBeNull();
     expect(sound.model).toBeNull();
     expect(sound.ocr).toBeNull();
+    expect(sound.concurrency).toBe(4);
   });
 
   it("reads the optional parts and clamps the numbers", () => {
@@ -89,6 +90,7 @@ describe("app", () => {
     expect(body["supabase"]).toBe(false);
     expect(body["model"]).toBe(false);
     expect(body["ocr"]).toBe(false);
+    expect(body["embedding"]).toBe("off");
     expect(body["polling"]).toBe(false);
     expect(typeof body["version"]).toBe("string");
     expect(typeof body["uptimeSeconds"]).toBe("number");
@@ -138,6 +140,9 @@ describe("app", () => {
         failed: 0,
         staleRequeued: 0,
         staleFailed: 0,
+        reembedded: 3,
+        reembedFailed: 0,
+        reembedSkipped: 0,
         ms: 5,
       }),
     });
@@ -168,6 +173,7 @@ describe("app", () => {
     const maintenance = await instance.inject({ method: "POST", url: "/maintenance", headers: auth });
     expect(maintenance.statusCode).toBe(200);
     expect((maintenance.json() as { purged: number }).purged).toBe(1);
+    expect((maintenance.json() as { reembedded: number }).reembedded).toBe(3);
 
     const metrics = await instance.inject({ method: "GET", url: "/metrics", headers: auth });
     expect((metrics.json() as { inFlight: number }).inFlight).toBe(3);

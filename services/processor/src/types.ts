@@ -2,8 +2,8 @@
  * Row shapes of the Vivier schema the processor reads and writes, copied
  * from the web app's `src/lib/db/types.ts` so this service stays
  * self-contained (it never imports from `vivier/src`). Column names are
- * the database's (snake_case); keep them in step with
- * `supabase/migrations/20261013090000_vivier_init.sql`.
+ * the database's (snake_case); keep them in step with the migrations
+ * under `supabase/migrations`.
  */
 
 export interface CandidateLanguage {
@@ -81,12 +81,25 @@ export interface CandidateRow {
   status: CandidateStatus;
   fingerprint: string | null;
   search_text: string | null;
+  /**
+   * The digits of `phone`, computed by the database (a GENERATED column):
+   * read for the phone-number deduplication, never written by anyone.
+   */
+  phone_digits: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export type DocumentStatus = "queued" | "processing" | "processed" | "needs_ocr" | "failed";
+export type DocumentStatus =
+  | "queued"
+  | "processing"
+  | "processed"
+  | "needs_ocr"
+  | "failed"
+  | "rejected";
+/** What the classifier decided before structuring; null when never classified. */
+export type DocumentKind = "cv" | "other";
 export type ExtractionMethod = "pdf-text" | "ocr" | "none";
 export type StructuringMethod = "model" | "heuristic";
 
@@ -101,7 +114,7 @@ export interface DocumentRow {
   byte_size: number;
   sha256: string | null;
   status: DocumentStatus;
-  /** A sentence for the person when status is failed or needs_ocr; never a stack. */
+  /** A sentence for the person when status is failed, needs_ocr or rejected; never a stack. */
   error: string | null;
   attempts: number;
   page_count: number | null;
@@ -109,6 +122,7 @@ export interface DocumentRow {
   extracted_text: string | null;
   extraction_method: ExtractionMethod | null;
   structuring_method: StructuringMethod | null;
+  document_kind: DocumentKind | null;
   processed_at: string | null;
   uploaded_by: string | null;
   created_at: string;
@@ -125,7 +139,14 @@ export interface OrganizationLimits {
   retention_months: number;
 }
 
-export type AiUsageKind = "structure" | "embed" | "ocr" | "brief" | "explain" | "summary";
+export type AiUsageKind =
+  | "structure"
+  | "embed"
+  | "ocr"
+  | "brief"
+  | "explain"
+  | "summary"
+  | "assess";
 
 /** The fixed width of every embedding column (mistral-embed; OpenAI models shortened to it). */
 export const EMBEDDING_DIMENSIONS = 1024;

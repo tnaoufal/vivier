@@ -1,14 +1,19 @@
+/** A person as a disc of initials: no photos, no third-party avatars. */
 import { initialsOf } from "@/lib/org/org-context";
 import { cn } from "@/lib/utils";
 
-/** A person as a disc of initials: no photos, no third-party avatars. */
+const SIZES = {
+  sm: "size-7 text-[11px]",
+  md: "size-9 text-xs",
+  lg: "size-11 text-sm",
+} as const;
+
 export function Avatar({ name, size = "md", className }: { name: string; size?: "sm" | "md" | "lg"; className?: string }) {
-  const dim = size === "lg" ? "size-10 text-sm" : size === "sm" ? "size-6 text-[10px]" : "size-8 text-xs";
   return (
     <span
       className={cn(
         "inline-flex shrink-0 select-none items-center justify-center rounded-full bg-primary/12 font-semibold text-primary",
-        dim,
+        SIZES[size],
         className,
       )}
       title={name}

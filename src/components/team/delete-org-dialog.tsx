@@ -37,7 +37,7 @@ export function DeleteOrgDialog({
           <DialogTitle>{t("settings.delete.title", { org: orgName })}</DialogTitle>
           <DialogDescription>{t("settings.danger.text")}</DialogDescription>
         </DialogHeader>
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <Label htmlFor="delete-org-name">{t("settings.delete.text")}</Label>
           <Input
             id="delete-org-name"

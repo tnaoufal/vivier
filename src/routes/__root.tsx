@@ -1,8 +1,15 @@
+/**
+ * The document every page renders in: the head (fonts, theme colour,
+ * the saved theme applied before paint), the providers (language, theme,
+ * session), the toaster, and the two pages the router falls back to
+ * (not found, error) in the product's own calm style.
+ */
 import { HeadContent, Link, Outlet, Scripts, createRootRoute, useRouter } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeProvider, THEME_STORAGE_KEY } from "@/components/theme-provider";
+import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth/use-auth";
 import { BRAND } from "@/lib/brand";
@@ -16,19 +23,16 @@ const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('${THEME_S
 function NotFoundComponent() {
   const t = useT();
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <BrandMark size="md" className="mb-8 justify-center" />
-        <h1 className="font-display text-6xl text-ink">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-ink">{t("common.notFound")}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{t("common.notFound.text")}</p>
-        <div className="mt-6">
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            {t("common.home")}
-          </Link>
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+      <div className="w-full max-w-md text-center">
+        <BrandMark size="md" className="mb-10 justify-center" />
+        <p className="font-display text-6xl text-primary tabular-nums">404</p>
+        <h1 className="mt-4 font-display text-2xl text-ink">{t("common.notFound")}</h1>
+        <p className="mt-2 text-[15px] leading-6 text-muted-foreground">{t("common.notFound.text")}</p>
+        <div className="mt-8">
+          <Button asChild>
+            <Link to="/">{t("common.home")}</Link>
+          </Button>
         </div>
       </div>
     </div>
@@ -40,27 +44,23 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
   const router = useRouter();
   const t = useT();
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <BrandMark size="md" className="mb-8 justify-center" />
-        <h1 className="text-xl font-semibold text-ink">{t("common.errorPage")}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{t("common.errorPage.text")}</p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
-          <button
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+      <div className="w-full max-w-md text-center">
+        <BrandMark size="md" className="mb-10 justify-center" />
+        <h1 className="font-display text-2xl text-ink">{t("common.errorPage")}</h1>
+        <p className="mt-2 text-[15px] leading-6 text-muted-foreground">{t("common.errorPage.text")}</p>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <Button
             onClick={() => {
               router.invalidate();
               reset();
             }}
-            className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             {t("common.retry")}
-          </button>
-          <a
-            href="/"
-            className="inline-flex items-center justify-center rounded-full border border-input bg-background px-4 py-2 text-sm font-medium text-ink hover:bg-accent"
-          >
-            {t("common.home")}
-          </a>
+          </Button>
+          <Button asChild variant="outline">
+            <a href="/">{t("common.home")}</a>
+          </Button>
         </div>
       </div>
     </div>

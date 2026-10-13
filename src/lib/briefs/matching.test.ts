@@ -148,8 +148,10 @@ describe("evaluateCriterion: skill", () => {
     expect(verdict.evidence).toBe("reporting, groupe");
   });
 
-  it("answers missing when nothing appears, not_stated when the profile is empty", () => {
-    expect(evaluateCriterion(criterion({ kind: "skill", value: "python" }), profile({ skills: ["SAP"], search_text: "SAP FI" })).verdict).toBe("missing");
+  it("answers not_stated when nothing appears: a skill the CV does not name is not a lack", () => {
+    const absent = evaluateCriterion(criterion({ kind: "skill", value: "python" }), profile({ skills: ["SAP"], search_text: "SAP FI" }));
+    expect(absent.verdict).toBe("not_stated");
+    expect(absent.evidence).toBeNull();
     expect(evaluateCriterion(criterion({ kind: "skill", value: "python" }), profile()).verdict).toBe("not_stated");
   });
 });
@@ -174,7 +176,13 @@ describe("evaluateCriterion: language", () => {
 
   it("answers partial when the level is unknown, missing when the language is absent, not_stated when none is listed", () => {
     expect(evaluateCriterion(criterion({ kind: "language", value: "anglais B2" }), english(null)).verdict).toBe("partial");
-    expect(evaluateCriterion(criterion({ kind: "language", value: "allemand" }), english("C1")).verdict).toBe("missing");
+    const absent = evaluateCriterion(
+      criterion({ kind: "language", value: "allemand" }),
+      profile({ languages: [{ name: "Anglais", level: "C1" }, { name: "Espagnol", level: null }] }),
+    );
+    expect(absent.verdict).toBe("missing");
+    // The languages listed are the evidence: the assessment shows them when the model reads the language in anyway.
+    expect(absent.evidence).toBe("Anglais (C1), Espagnol");
     expect(evaluateCriterion(criterion({ kind: "language", value: "allemand" }), profile()).verdict).toBe("not_stated");
   });
 });
@@ -210,11 +218,13 @@ describe("evaluateCriterion: experience", () => {
 describe("evaluateCriterion: education", () => {
   const degrees = profile({ education: [{ degree: "Master 2 Contrôle de gestion et finance", school: "IAE Lyon", year: "2015" }] });
 
-  it("matches a degree or a school", () => {
+  it("matches a degree or a school; an absent degree is missing with the degrees listed as evidence", () => {
     expect(evaluateCriterion(criterion({ kind: "education", value: "IAE" }), degrees).verdict).toBe("match");
     expect(evaluateCriterion(criterion({ kind: "education", value: "master finance" }), degrees).verdict).toBe("match");
     expect(evaluateCriterion(criterion({ kind: "education", value: "master audit" }), degrees).verdict).toBe("partial");
-    expect(evaluateCriterion(criterion({ kind: "education", value: "DSCG" }), degrees).verdict).toBe("missing");
+    const absent = evaluateCriterion(criterion({ kind: "education", value: "DSCG" }), degrees);
+    expect(absent.verdict).toBe("missing");
+    expect(absent.evidence).toBe("Master 2 Contrôle de gestion et finance, IAE Lyon");
     expect(evaluateCriterion(criterion({ kind: "education", value: "DSCG" }), profile()).verdict).toBe("not_stated");
   });
 });
@@ -257,10 +267,15 @@ describe("scoreCandidate", () => {
     expect(result.verdicts.map((verdict) => verdict.criterionId)).toEqual(["a", "b", "c", "d"]);
   });
 
-  it("blocks when a required criterion is missing", () => {
-    const result = scoreCandidate(criteria, profile({ skills: ["Oracle"], search_text: "Oracle" }), none);
+  it("blocks when a required criterion is missing, never when the CV only says nothing", () => {
+    const required = [criterion({ id: "lang", kind: "language", value: "anglais", required: true, weight: 2 })];
+    const result = scoreCandidate(required, profile({ languages: [{ name: "Espagnol", level: "C1" }] }), none);
     expect(result.blocked).toBe(true);
     expect(result.verdicts[0]?.verdict).toBe("missing");
+    // The required skill is absent from the CV's text: not stated, so nothing blocks.
+    const silent = scoreCandidate(criteria, profile({ skills: ["Oracle"], search_text: "Oracle" }), none);
+    expect(silent.blocked).toBe(false);
+    expect(silent.verdicts[0]?.verdict).toBe("not_stated");
   });
 
   it("scores 0 with coverage 0 when nothing can be evaluated", () => {

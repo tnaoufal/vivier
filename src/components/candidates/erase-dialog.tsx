@@ -50,7 +50,7 @@ export function EraseCandidateDialog({
           <DialogTitle>{t("candidates.erase.title", { name })}</DialogTitle>
           <DialogDescription>{t("candidates.erase.text", { count: documentCount })}</DialogDescription>
         </DialogHeader>
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <Label htmlFor="erase-name">{t("candidates.erase.typeName", { name })}</Label>
           <Input id="erase-name" value={typed} onChange={(event) => setTyped(event.target.value)} autoComplete="off" disabled={busy} />
         </div>

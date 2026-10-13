@@ -10,7 +10,10 @@
  *
  * A JSON answer is extracted, parsed and validated with a zod schema; one
  * retry quotes the validation error back; then a ModelError, never a
- * partial object. Vectors must be exactly EMBEDDING_DIMENSIONS wide.
+ * partial object. Vectors must be exactly EMBEDDING_DIMENSIONS wide: a
+ * model that answers another width is a configuration mistake, and the
+ * ModelError carries the width answered so the callers can name the fix
+ * (embedding.ts) instead of retrying.
  */
 import OpenAI from "openai";
 import type { z, ZodTypeAny } from "zod";
@@ -18,11 +21,20 @@ import type { z, ZodTypeAny } from "zod";
 import type { ModelConfig } from "./config.js";
 import { EMBEDDING_DIMENSIONS } from "./types.js";
 
+export interface ModelErrorOptions extends ErrorOptions {
+  /** The width the embedding model answered, when that is what went wrong. */
+  dimensions?: number;
+}
+
 /** A model call failed, answered nothing usable, or answered the wrong width. */
 export class ModelError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
+  /** The width the embedding model answered when the vector was the wrong size; null otherwise. */
+  readonly dimensions: number | null;
+
+  constructor(message: string, options?: ModelErrorOptions) {
     super(message, options);
     this.name = "ModelError";
+    this.dimensions = options?.dimensions ?? null;
   }
 }
 
@@ -36,6 +48,14 @@ export interface JsonAnswer<T> {
   value: T;
   usage: Usage;
 }
+
+export interface Embedding {
+  vector: number[];
+  usage: Usage;
+}
+
+/** One text in, one vector out: `embedOne` bound to a configuration, or a fake in the tests. */
+export type Embedder = (text: string) => Promise<Embedding>;
 
 let cached: { key: string; client: OpenAI } | undefined;
 
@@ -157,10 +177,7 @@ export async function completeJson<S extends ZodTypeAny>(input: {
 }
 
 /** One embedding, EMBEDDING_DIMENSIONS wide (OpenAI models are shortened; others must match). */
-export async function embedOne(
-  text: string,
-  config: ModelConfig,
-): Promise<{ vector: number[]; usage: Usage }> {
+export async function embedOne(text: string, config: ModelConfig): Promise<Embedding> {
   const api = client(config);
   const openai = config.baseUrl.includes("api.openai.com");
   const response = await api.embeddings
@@ -179,6 +196,7 @@ export async function embedOne(
   if (vector.length !== EMBEDDING_DIMENSIONS) {
     throw new ModelError(
       `The embedding model answered ${vector.length} dimensions; the schema holds ${EMBEDDING_DIMENSIONS}. Set LLM_EMBEDDING_MODEL to a ${EMBEDDING_DIMENSIONS}-dimension model.`,
+      { dimensions: vector.length },
     );
   }
   return {

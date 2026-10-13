@@ -7,6 +7,7 @@ import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { AppShell } from "@/components/app-shell/app-shell";
+import { BrandMark } from "@/components/brand-mark";
 import { Onboarding } from "@/components/onboarding";
 import { useAuth } from "@/lib/auth/auth-context";
 import { isSupabaseConfigured } from "@/lib/auth/supabase-client";
@@ -19,10 +20,14 @@ export const Route = createFileRoute("/app")({
   component: AppLayout,
 });
 
+/** The whole page while the session or the organisation loads: the brand and one sentence, never a bare spinner. */
 function Splash({ text }: { text: string }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
-      {text}
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-4">
+      <BrandMark size="md" />
+      <p className="text-[15px] leading-6 text-muted-foreground" aria-live="polite">
+        {text}
+      </p>
     </div>
   );
 }

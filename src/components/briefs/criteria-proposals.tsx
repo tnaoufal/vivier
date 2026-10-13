@@ -74,10 +74,10 @@ export function CriteriaProposals({
           <Sparkles />
           {busy ? t("briefs.proposals.busy") : proposals ? t("briefs.proposals.again") : t("briefs.proposals.button")}
         </Button>
-        <span className="text-xs text-muted-foreground">{t("briefs.proposals.help")}</span>
+        <span className="text-[13px] text-muted-foreground">{t("briefs.proposals.help")}</span>
       </div>
       {proposals ? (
-        <div className="rounded-2xl border border-dashed border-border p-3">
+        <div className="rounded-2xl border border-dashed border-border p-4">
           {proposals.length ? (
             <>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

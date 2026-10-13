@@ -1,7 +1,7 @@
 /**
- * /app/briefs/new: a title and the brief as free text. The row is
- * created open, with no criteria yet; the brief page then proposes
- * them (with a model) or lets the person write them.
+ * /app/briefs/new: a title and the brief as free text, in one roomy
+ * sheet. The row is created open, with no criteria yet; the brief page
+ * then proposes them (with a model) or lets the person write them.
  */
 import { useState, type FormEvent } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -53,7 +53,7 @@ function NewBriefPage() {
   if (!can("member")) {
     return (
       <div>
-        <PageHeader title={t("briefs.new.title")} />
+        <PageHeader eyebrow={t("nav.briefs")} title={t("briefs.new.title")} />
         <EmptyState
           title={t("common.forbidden")}
           action={
@@ -70,15 +70,15 @@ function NewBriefPage() {
     <div>
       <PageHeader
         eyebrow={
-          <Link to="/app/briefs" className="hover:underline">
+          <Link to="/app/briefs" className="hover:text-ink hover:underline">
             {t("nav.briefs")}
           </Link>
         }
         title={t("briefs.new.title")}
         description={t("briefs.new.text")}
       />
-      <form onSubmit={(event) => void submit(event)} className="sheet max-w-3xl space-y-4 p-4 sm:p-6">
-        <div className="space-y-1.5">
+      <form onSubmit={(event) => void submit(event)} className="sheet max-w-3xl space-y-6 p-6 sm:p-8">
+        <div className="space-y-2">
           <Label htmlFor="new-brief-title">{t("briefs.form.title")}</Label>
           <Input
             id="new-brief-title"
@@ -90,7 +90,7 @@ function NewBriefPage() {
             required
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <Label htmlFor="new-brief-description">{t("briefs.form.description")}</Label>
           <Textarea
             id="new-brief-description"
@@ -100,9 +100,9 @@ function NewBriefPage() {
             maxLength={DESCRIPTION_MAX}
             rows={10}
           />
-          <p className="text-xs text-muted-foreground">{t("briefs.form.description.help")}</p>
+          <p className="text-[13px] leading-5 text-muted-foreground">{t("briefs.form.description.help")}</p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           <Button asChild variant="outline" type="button">
             <Link to="/app/briefs">{t("common.cancel")}</Link>
           </Button>

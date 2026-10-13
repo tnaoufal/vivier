@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { useT } from "@/lib/i18n";
 import { POINT_MAX, POINTS_MAX } from "@/lib/shares/draft";
 
+import { FIELD_LABEL } from "./field-label";
+
 export function PointsEditor({
   id,
   label,
@@ -30,8 +32,10 @@ export function PointsEditor({
 }) {
   const t = useT();
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={points.length ? `${id}-0` : undefined}>{label}</Label>
+    <div className="space-y-2">
+      <Label htmlFor={points.length ? `${id}-0` : undefined} className={FIELD_LABEL}>
+        {label}
+      </Label>
       {points.map((point, at) => (
         <div key={at} className="flex items-center gap-1.5">
           <Input

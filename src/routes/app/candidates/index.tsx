@@ -1,16 +1,17 @@
 /**
- * /app/candidates: the talent pool. A debounced search over the name,
- * the headline and the location, tabs for active and archived, tag
- * chips from the loaded page, fifty rows a page, and the two ways in:
- * a batch of CVs or a candidate typed by hand. A banner above the list
- * follows the documents the service is reading, live through realtime
- * on documents.
+ * /app/candidates: the talent pool. One toolbar that wraps (a debounced
+ * search over the name, the headline and the location; tabs for active
+ * and archived; tag chips from the loaded page), fifty rows a page in a
+ * sheet, and the two ways in: a batch of CVs or a candidate typed by
+ * hand. A banner above the list follows the documents the service is
+ * reading, live through realtime on documents.
  */
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Search, Upload, UserPlus, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
+import { FilterChip } from "@/components/app-shell/filter-chip";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { CandidateRow } from "@/components/candidates/candidate-row";
 import { ManualCandidateDialog } from "@/components/candidates/manual-candidate-dialog";
@@ -18,6 +19,7 @@ import { ProcessingBanner } from "@/components/candidates/processing-banner";
 import { UploadDialog } from "@/components/candidates/upload-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { distinctTags } from "@/lib/candidates/format";
@@ -33,6 +35,7 @@ export const Route = createFileRoute("/app/candidates/")({
 });
 
 const SEARCH_DEBOUNCE_MS = 300;
+const SKELETON_ROWS = 5;
 
 function isStatus(value: string): value is CandidateStatus {
   return value === "active" || value === "archived";
@@ -98,7 +101,7 @@ function CandidatesPage() {
         : t("candidates.count.many", { count: total });
 
   const importButton = canEdit ? (
-    <Button type="button" onClick={() => setUploadOpen(true)} className="gap-1.5">
+    <Button type="button" onClick={() => setUploadOpen(true)}>
       <Upload />
       {t("candidates.import")}
     </Button>
@@ -107,12 +110,13 @@ function CandidatesPage() {
   return (
     <div>
       <PageHeader
+        eyebrow={t("nav.candidates")}
         title={t("candidates.title")}
         description={countText}
         actions={
           canEdit ? (
             <>
-              <Button type="button" variant="outline" onClick={() => setManualOpen(true)} className="gap-1.5">
+              <Button type="button" variant="outline" onClick={() => setManualOpen(true)}>
                 <UserPlus />
                 {t("candidates.manual")}
               </Button>
@@ -131,50 +135,45 @@ function CandidatesPage() {
         }}
       />
 
-      <div className="sheet mb-4 space-y-3 p-3 sm:p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              type="search"
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              placeholder={t("candidates.search.placeholder")}
-              aria-label={t("common.search")}
-              maxLength={200}
-              className="pl-9"
-            />
-          </div>
-          <Tabs
-            value={status}
-            onValueChange={(value) => {
-              if (isStatus(value)) setStatus(value);
-            }}
-          >
-            <TabsList>
-              <TabsTrigger value="active">{t("candidates.tab.active")}</TabsTrigger>
-              <TabsTrigger value="archived">{t("candidates.tab.archived")}</TabsTrigger>
-            </TabsList>
-          </Tabs>
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-0 flex-1 basis-64">
+          <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            type="search"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder={t("candidates.search.placeholder")}
+            aria-label={t("common.search")}
+            maxLength={200}
+            className="pl-11"
+          />
         </div>
+        <Tabs
+          value={status}
+          onValueChange={(value) => {
+            if (isStatus(value)) setStatus(value);
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="active">{t("candidates.tab.active")}</TabsTrigger>
+            <TabsTrigger value="archived">{t("candidates.tab.archived")}</TabsTrigger>
+          </TabsList>
+        </Tabs>
         {tags.length ? (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="label-caps mr-1">{t("candidates.tags.filterLabel")}</span>
-            <Button type="button" size="sm" variant={tag === null ? "default" : "outline"} onClick={() => setTag(null)}>
-              {t("common.all")}
-            </Button>
+          <ul className="flex w-full flex-wrap items-center gap-2" aria-label={t("candidates.tags.filterLabel")}>
+            <li>
+              <FilterChip active={tag === null} onClick={() => setTag(null)}>
+                {t("common.all")}
+              </FilterChip>
+            </li>
             {tags.map((value) => (
-              <Button
-                key={value}
-                type="button"
-                size="sm"
-                variant={tag === value ? "default" : "outline"}
-                onClick={() => setTag(tag === value ? null : value)}
-              >
-                {value}
-              </Button>
+              <li key={value} className="min-w-0">
+                <FilterChip active={tag === value} onClick={() => setTag(tag === value ? null : value)}>
+                  {value}
+                </FilterChip>
+              </li>
             ))}
-          </div>
+          </ul>
         ) : null}
       </div>
 
@@ -188,13 +187,13 @@ function CandidatesPage() {
           }
         />
       ) : list.loading && !list.data ? (
-        <div className="sheet divide-y divide-border">
-          {Array.from({ length: 5 }, (_, index) => (
-            <div key={index} className="flex gap-3 px-4 py-3">
-              <div className="skeleton size-10 rounded-full" />
+        <div className="sheet overflow-hidden" aria-busy="true">
+          {Array.from({ length: SKELETON_ROWS }, (_, index) => (
+            <div key={index} className="sheet-row">
+              <Skeleton className="size-11 rounded-full" />
               <div className="flex-1 space-y-2">
-                <div className="skeleton h-4 w-1/3 rounded" />
-                <div className="skeleton h-3 w-2/3 rounded" />
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-3 w-2/3" />
               </div>
             </div>
           ))}
@@ -234,23 +233,27 @@ function CandidatesPage() {
         )
       ) : (
         <>
-          <ul className="sheet overflow-hidden">
+          <ol className="sheet divide-y divide-border overflow-hidden">
             {rows.map((row) => (
-              <CandidateRow key={row.id} row={row} />
+              <li key={row.id}>
+                <CandidateRow row={row} />
+              </li>
             ))}
-          </ul>
+          </ol>
           {pageCount > 1 ? (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
-              <span>{t("candidates.page", { page: page + 1, count: pageCount })}</span>
+            <nav className="mt-6 flex flex-wrap items-center justify-between gap-3" aria-label={t("candidates.page", { page: page + 1, count: pageCount })}>
+              <span className="text-[13px] leading-5 text-muted-foreground tabular-nums">
+                {t("candidates.page", { page: page + 1, count: pageCount })}
+              </span>
               <div className="flex gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={page === 0 || list.loading}>
-                  {t("candidates.previous")}
+                <Button type="button" variant="outline" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={page === 0 || list.loading}>
+                  {t("common.previous")}
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} disabled={page >= pageCount - 1 || list.loading}>
+                <Button type="button" variant="outline" onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} disabled={page >= pageCount - 1 || list.loading}>
                   {t("common.next")}
                 </Button>
               </div>
-            </div>
+            </nav>
           ) : null}
         </>
       )}

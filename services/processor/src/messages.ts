@@ -16,4 +16,7 @@ export const FAILURE_MESSAGES = {
   /** No text layer and no OCR configured. */
   scanned:
     "Ce PDF est scanné : aucun texte lisible n'a été trouvé. Activez l'OCR ou saisissez la fiche à la main.",
+  /** The model classified the document as something else than a CV (status `rejected`). */
+  notCv:
+    "Ce document n'est pas un CV (lettre, diplôme, formulaire…) : il n'a pas été intégré au vivier.",
 } as const;

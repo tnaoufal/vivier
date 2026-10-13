@@ -8,6 +8,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { planLots } from "@/lib/candidates/upload";
 import { AppError } from "@/lib/platform/errors";
 import { pokeProcessor } from "@/lib/platform/processor.server";
 import { enforceRateLimit } from "@/lib/platform/rate-limit.server";
@@ -16,10 +17,14 @@ import { db, requireMember } from "@/lib/platform/supabase.server";
 const notifyInput = z.object({
   accessToken: z.string().min(1).max(4096),
   orgId: z.uuid(),
-  documentIds: z.array(z.uuid()).min(1).max(200),
+  // The dialog pokes after each lot of 100; 500 leaves room for a retry of several lots at once.
+  documentIds: z.array(z.uuid()).min(1).max(500),
 });
 
+/** The processor reads at most this many ids per poke; a lot is sent in a few pokes. */
 const POKE_BATCH = 50;
+/** Ids per ownership look-up: 500 of them in one `id=in.(...)` would exceed the 16 KB URL the gateway accepts. */
+const LOOKUP_BATCH = 100;
 
 export interface NotifyResult {
   /** False when the processor is not set up or did not answer; the queue is polled anyway. */
@@ -33,13 +38,15 @@ export const notifyProcessor = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<NotifyResult> => {
     const member = await requireMember(data.accessToken, data.orgId, "member");
     await enforceRateLimit("processor", { userKey: member.userId });
-    const unique = Array.from(new Set(data.documentIds));
-    const rows = await db().select<{ id: string }>(
-      `documents?select=id&org_id=eq.${encodeURIComponent(member.orgId)}&id=in.(${unique
-        .map(encodeURIComponent)
-        .join(",")})`,
-    );
-    const ids = rows.map((row) => row.id);
+    const unique: string[] = Array.from(new Set<string>(data.documentIds));
+    const org = encodeURIComponent(member.orgId);
+    const ids: string[] = [];
+    for (const chunk of planLots(unique, LOOKUP_BATCH)) {
+      const rows = await db().select<{ id: string }>(
+        `documents?select=id&org_id=eq.${org}&id=in.(${chunk.map((id) => encodeURIComponent(id)).join(",")})`,
+      );
+      for (const row of rows) ids.push(row.id);
+    }
     if (!ids.length) return { reached: false, known: 0 };
     let reached = true;
     for (let at = 0; at < ids.length; at += POKE_BATCH) {

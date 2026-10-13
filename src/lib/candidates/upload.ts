@@ -1,18 +1,26 @@
 /**
- * The pure side of a CV batch upload: which files are accepted, the plan
- * (one document id and object key per file), the per-file state machine
- * the dialog renders, and the batch summary. The browser work (hashing,
- * storage, the documents row) is in upload-runner.ts; the supabase-js
- * bindings in upload-browser.ts. Tested in upload.test.ts.
+ * The pure side of a CV import: which files are accepted and the refusals
+ * grouped by reason, the plan (one document id and object key per file),
+ * the lots the plan is cut into, the per-file state machine the dialog
+ * renders, the batch summary, and the two re-plans a person may ask for
+ * (resume what was stopped, retry what failed). The browser work
+ * (hashing, storage, the documents row) is in upload-runner.ts; the
+ * supabase-js bindings in upload-browser.ts. Tested in upload.test.ts.
  */
 
 /** The bucket's own limit (26 214 400 bytes), repeated here so the browser refuses first. */
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
-export const MAX_BATCH_FILES = 200;
-/** Files hashed and uploaded at the same time. */
+/** One import: validated once, then sent lot after lot. */
+export const MAX_BATCH_FILES = 10_000;
+/** Files per lot; the processor is poked after each lot, so profiles appear while the import runs. */
+export const LOT_SIZE = 100;
+/** Files hashed and uploaded at the same time inside a lot. */
 export const UPLOAD_CONCURRENCY = 3;
 
 export type RejectReason = "not_pdf" | "empty" | "too_large" | "too_many";
+
+/** The order the refusal sentence lists its reasons in. */
+export const REJECT_REASONS: readonly RejectReason[] = ["not_pdf", "empty", "too_large", "too_many"];
 
 export interface RejectedFile {
   file: File;
@@ -42,7 +50,41 @@ export function validateFiles(files: readonly File[]): {
   return { accepted, rejected };
 }
 
-export type UploadStatus = "waiting" | "hashing" | "uploading" | "uploaded" | "duplicate" | "failed";
+export interface RejectedGroup {
+  reason: RejectReason;
+  count: number;
+}
+
+/**
+ * The refusals counted by reason, in REJECT_REASONS order and without the
+ * empty ones, so the dialog says one sentence ("12 fichiers refusés :
+ * 10 ne sont pas des PDF, 2 dépassent 25 Mo") and never 10 000 lines.
+ */
+export function groupRejected(rejected: readonly RejectedFile[]): RejectedGroup[] {
+  const counts = new Map<RejectReason, number>();
+  for (const entry of rejected) counts.set(entry.reason, (counts.get(entry.reason) ?? 0) + 1);
+  return REJECT_REASONS.flatMap((reason) => {
+    const count = counts.get(reason) ?? 0;
+    return count > 0 ? [{ reason, count }] : [];
+  });
+}
+
+/** Cuts a list into lots of `size` in order; the last one may be shorter; nothing for an empty list. */
+export function planLots<T>(items: readonly T[], size: number = LOT_SIZE): T[][] {
+  const step = Math.max(1, Math.floor(size));
+  const lots: T[][] = [];
+  for (let at = 0; at < items.length; at += step) lots.push(items.slice(at, at + step));
+  return lots;
+}
+
+export type UploadStatus = "waiting" | "hashing" | "uploading" | "uploaded" | "duplicate" | "failed" | "skipped";
+
+/** The statuses an item does not leave on its own; "skipped" is an item the person stopped before it started. */
+const FINAL_STATUSES: ReadonlySet<UploadStatus> = new Set<UploadStatus>(["uploaded", "duplicate", "failed", "skipped"]);
+
+export function isFinalStatus(status: UploadStatus): boolean {
+  return FINAL_STATUSES.has(status);
+}
 
 /** Why a file failed; the dialog turns it into a sentence. */
 export type UploadErrorCode = "hash" | "upload" | "insert";
@@ -90,11 +132,13 @@ export function reduceUpload(items: readonly UploadItem[], action: UploadAction)
 
 export interface UploadSummary {
   total: number;
-  /** Items that reached a final state. */
+  /** Items the service answered for: uploaded, duplicate or failed. Skipped ones are not done. */
   done: number;
   uploaded: number;
   duplicate: number;
   failed: number;
+  /** Items the person stopped before they started; "Reprendre" sends them. */
+  skipped: number;
   /** True while at least one item is still on its way. */
   active: boolean;
 }
@@ -103,16 +147,64 @@ export function summarizeUpload(items: readonly UploadItem[]): UploadSummary {
   let uploaded = 0;
   let duplicate = 0;
   let failed = 0;
+  let skipped = 0;
   for (const item of items) {
     if (item.status === "uploaded") uploaded += 1;
     else if (item.status === "duplicate") duplicate += 1;
     else if (item.status === "failed") failed += 1;
+    else if (item.status === "skipped") skipped += 1;
   }
   const done = uploaded + duplicate + failed;
-  return { total: items.length, done, uploaded, duplicate, failed, active: items.length > 0 && done < items.length };
+  return {
+    total: items.length,
+    done,
+    uploaded,
+    duplicate,
+    failed,
+    skipped,
+    active: done + skipped < items.length,
+  };
 }
 
 /** The ids of the documents that were stored, in batch order. */
 export function uploadedIds(items: readonly UploadItem[]): string[] {
   return items.filter((item) => item.status === "uploaded").map((item) => item.id);
+}
+
+/** Every item not yet final marked skipped: what a run that broke off (the client itself failed) leaves for "Reprendre". */
+export function skipUnfinished(items: readonly UploadItem[]): UploadItem[] {
+  return items.map((item) => (isFinalStatus(item.status) ? item : { ...item, status: "skipped", error: null }));
+}
+
+/** The skipped items put back to waiting, so a stopped import resumes with the same ids (nothing was started). */
+export function resumeSkipped(items: readonly UploadItem[]): { items: UploadItem[]; resumed: UploadItem[] } {
+  const resumed: UploadItem[] = [];
+  const next = items.map((item) => {
+    if (item.status !== "skipped") return item;
+    const revived: UploadItem = { ...item, status: "waiting", error: null };
+    resumed.push(revived);
+    return revived;
+  });
+  return { items: next, resumed };
+}
+
+/**
+ * The failed items replaced, in place, by fresh ones for the same files.
+ * A new id because a member may not delete objects: the one a failed
+ * insert left behind would make the same key refuse a second upload.
+ */
+export function retryFailed(
+  items: readonly UploadItem[],
+  orgId: string,
+  makeId: () => string,
+): { items: UploadItem[]; retried: UploadItem[] } {
+  const retried: UploadItem[] = [];
+  const next = items.map((item) => {
+    if (item.status !== "failed") return item;
+    const [fresh] = planBatch([item.file], orgId, makeId);
+    if (!fresh) return item;
+    retried.push(fresh);
+    return fresh;
+  });
+  return { items: next, retried };
 }

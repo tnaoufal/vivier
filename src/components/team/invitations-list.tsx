@@ -1,4 +1,4 @@
-/** Pending invitations: the address, the role, when the link expires, and a revoke button. */
+/** Pending invitations as a table that scrolls inside its card: the address, the role, when the link expires, a revoke button. */
 import { Mail, Trash2 } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
@@ -22,38 +22,66 @@ export function InvitationsList({
 }) {
   const { locale, t } = useI18n();
   if (invitations.length === 0) {
-    return <EmptyState icon={<Mail />} title={t("members.invitations.empty")} className="py-8" />;
+    return <EmptyState icon={<Mail />} title={t("members.invitations.empty")} className="py-10" />;
   }
   return (
-    <ul className="sheet divide-y divide-border">
-      {invitations.map((invitation) => {
-        const expired = isInvitationExpired(invitation);
-        return (
-          <li key={invitation.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-ink">{invitation.email}</p>
-              <p className="text-xs text-muted-foreground">
-                {t(`role.${invitation.role}`)}
-                {" · "}
-                {expired
-                  ? t("members.invitations.expired")
-                  : t("members.invitations.expires", { date: formatDate(locale, invitation.expires_at) })}
-              </p>
-            </div>
-            {expired ? <Pill tone="caution">{t("members.invitations.expired")}</Pill> : null}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onRevoke(invitation)}
-              disabled={busyId === invitation.id}
-              className="gap-1.5 text-negative hover:text-negative"
-            >
-              <Trash2 />
-              {t("members.invitations.revoke")}
-            </Button>
-          </li>
-        );
-      })}
-    </ul>
+    <div className="sheet overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[36rem] border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border text-left">
+              <th scope="col" className="label-caps px-6 py-3">
+                {t("common.email")}
+              </th>
+              <th scope="col" className="label-caps px-6 py-3">
+                {t("common.role")}
+              </th>
+              <th scope="col" className="label-caps px-6 py-3">
+                {t("members.invitations.expiry")}
+              </th>
+              <th scope="col" className="px-6 py-3">
+                <span className="sr-only">{t("common.actions")}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {invitations.map((invitation) => {
+              const expired = isInvitationExpired(invitation);
+              return (
+                <tr key={invitation.id}>
+                  <td className="px-6 py-4">
+                    <p className="max-w-64 truncate font-medium text-ink">{invitation.email}</p>
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-muted-foreground">{t(`role.${invitation.role}`)}</td>
+                  <td className="whitespace-nowrap px-6 py-4">
+                    {expired ? (
+                      <Pill tone="caution" dot>
+                        {t("members.invitations.expired")}
+                      </Pill>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {t("members.invitations.expires", { date: formatDate(locale, invitation.expires_at) })}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onRevoke(invitation)}
+                      disabled={busyId === invitation.id}
+                      className="text-negative hover:text-negative"
+                    >
+                      <Trash2 />
+                      {t("members.invitations.revoke")}
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

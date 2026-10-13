@@ -10,10 +10,12 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Pill } from "@/components/app-shell/pill";
+import { Section } from "@/components/app-shell/section";
 import { InviteForm } from "@/components/team/invite-form";
 import { InvitationsList } from "@/components/team/invitations-list";
 import { MembersTable } from "@/components/team/members-table";
 import { NotAllowed } from "@/components/team/not-allowed";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { useQuery } from "@/lib/data/use-query";
@@ -36,6 +38,22 @@ import { toast } from "@/lib/toast";
 export const Route = createFileRoute("/app/members")({
   component: MembersPage,
 });
+
+function TableSkeleton() {
+  return (
+    <div className="sheet overflow-hidden" aria-busy="true">
+      {[0, 1, 2].map((index) => (
+        <div key={index} className="sheet-row">
+          <Skeleton className="size-9 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function MembersPage() {
   const { t } = useI18n();
@@ -71,7 +89,7 @@ function MembersPage() {
   if (!allowed) {
     return (
       <>
-        <PageHeader title={t("nav.members")} description={t("members.subtitle", { org: org.name })} />
+        <PageHeader eyebrow={org.name} title={t("nav.members")} description={t("members.subtitle", { org: org.name })} />
         <NotAllowed text={t("members.notAllowed")} />
       </>
     );
@@ -144,15 +162,20 @@ function MembersPage() {
     ? memberName(removing.profile ?? undefined, removing.profile?.email ?? removing.userId.slice(0, 8))
     : "";
   const removingSelf = removing?.userId === userId;
+  const members = data?.members ?? [];
+  const invitations = data?.invitations ?? [];
 
   return (
     <>
       <PageHeader
+        eyebrow={org.name}
         title={t("nav.members")}
         description={t("members.subtitle", { org: org.name })}
         actions={
           seatsUsed !== null ? (
-            <Pill tone={seatsFull ? "caution" : "neutral"}>{t("shell.org.seats", { used: seatsUsed, limit: org.seat_limit })}</Pill>
+            <Pill tone={seatsFull ? "caution" : "neutral"} dot>
+              {t("shell.org.seats", { used: seatsUsed, limit: org.seat_limit })}
+            </Pill>
           ) : null
         }
       />
@@ -160,13 +183,12 @@ function MembersPage() {
       <div className="space-y-8">
         <InviteForm orgId={org.id} disabled={seatsFull} onInvited={() => void refresh()} />
 
-        <section>
-          <h2 className="mb-3 font-display text-lg text-ink">{t("nav.members")}</h2>
+        <Section title={t("nav.members")} count={loading && !data ? undefined : members.length}>
           {loading && !data ? (
-            <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+            <TableSkeleton />
           ) : (
             <MembersTable
-              members={data?.members ?? []}
+              members={members}
               currentUserId={userId}
               actorRole={role}
               busyUserId={busyUserId}
@@ -174,16 +196,15 @@ function MembersPage() {
               onRemove={setRemoving}
             />
           )}
-        </section>
+        </Section>
 
-        <section>
-          <h2 className="mb-3 font-display text-lg text-ink">{t("members.invitations")}</h2>
+        <Section title={t("members.invitations")} count={loading && !data ? undefined : invitations.length}>
           {loading && !data ? (
-            <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+            <TableSkeleton />
           ) : (
-            <InvitationsList invitations={data?.invitations ?? []} busyId={busyInvitationId} onRevoke={setRevoking} />
+            <InvitationsList invitations={invitations} busyId={busyInvitationId} onRevoke={setRevoking} />
           )}
-        </section>
+        </Section>
       </div>
 
       <ConfirmDialog

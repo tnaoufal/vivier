@@ -34,23 +34,26 @@ describe("messageParagraphs", () => {
 });
 
 describe("shareEmail", () => {
-  it("writes the French email with the sender, the message, the expiry and the confidentiality line", () => {
+  it("writes the French email with the sender, the message, what the dossier holds, the expiry and the confidentiality line", () => {
     const content = shareEmail({ ...base, locale: "fr", message: "Deux profils à voir en priorité." });
     expect(content.subject).toBe("Lumière RH vous présente une shortlist : Développeur back-end senior");
     expect(content.title).toBe(base.title);
+    expect(content.paragraphs).toHaveLength(4);
     expect(content.paragraphs[0]).toBe("Ana Costa (Lumière RH) vous présente une sélection de profils : Développeur back-end senior.");
     expect(content.paragraphs[1]).toBe("Deux profils à voir en priorité.");
-    expect(content.paragraphs[2]).toMatch(/^Le lien expire le 27 octobre 2026\. Les CV .* confidentiels/);
-    expect(content.button).toEqual({ label: "Ouvrir la présentation", url: base.url });
+    expect(content.paragraphs[2]).toMatch(/exigence par exigence/);
+    expect(content.paragraphs[3]).toMatch(/^Le lien expire le 27 octobre 2026\. Les CV .* confidentiels/);
+    expect(content.button).toEqual({ label: "Ouvrir le dossier", url: base.url });
     expect(content.footer).toBe("Ce lien est personnel. Vivier ne prend aucune décision à votre place.");
   });
 
   it("writes the English email and skips the message paragraph when there is none", () => {
     const content = shareEmail({ ...base, locale: "en" });
-    expect(content.paragraphs).toHaveLength(2);
+    expect(content.paragraphs).toHaveLength(3);
     expect(content.paragraphs[0]).toBe("Ana Costa (Lumière RH) is sharing a selection of profiles with you: Développeur back-end senior.");
-    expect(content.paragraphs[1]).toMatch(/^The link expires on 27 October 2026\./);
-    expect(content.button.label).toBe("Open the presentation");
+    expect(content.paragraphs[1]).toMatch(/requirement-by-requirement assessment/);
+    expect(content.paragraphs[2]).toMatch(/^The link expires on 27 October 2026\./);
+    expect(content.button.label).toBe("Open the dossier");
     expect(content.footer).toBe("This link is personal. Vivier makes no decision on your behalf.");
   });
 });

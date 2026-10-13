@@ -7,6 +7,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 
+import { LocaleChips } from "@/components/app-shell/locale-chips";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { DeleteOrgDialog } from "@/components/team/delete-org-dialog";
 import { NotAllowed } from "@/components/team/not-allowed";
@@ -71,7 +72,7 @@ function SettingsPage() {
   if (!allowed) {
     return (
       <>
-        <PageHeader title={t("nav.settings")} description={t("settings.subtitle")} />
+        <PageHeader eyebrow={org.name} title={t("nav.settings")} description={t("settings.subtitle")} />
         <NotAllowed text={t("settings.notAllowed")} />
       </>
     );
@@ -118,35 +119,21 @@ function SettingsPage() {
 
   return (
     <>
-      <PageHeader title={t("nav.settings")} description={t("settings.subtitle")} />
+      <PageHeader eyebrow={org.name} title={t("nav.settings")} description={t("settings.subtitle")} />
 
-      <div className="space-y-6">
-        <form onSubmit={save} className="sheet p-4 sm:p-5">
-          <h2 className="font-display text-lg text-ink">{t("settings.org")}</h2>
-          <div className="mt-4 space-y-4">
-            <div className="space-y-1.5">
+      <div className="space-y-8">
+        <form onSubmit={save} className="sheet p-6 sm:p-8">
+          <h2 className="font-display text-xl text-ink">{t("settings.org")}</h2>
+          <div className="mt-6 space-y-6">
+            <div className="space-y-2">
               <Label htmlFor="org-name">{t("common.name")}</Label>
-              <Input id="org-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required disabled={saving} />
+              <Input id="org-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required disabled={saving} className="max-w-md" />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label>{t("onboarding.locale")}</Label>
-              <div className="flex gap-2">
-                {(["fr", "en"] as const).map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    variant={orgLocale === value ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setOrgLocale(value)}
-                    className="uppercase"
-                    disabled={saving}
-                  >
-                    {value}
-                  </Button>
-                ))}
-              </div>
+              <LocaleChips value={orgLocale} onChange={setOrgLocale} disabled={saving} />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="org-retention">{t("settings.retention")}</Label>
               <Input
                 id="org-retention"
@@ -161,14 +148,16 @@ function SettingsPage() {
                 required
                 disabled={saving}
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="max-w-2xl text-[13px] leading-5 text-muted-foreground">
                 {t("settings.retention.help", { months: monthsValid ? months : org.retention_months })}
               </p>
             </div>
           </div>
-          <Button type="submit" className="mt-5" disabled={saving || !name.trim() || !monthsValid}>
-            {t("common.save")}
-          </Button>
+          <div className="mt-8">
+            <Button type="submit" disabled={saving || !name.trim() || !monthsValid}>
+              {t("common.save")}
+            </Button>
+          </div>
         </form>
 
         <PlanCard
@@ -178,15 +167,15 @@ function SettingsPage() {
           loading={usage.loading}
         />
 
-        <section className="sheet border-negative/40 p-4 sm:p-5">
-          <h2 className="font-display text-lg text-negative">{t("settings.danger")}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t("settings.danger.text")}</p>
+        <section className="sheet border-negative/40 p-6 sm:p-8">
+          <h2 className="font-display text-xl text-negative">{t("settings.danger")}</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">{t("settings.danger.text")}</p>
           {owner ? (
-            <Button variant="destructive" className="mt-4" onClick={() => setDeleteOpen(true)} disabled={deleting}>
+            <Button variant="destructive" className="mt-6" onClick={() => setDeleteOpen(true)} disabled={deleting}>
               {t("settings.delete")}
             </Button>
           ) : (
-            <p className="mt-3 text-sm text-muted-foreground">{t("settings.danger.ownerOnly")}</p>
+            <p className="mt-4 text-sm text-muted-foreground">{t("settings.danger.ownerOnly")}</p>
           )}
         </section>
       </div>

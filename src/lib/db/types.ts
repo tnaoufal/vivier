@@ -284,6 +284,14 @@ export interface MatchResult {
   retrieval: { textRank: number | null; vectorRank: number | null };
   /** The model's expert assessment; absent when no model answered (text-only mode). */
   assessment?: Assessment;
+  /**
+   * The criteria the verdicts and the assessment refer to, as they were
+   * when the search ran: carried by the snapshot a shortlist item keeps
+   * (shortlist_items.match) so the board and the dossier read it against
+   * the right brief. Absent in a search's own results (the row holds
+   * them) and in items stored before.
+   */
+  criteria?: BriefCriterion[];
 }
 
 export type SearchMethod = "hybrid" | "text";
@@ -297,6 +305,8 @@ export interface SearchRow {
   results: MatchResult[];
   result_count: number;
   method: SearchMethod;
+  /** Active candidates in the pool when the search ran; null for rows stored before the column existed. */
+  pool_size: number | null;
   ran_by: string | null;
   created_at: string;
 }

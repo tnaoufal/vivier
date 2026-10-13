@@ -21,7 +21,9 @@ process started.
    unique index on `(org_id, sha256)` refuses a file the organisation already has: the
    document is then attached to the other document's candidate, `processed`,
    `extraction_method = 'none'`, and stops (a duplicate costs nothing and is not counted
-   as processed this month: `processed_at` stays null).
+   as processed this month: `processed_at` stays null). When the other document was
+   set aside (`rejected`, step 6), the copy is set aside too, with the same sentence,
+   at no cost: a "processed" copy leading to no candidate would say nothing.
 4. **Text**: the PDF's text layer (unpdf). A PDF with fewer than 150 readable characters
    per page on average (or in total) counts as scanned: with `MISTRAL_OCR_API_KEY` it
    goes through OCR (`extraction_method = 'ocr'`); without, the document is
@@ -35,16 +37,55 @@ process started.
    is validated with zod (one retry quoting the error). Without a model, a heuristic
    profile: email and phone by regex, a name from the first lines or the file name,
    low confidences, everything else empty (`structuring_method = 'heuristic'`).
-6. **Candidate**: the fingerprint (email, else name + phone digits) finds an existing
-   candidate of the organisation; a new reading is merged into it (a value is kept
-   unless it is empty or the new one is confident, ≥ 0.7 and at least as confident;
-   skills and tags are unioned; lists are replaced when at least as confident;
-   confidences keep the max) or a new row is inserted (`source = 'upload'`,
-   `created_by = documents.uploaded_by`). `search_text` feeds the full-text index; with
-   a model, `embedding` (1024 dimensions) is computed from a compact text. A failed
-   embedding call never fails the document: it is logged and the vector stays null.
-7. **Document**: `processed`, `candidate_id`, `page_count`, `text_chars`,
-   `extracted_text`, `extraction_method`, `structuring_method`, `processed_at`.
+6. **Classification**, inside the same model call (no extra cost): the model says
+   whether the text is one person's CV (`document_kind = 'cv'`: identity or contact
+   details with experiences, education or skills) or something else (`'other'`: a cover
+   letter alone, a diploma or certificate, an identity document, an invoice, a job
+   offer, a brochure, a form, a list of several people, text that is not about a
+   person). A document the model calls `other` is set aside: `status = 'rejected'`,
+   `error` = "Ce document n'est pas un CV (lettre, diplôme, formulaire…) : il n'a pas
+   été intégré au vivier.", the text, the page count and `processed_at` kept, and **no
+   candidate is created or touched** (a document pinned to a candidate keeps its
+   `candidate_id`). The person can re-queue it like a failed document if the model was
+   wrong. Only an explicit `other` sets a document aside: a missing or unknown answer
+   counts as a CV, and without a model nothing is ever rejected on content
+   (`document_kind` stays null), because a doubt must never cost a person their place
+   in the pool. The model's one-sentence reason is logged (`rejected`), never stored.
+7. **Candidate**: the same person across different files is found in this order, the
+   first hit wins: (a) the candidate the document was pinned to (uploaded from a
+   profile page); (b) the email, case-insensitively (`findCandidateByEmail`, PostgREST
+   `ilike` with the wildcards escaped: it filters the organisation's rows through the
+   `org_id` index, a pattern cannot use the `lower(email)` one); (c) the phone number
+   by its last nine digits (`candidates.phone_digits`, a column the database computes
+   from `phone`, so "+33 6 12 34 56 78" and "06.12.34.56.78" meet; a suffix `like`,
+   filtered the same way); (d) the fingerprint: the email, else name + phone digits,
+   else name + the latest experience's company (or the first school), through its
+   index. A name alone never merges. A contact detail alone does not merge two people
+   either: an email, phone or fingerprint hit whose name disagrees with the CV's (both
+   names full, two words or more, and not one word in common: "Jean Martin" vs "Marie
+   Dupont"; "M. Dupont" vs "Marie Dupont" still meet) is refused, logged
+   (`dedup_name_conflict`) and the next key is tried, so a CV sent through an agency
+   or a family mailbox never gives one person another's background. Each lookup
+   prefers an active candidate to an archived namesake, and when the only match is
+   archived, the fresh CV puts the person back in the pool (`status = 'active'`,
+   logged `candidate_reactivated`): a processed document must lead to a candidate a
+   search can show. The lookup and the write run **one organisation at a time** (an
+   in-process lock, `mutex.ts`): with several documents in flight, two exports of one
+   CV uploaded together would otherwise both find nobody and both insert, and no
+   database key refuses the second row. A new reading is merged into the candidate
+   found (a value is kept unless it is empty or the new one is confident, ≥ 0.7 and at
+   least as confident; skills and tags are unioned; lists are replaced when at least
+   as confident; confidences keep the max), else a new row is inserted (`source =
+   'upload'`, `created_by = documents.uploaded_by`). The fingerprint stored is the
+   merged profile's. `search_text` feeds the full-text index; with a model,
+   `embedding` (1024 dimensions) is computed from the merged profile's compact text
+   once the row is written, outside the lock, and written in a second update. A failed
+   embedding call never fails the document: it is logged (`embedding_mismatch` with
+   the fix sentence when the model answered the wrong width, `embedding_failed`
+   otherwise), the vector stays null and the hourly re-embed pass fills it in later.
+8. **Document**: `processed`, `candidate_id`, `page_count`, `text_chars`,
+   `extracted_text`, `extraction_method`, `structuring_method`, `document_kind`
+   (`'cv'` with a model, null without), `processed_at`.
 
 Any other error leaves the document `failed` with one sentence for the person ("Le
 fichier n'a pas pu être lu.", "Le modèle n'a pas répondu." or "Le traitement a
@@ -54,8 +95,10 @@ pages processed, the unit Mistral bills).
 
 ### Statuses
 
-`queued` → `processing` → `processed` | `needs_ocr` | `failed`. A person can put a
-`failed` or `needs_ocr` document back to `queued` from the web app. A document left in
+`queued` → `processing` → `processed` | `rejected` | `needs_ocr` | `failed`. A person
+can put a `failed`, `needs_ocr` or `rejected` document back to `queued` from the web
+app. A `rejected` document counts as processed this month for the quota (the model was
+called), not as a candidate. A document left in
 `processing` for more than ten minutes (a crash, a redeploy) is put back to `queued` by
 the next poll, unless it has already been claimed three times: it is then left `failed`
 ("Le traitement a échoué."), so a document that crashes the process cannot loop.
@@ -71,13 +114,13 @@ the next poll, unless it has already been claimed three times: it is then left `
 | `LLM_API_KEY` | no | | Enables the model. Without it: no-model mode (heuristic profiles, no embeddings). |
 | `LLM_BASE_URL` | no | `https://api.openai.com/v1` | Any OpenAI-compatible API, e.g. `https://api.mistral.ai/v1`. |
 | `LLM_MODEL` | no | `mistral-small-latest` on Mistral, else `gpt-4o-mini` | Chat model. |
-| `LLM_EMBEDDING_MODEL` | no | `mistral-embed` on Mistral, else `text-embedding-3-small` | Must answer 1024 dimensions (OpenAI models are shortened to 1024). |
+| `LLM_EMBEDDING_MODEL` | no | `mistral-embed` on Mistral, else `text-embedding-3-small` | Must answer 1024 dimensions (OpenAI models are shortened to 1024). The service probes it at start: see "Embedding probe". |
 | `MISTRAL_OCR_API_KEY` | no | | Enables OCR for scanned PDFs through `POST https://api.mistral.ai/v1/ocr`. |
 | `MISTRAL_OCR_MODEL` | no | `mistral-ocr-latest` | OCR model. |
 | `PORT` | no | `8080` | |
 | `POLL_INTERVAL_MS` | no | `20000` | How often the queue is read. `0` disables polling (`POST /process` still works). |
 | `MAINTENANCE_INTERVAL_MS` | no | `3600000` | How often the retention purge runs. `0` disables the timer (`POST /maintenance` still works). |
-| `PROCESSOR_CONCURRENCY` | no | `2` | Documents processed at once, 1..8. |
+| `PROCESSOR_CONCURRENCY` | no | `4` | Documents processed at once, 1..8. A document mostly waits on the model and the storage, so four in flight drain a queue of hundreds of files at a steady pace; raise it on a larger container, lower it if the model's rate limit answers 429. |
 | `MAX_TEXT_CHARS` | no | `200000` | Cap on the text kept per document. |
 
 No value is ever logged or returned: `/health` and `/metrics` say which parts are set up,
@@ -87,23 +130,54 @@ not what they hold.
 
 | Route | Auth | Answer |
 | --- | --- | --- |
-| `GET /health` | none | `200 { ok: true, version, uptimeSeconds, supabase, model, ocr, polling }` as soon as the process listens. |
-| `GET /metrics` | bearer | Counters since start: documents by outcome (processed, failed, needsOcr, duplicates, quotaRefused, skipped), pages, model and OCR calls, purged candidates, last poll time, queue depth, documents in flight, the setup flags. |
+| `GET /health` | none | `200 { ok: true, version, uptimeSeconds, supabase, model, ocr, embedding, polling }` as soon as the process listens. `embedding` is `"off"` without a model (and until the startup probe has answered), then `"ok"`, `"mismatch"` (the model answers the wrong width: set at once, kept until a call succeeds) or `"unavailable"` (the probe failed, or three calls in a row did, for another reason: one 429 or one timeout among the documents in flight does not flip it); it is read from memory, never from a call, so the route stays instant. |
+| `GET /metrics` | bearer | Counters since start: documents by outcome (processed, failed, needsOcr, duplicates, quotaRefused, rejected, skipped), pages, model and OCR calls, purged candidates, last poll time, queue depth, documents in flight, the setup flags. |
 | `POST /process` | bearer | `{ "documentIds": ["<uuid>", ...] }` (1..50, body ≤ 64 KiB). Schedules them without waiting; `202 { accepted }`. The web app calls it right after an upload so the person does not wait for the next poll. `503` without Supabase. |
-| `POST /maintenance` | bearer | Runs the maintenance pass now and answers its report `{ ranAt, purged, filesRemoved, failed, staleRequeued, staleFailed, ms }`. `503` without Supabase. |
+| `POST /maintenance` | bearer | Runs the maintenance pass now and answers its report `{ ranAt, purged, filesRemoved, failed, staleRequeued, staleFailed, reembedded, reembedFailed, reembedSkipped, ms }`. `503` without Supabase. |
 
 The bearer is compared in constant time. Every other path answers `401` without the
 bearer and `404 { error }` with it; every error is `{ error: "<sentence>" }` without
 internals.
 
-## Retention purge
+## Maintenance pass
 
-Every `MAINTENANCE_INTERVAL_MS` (and 30 s after start), `expired_candidates(100)` lists the
-candidates past their organisation's `retention_months` (counted from the last contact,
-else the upload) or whose consent is withdrawn. For each: the files of its documents are
-removed from the `cvs` bucket, then the candidate row is deleted (the cascade removes the
-document rows, the audit trigger logs `candidate.deleted`). A candidate whose files could
-not be removed is left for the next pass, so a row never outlives its files.
+Every `MAINTENANCE_INTERVAL_MS` (and 30 s after start), in this order:
+
+- **Stale reset**: documents left in `processing` for more than ten minutes go back to
+  `queued`, or to `failed` past three attempts.
+- **Retention purge**: `expired_candidates(100)` lists the candidates past their
+  organisation's `retention_months` (counted from the last contact, else the upload)
+  or whose consent is withdrawn. For each: the files of its documents are removed from
+  the `cvs` bucket, then the candidate row is deleted (the cascade removes the document
+  rows, the audit trigger logs `candidate.deleted`). A candidate whose files could not
+  be removed is left for the next pass, so a row never outlives its files.
+- **Re-embed** (with a model only): up to 100 embedding calls per pass for the active
+  candidates without a vector, most recently updated first (the
+  `candidates_missing_embedding_idx` index), each from the candidate's compact profile
+  text; each call is one `ai_usage` row of kind `embed` for the candidate's
+  organisation. A profile with nothing to embed (no headline, summary, skills or
+  positions: a heuristic profile) is skipped and stays where it is in the listing, so
+  the pass reads the listing page by page (100 rows a page, 10 pages at most) until it
+  has made its calls: a hundred such candidates at the top never hide the ones below
+  them. The first wrong-width answer stops the pass (every other call would fail the
+  same way): one `embedding_mismatch` log line carries the fix sentence, and `/health`
+  says `"mismatch"` until a call succeeds. Any other failure is logged and the pass
+  goes on. The report counts `reembedded`, `reembedFailed` and `reembedSkipped`; a
+  pass that only skipped logs `reembed_skipped`, since its counts look healthy.
+
+## Embedding probe
+
+Right after the server listens, when a model is configured, the service embeds the
+text "vivier probe" once (one tiny call, billed to no organisation) and logs
+`embedding_ok { model, dimensions: 1024 }`, or `embedding_mismatch` with the sentence
+that names `LLM_EMBEDDING_MODEL`, the width answered and the 1024 the schema holds, or
+`embedding_unavailable` for any other error. `/health` shows the same state
+(`embedding`), which the pipeline and the re-embed pass keep up to date afterwards: a
+wrong width flips it to `"mismatch"` at once, a success puts it back to `"ok"`, and
+three other failures in a row (not one) make it `"unavailable"`. The probe never
+blocks `/health`: Railway's check and CI's smoke test read it at once. A `"mismatch"`
+means every candidate processed since the model was set has no vector: fix the
+variable, redeploy, and the hourly re-embed pass gives them one.
 
 ## Running locally
 

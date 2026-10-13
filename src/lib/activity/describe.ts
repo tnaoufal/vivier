@@ -120,6 +120,8 @@ export function describeActivity(row: ActivityRow, locale: Locale, names: Activi
       return word(locale, "activity.kind.document.failed", params);
     case "document.needs_ocr":
       return word(locale, "activity.kind.document.needsOcr", params);
+    case "document.rejected":
+      return word(locale, "activity.kind.document.rejected", params);
     case "candidate.active":
       return word(locale, "activity.kind.candidate.active", params);
     case "candidate.archived":

@@ -1,8 +1,9 @@
 /**
- * The profile as read: one card per section, "not stated" for every
- * empty field, a confidence hint where the structuring was unsure.
- * Skills and tags are chips a member edits in place; the rest is edited
- * through the form (profile-form.tsx).
+ * The profile as read: one card per section, "not stated" in muted text
+ * for every empty field (never a dash that could read as "none"), a
+ * confidence hint where the structuring was unsure. Skills and tags are
+ * chips a member edits in place; the rest is edited through the form
+ * (profile-form.tsx). Spacing and type follow docs/DESIGN.md.
  */
 import type { ReactNode } from "react";
 import { Mail, Phone } from "lucide-react";
@@ -24,9 +25,9 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="sheet p-4 sm:p-5">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h2 className="label-caps">{title}</h2>
+    <section className="sheet p-6">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <h2 className="text-base font-semibold text-ink">{title}</h2>
         <ConfidenceHint value={hint} />
       </div>
       {children}
@@ -34,11 +35,12 @@ export function Section({
   );
 }
 
+/** A value the CV stated, in body type; "not stated" in muted text when it said nothing. */
 function Value({ text, className = "" }: { text: string | null | undefined; className?: string }) {
   const { t } = useI18n();
   const clean = text?.trim();
   if (!clean) return <p className="text-sm text-muted-foreground">{t("common.unknown")}</p>;
-  return <p className={`whitespace-pre-line text-sm text-ink ${className}`}>{clean}</p>;
+  return <p className={`whitespace-pre-line text-[15px] leading-6 text-ink ${className}`}>{clean}</p>;
 }
 
 /** Links a value may carry: mailto / tel, opened by the person. */
@@ -46,14 +48,14 @@ function ContactLine({ icon, href, text }: { icon: ReactNode; href: string | nul
   const { t } = useI18n();
   const clean = text?.trim();
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className="text-muted-foreground [&_svg]:size-4">{icon}</span>
+    <div className="flex min-w-0 items-center gap-2 text-[15px] leading-6">
+      <span className="shrink-0 text-muted-foreground [&_svg]:size-4">{icon}</span>
       {clean && href ? (
-        <a href={href} className="text-primary hover:underline">
+        <a href={href} className="truncate text-primary hover:underline">
           {clean}
         </a>
       ) : (
-        <span className="text-muted-foreground">{t("common.unknown")}</span>
+        <span className="text-sm text-muted-foreground">{t("common.unknown")}</span>
       )}
     </div>
   );
@@ -73,7 +75,7 @@ export function ProfileSections({
   const years = yearsLabel(locale, candidate.years_experience);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <Section title={t("candidates.field.summary")} hint={confidence.summary}>
         <Value text={candidate.summary} />
       </Section>
@@ -88,10 +90,10 @@ export function ProfileSections({
         />
       </Section>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-6 sm:grid-cols-2">
         <Section title={t("candidates.field.languages")} hint={confidence.languages}>
           {candidate.languages?.length ? (
-            <ul className="space-y-1 text-sm text-ink">
+            <ul className="space-y-1 text-[15px] leading-6 text-ink">
               {candidate.languages.map((language, index) => (
                 <li key={`${language.name}-${index}`}>
                   {language.name}
@@ -104,23 +106,23 @@ export function ProfileSections({
           )}
         </Section>
         <Section title={t("candidates.field.years")} hint={confidence.years_experience}>
-          <Value text={years} />
+          <Value text={years} className="tabular-nums" />
         </Section>
       </div>
 
       <Section title={t("candidates.field.experiences")} hint={confidence.experiences}>
         {candidate.experiences?.length ? (
-          <ol className="space-y-4">
+          <ol className="space-y-6">
             {candidate.experiences.map((experience, index) => {
               const dates = formatDateRange(locale, experience.start, experience.end);
               return (
-                <li key={`${experience.title}-${index}`} className="border-l-2 border-border pl-3">
-                  <p className="text-sm font-medium text-ink">{experience.title}</p>
-                  <p className="text-xs text-muted-foreground">
+                <li key={`${experience.title}-${index}`} className="border-l-2 border-border pl-4">
+                  <p className="text-[15px] font-medium leading-6 text-ink">{experience.title}</p>
+                  <p className="text-[13px] leading-5 text-muted-foreground">
                     {[experience.company, dates].filter((part) => part && part.trim()).join(" · ") || t("common.unknown")}
                   </p>
                   {experience.description?.trim() ? (
-                    <p className="mt-1 whitespace-pre-line text-sm text-ink">{experience.description.trim()}</p>
+                    <p className="mt-2 whitespace-pre-line text-[15px] leading-6 text-ink">{experience.description.trim()}</p>
                   ) : null}
                 </li>
               );
@@ -133,11 +135,11 @@ export function ProfileSections({
 
       <Section title={t("candidates.field.education")} hint={confidence.education}>
         {candidate.education?.length ? (
-          <ul className="space-y-2">
+          <ul className="space-y-4">
             {candidate.education.map((entry, index) => (
               <li key={`${entry.degree}-${index}`}>
-                <p className="text-sm font-medium text-ink">{entry.degree}</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[15px] font-medium leading-6 text-ink">{entry.degree}</p>
+                <p className="text-[13px] leading-5 text-muted-foreground">
                   {[entry.school, entry.year].filter((part) => part && part.trim()).join(" · ") || t("common.unknown")}
                 </p>
               </li>
@@ -148,9 +150,9 @@ export function ProfileSections({
         )}
       </Section>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-6 sm:grid-cols-2">
         <Section title={t("candidates.field.contact")}>
-          <div className="space-y-2">
+          <div className="space-y-3">
             <ContactLine
               icon={<Mail />}
               href={candidate.email?.trim() ? `mailto:${candidate.email.trim()}` : null}
@@ -172,7 +174,7 @@ export function ProfileSections({
 
       <Section title={t("candidates.field.links")}>
         {candidate.links?.length ? (
-          <ul className="space-y-1 text-sm">
+          <ul className="space-y-1 text-[15px] leading-6">
             {candidate.links.map((link, index) => (
               <li key={`${link.url}-${index}`} className="truncate">
                 <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">

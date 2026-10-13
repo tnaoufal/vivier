@@ -1,8 +1,11 @@
 /**
  * The criteria of a brief as data: the kinds, the weights, a parser that
  * reads briefs.criteria (JSON the browser wrote, or the model proposed)
- * defensively, and the small helpers the editor, the proposals and the
- * server share. Pure, no React, tested in criteria.test.ts.
+ * defensively, the guard that names a criterion about a protected
+ * characteristic (such a row is never saved, never sent to a model,
+ * never shown: the parser and the clean-up both leave it out), and the
+ * small helpers the editor, the proposals and the server share. Pure,
+ * no React, tested in criteria.test.ts.
  */
 import { z } from "zod";
 
@@ -40,6 +43,34 @@ export function toWeight(value: unknown): Weight {
   return 2;
 }
 
+// ---------------------------------------------------------------------
+// protected characteristics
+// ---------------------------------------------------------------------
+
+const PROTECTED = new RegExp(
+  "(?<![\\p{L}])(" +
+    [
+      "age", "ages", "aged", "date de naissance", "birth", "born", "sexe", "sex", "gender", "femme", "homme",
+      "female", "male", "origine", "origines", "origin", "origins", "ethnic", "ethnie", "ethnique", "race",
+      "racial", "nationalite", "nationality", "religion", "religieux", "religieuse", "religious", "confession",
+      "handicap", "handicape", "handicapee", "disability", "disabled", "enceinte", "grossesse", "pregnancy",
+      "pregnant", "famille", "familiale", "family", "marital", "marie", "mariee", "married", "enfants",
+      "children", "syndicat", "syndical", "syndicale", "syndique", "trade union", "politique", "political",
+      "orientation sexuelle", "sexual orientation", "photo", "photographie",
+    ].join("|") +
+    ")(?![\\p{L}])",
+  "u",
+);
+
+/**
+ * True when a label or value names a protected characteristic: such a
+ * criterion is never kept, whether the model proposed it or a person
+ * typed it (the editor says so under the row).
+ */
+export function protectedCriterion(label: string, value: string): boolean {
+  return PROTECTED.test(fold(label)) || PROTECTED.test(fold(value));
+}
+
 const storedCriterion = z.object({
   id: z.string().min(1).max(64),
   kind: z.enum(["skill", "experience", "language", "location", "education", "availability", "other"]),
@@ -52,7 +83,10 @@ const storedCriterion = z.object({
 /**
  * The criteria of a briefs.criteria value: invalid entries are dropped,
  * labels and values trimmed and capped, duplicate ids kept once (the
- * first). Never throws: a brief with a damaged column still opens.
+ * first), and a row about a protected characteristic left out (a row an
+ * older client or a write by hand through the API stored: it reaches no
+ * payload and no screen; countProtected() lets the server log it).
+ * Never throws: a brief with a damaged column still opens.
  */
 export function parseCriteria(value: unknown): BriefCriterion[] {
   if (!Array.isArray(value)) return [];
@@ -64,6 +98,7 @@ export function parseCriteria(value: unknown): BriefCriterion[] {
     const label = parsed.data.label.trim().slice(0, LABEL_MAX);
     const criterionValue = parsed.data.value.trim().slice(0, VALUE_MAX);
     if (!label || !criterionValue || seen.has(parsed.data.id)) continue;
+    if (protectedCriterion(label, criterionValue)) continue;
     seen.add(parsed.data.id);
     out.push({
       id: parsed.data.id,
@@ -76,6 +111,18 @@ export function parseCriteria(value: unknown): BriefCriterion[] {
     if (out.length >= CRITERIA_MAX) break;
   }
   return out;
+}
+
+/** How many readable entries of a stored criteria column name a protected characteristic: what parseCriteria() left out for that reason. */
+export function countProtected(value: unknown): number {
+  if (!Array.isArray(value)) return 0;
+  let count = 0;
+  for (const item of value) {
+    const parsed = storedCriterion.safeParse(item);
+    if (!parsed.success || !isComplete(parsed.data)) continue;
+    if (protectedCriterion(parsed.data.label, parsed.data.value)) count += 1;
+  }
+  return count;
 }
 
 /** A criterion with a fresh id (crypto.randomUUID(), or the one given for tests). */
@@ -97,13 +144,16 @@ export function isComplete(criterion: Pick<BriefCriterion, "label" | "value">): 
   return criterion.label.trim().length > 0 && criterion.value.trim().length > 0;
 }
 
-/** The rows worth saving: complete ones, trimmed and capped, in order. */
+/** The rows worth saving: complete ones, trimmed and capped, in order; never one about a protected characteristic. */
 export function cleanCriteria(criteria: readonly BriefCriterion[]): BriefCriterion[] {
-  return criteria.filter(isComplete).map((criterion) => ({
-    ...criterion,
-    label: criterion.label.trim().slice(0, LABEL_MAX),
-    value: criterion.value.trim().slice(0, VALUE_MAX),
-  }));
+  return criteria
+    .filter(isComplete)
+    .map((criterion) => ({
+      ...criterion,
+      label: criterion.label.trim().slice(0, LABEL_MAX),
+      value: criterion.value.trim().slice(0, VALUE_MAX),
+    }))
+    .filter((criterion) => !protectedCriterion(criterion.label, criterion.value));
 }
 
 /** True when two lists would save the same JSON (same order, same fields). */

@@ -62,17 +62,39 @@ sentence of description under every page title, at most two lines.
 - `Section`: a title with an optional count and action, then its content.
 - `Sheet` utility: the card (`rounded-2xl border bg-card`); `sheet-row` for a
   list row (`flex items-center gap-4 py-4`), hover tint, the whole row is the
-  link when it leads somewhere.
-- `StatTile`: a label, a big tabular number, an optional delta or link.
+  link when it leads somewhere; `sheet-link` for a card that leads
+  somewhere (tint and accent border on hover and keyboard focus).
+- `StatTile`: a label, the count in `stat-number` (display face, 30/36,
+  tabular digits), an icon in a tinted disc; a dash with the reason on
+  hover when the count could not be read, never a zero.
 - `Pill`: statuses and verdicts; always with a leading dot or icon so colour
-  is never the only signal.
+  is never the only signal. `DecisionPill` (briefs, share) is the analysis's
+  reading as a pill with an icon: matches, to check, does not match, not
+  analysed; it never says more.
+- `FilterChip`: a toggle in a filter row, hairline, accent tint when on,
+  never the filled primary. `LocaleChips`: the two languages, one on.
 - `ScoreRing`: the fit score 0–100 as a ring with the number inside; green
-  from 80, amber from 60, red below; "—" when no score.
+  from 80, amber from 60, red below; "—" when no model assessed the
+  profile. `md` (56px) in a list, `lg` (72px) on a dossier sheet.
 - `RequirementList`: one row per requirement with the mark (✓ met, ~ partial,
-  ✗ missing, ? not stated), the label, the evidence in muted text.
+  ✗ missing, ? not stated), the label, the evidence in muted text; the same
+  rows on a result card, in the shortlist drawer and on a dossier sheet
+  (`compact` for print).
 - `EmptyState`: an icon in a tinted disc, one sentence, one action.
 - `Skeleton` rows while loading; never a spinner alone on a blank page.
 - Dialog and Sheet (drawer) from `src/components/ui`, sized as above.
+
+## The analysis and the dossier
+
+- The brief page groups results by decision: matching, to check, set aside
+  (collapsed by default: out of the way, never gone, the missing required
+  requirement named on the card), not analysed. The progress of an analysis
+  is one line with the count, a thin bar and the way to interrupt it.
+- The dossier (`/share/:token`) is a white sheet with dark ink on any theme
+  (`share-sheet` scopes the tokens, `color-scheme: light`), A4 with a 16 mm
+  margin, one sheet per candidate per printed page (`print:break-before-page`),
+  the print and CV buttons hidden in print, the ring drawn at rest. The PDF a
+  reader keeps is the browser's print of the page.
 
 ## Motion
 
@@ -83,4 +105,7 @@ bounces. Lists animate rows in once (`rise-in`), never on every refresh.
 
 A value the CV does not state reads "Non renseigné" in muted text, never a
 dash that could be read as "none". A model's sentence is introduced as the
-model's ("Lecture du modèle"). A decision shows who took it and when.
+model's ("Lecture du modèle"). A decision shows who took it and when. A
+pool larger than one analysis reads says how many profiles were looked at;
+a dossier sheet without an analysis says so instead of showing an empty
+table; a document set aside says it is not a CV and can be retried.

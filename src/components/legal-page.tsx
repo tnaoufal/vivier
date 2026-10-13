@@ -65,14 +65,14 @@ export function LegalPage({ kind }: { kind: Kind }) {
   const page = CONTENT[kind][locale];
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-        <BrandMark size="md" className="mb-8" />
-        <h1 className="font-display text-3xl text-ink">{page.title}</h1>
+      <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
+        <BrandMark size="md" className="mb-10" />
+        <h1 className="font-display text-2xl text-ink sm:text-3xl">{page.title}</h1>
         {page.sections.map((section) => (
-          <section key={section.h} className="mt-8">
-            <h2 className="font-display text-lg text-ink">{section.h}</h2>
+          <section key={section.h} className="mt-10">
+            <h2 className="font-display text-xl text-ink">{section.h}</h2>
             {section.p.map((paragraph, index) => (
-              <p key={index} className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              <p key={index} className="mt-3 text-[15px] leading-6 text-muted-foreground">
                 {paragraph}
               </p>
             ))}

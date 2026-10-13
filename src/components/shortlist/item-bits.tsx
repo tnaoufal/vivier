@@ -1,9 +1,9 @@
 /**
  * Small pieces shared by the card and the drawer of a shortlist item:
- * the score line, the four verdict counts, the vote buttons, the
- * decision trace ("Retained by Ana · 2 h ago") and a comment body with
- * its mentions highlighted. Each shows only what was read: no score
- * means "no score", an unknown decider is named as such.
+ * the deterministic score line, the four verdict counts, the vote
+ * buttons, the decision trace ("Retained by Ana · 2 h ago") and a
+ * comment body with its mentions highlighted. Each shows only what was
+ * read: no score means "no score", an unknown decider is named as such.
  */
 import { ThumbsDown, ThumbsUp } from "lucide-react";
 
@@ -36,18 +36,23 @@ const VERDICT_TEXT: Record<CriterionVerdict, string> = {
   not_stated: "text-muted-foreground",
 };
 
+/** The deterministic score and coverage, muted: a second reading next to the model's ring. */
 export function ScoreLine({ match, className }: { match: MatchResult | null; className?: string }) {
   const { t } = useI18n();
   const score = scorePercent(match);
   const coverage = coveragePercent(match);
   if (score === null) {
-    return <span className={cn("text-xs text-muted-foreground", className)}>{t("shortlists.item.noScore")}</span>;
+    return <span className={cn("text-[13px] leading-5 text-muted-foreground", className)}>{t("shortlists.item.noScore")}</span>;
   }
   return (
-    <span className={cn("flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground", className)}>
-      <span className="font-medium text-ink">{t("shortlists.item.score", { score })}</span>
+    <span className={cn("flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] leading-5 text-muted-foreground tabular-nums", className)}>
+      <span>{t("shortlists.item.score", { score })}</span>
       {coverage !== null ? <span>· {t("shortlists.item.coverage", { coverage })}</span> : null}
-      {match?.blocked ? <Pill tone="negative">{t("shortlists.item.blocked")}</Pill> : null}
+      {match?.blocked ? (
+        <Pill tone="negative" dot>
+          {t("shortlists.item.blocked")}
+        </Pill>
+      ) : null}
     </span>
   );
 }
@@ -58,7 +63,7 @@ export function VerdictCounts({ match, className }: { match: MatchResult | null;
   const counts = verdictCounts(match);
   if (!counts) return null;
   return (
-    <ul className={cn("flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs", className)} aria-label={t("shortlists.drawer.match")}>
+    <ul className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] leading-5", className)} aria-label={t("shortlists.drawer.match")}>
       {VERDICTS.map((verdict) => (
         <li
           key={verdict}
@@ -100,12 +105,12 @@ function VoteButton({
       aria-label={label}
       title={active ? `${label} · ${t("shortlists.vote.mine")}` : label}
       className={cn(
-        "inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs font-medium tabular-nums transition-colors disabled:cursor-default [&_svg]:size-3.5",
+        "inline-flex h-10 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium tabular-nums transition-colors duration-150 ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default [&_svg]:size-4",
         active ? activeClass : "bg-muted text-muted-foreground",
-        disabled ? "" : "hover:bg-accent hover:text-accent-foreground",
+        disabled ? "" : "cursor-pointer hover:bg-accent hover:text-accent-foreground",
       )}
     >
-      {value === 1 ? <ThumbsUp /> : <ThumbsDown />}
+      {value === 1 ? <ThumbsUp aria-hidden="true" /> : <ThumbsDown aria-hidden="true" />}
       {count}
     </button>
   );
@@ -128,7 +133,7 @@ export function VoteButtons({
   const { t } = useI18n();
   const disabled = !canVote || busy;
   return (
-    <div className={cn("flex items-center gap-1", className)} title={t("shortlists.vote.tally", { up: tally.up, down: tally.down })}>
+    <div className={cn("flex items-center gap-1.5", className)} title={t("shortlists.vote.tally", { up: tally.up, down: tally.down })}>
       <VoteButton value={1} count={tally.up} active={tally.mine === 1} label={t("shortlists.vote.up")} disabled={disabled} onClick={() => onVote(1)} />
       <VoteButton value={-1} count={tally.down} active={tally.mine === -1} label={t("shortlists.vote.down")} disabled={disabled} onClick={() => onVote(-1)} />
     </div>
@@ -157,7 +162,7 @@ export function DecisionTrace({
         ? "shortlists.trace.dismissed"
         : "shortlists.trace.reviewed";
   return (
-    <p className={cn("text-xs text-muted-foreground", className)} title={formatDateTime(locale, decidedAt)}>
+    <p className={cn("text-[13px] leading-5 text-muted-foreground", className)} title={formatDateTime(locale, decidedAt)}>
       {t(key, { name: nameOf(decidedBy), when: formatRelative(locale, decidedAt) })}
     </p>
   );
@@ -167,10 +172,10 @@ export function DecisionTrace({
 export function MentionText({ body, members, className }: { body: string; members: readonly MentionMember[]; className?: string }) {
   const segments = renderMentions(body, members);
   return (
-    <p className={cn("whitespace-pre-line break-words text-sm text-ink", className)}>
+    <p className={cn("whitespace-pre-line break-words text-[15px] leading-6 text-ink", className)}>
       {segments.map((segment, index) =>
         segment.kind === "mention" ? (
-          <span key={index} className="rounded bg-primary/12 px-1 font-medium text-primary">
+          <span key={index} className="rounded-md bg-primary/12 px-1 font-medium text-primary">
             {segment.text}
           </span>
         ) : (

@@ -1,8 +1,9 @@
 /**
- * One line of the talent pool: initials, the name (or "no name" when
- * none was read), the headline and location, the first skills, the
- * languages, the last update, and a "to check" pill when the
- * structuring was unsure about any field.
+ * One line of the talent pool, the whole of it a link to the profile:
+ * initials, the name (or "no name" when none was read) with its pills,
+ * the headline and location, the first four skills, and on the right
+ * from `sm` the languages and the last update in muted 13px (under the
+ * skills on a phone). The caller wraps it in the list item.
  */
 import { Link } from "@tanstack/react-router";
 
@@ -18,37 +19,54 @@ export function CandidateRow({ row }: { row: CandidateListRow }) {
   const skills = topSkills(row.skills, 4);
   const languages = languagesLine(row.languages);
   const line = [row.headline, row.location].filter((part) => part && part.trim()).join(" · ");
+  const updated = t("candidates.updated", { date: formatDate(locale, row.updated_at) });
   return (
-    <li className="border-b border-border last:border-b-0">
-      <Link
-        to="/app/candidates/$candidateId"
-        params={{ candidateId: row.id }}
-        className="flex gap-3 px-4 py-3 transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
-      >
-        <Avatar name={name} size="lg" className="mt-0.5" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="truncate font-medium text-ink">{name}</span>
-            {needsReview(row.confidence) ? <Pill tone="caution">{t("candidates.review")}</Pill> : null}
-            {row.source === "manual" ? <Pill>{t("candidates.source.manual")}</Pill> : null}
-            {row.consent_status === "withdrawn" ? <Pill tone="negative">{t("candidates.consent.withdrawn")}</Pill> : null}
-          </div>
-          <p className="truncate text-sm text-muted-foreground">{line || t("common.unknown")}</p>
-          {skills.length ? (
-            <ul className="mt-1.5 flex flex-wrap gap-1">
-              {skills.map((skill) => (
-                <li key={skill}>
-                  <Pill tone="primary">{skill}</Pill>
-                </li>
-              ))}
-            </ul>
+    <Link
+      to="/app/candidates/$candidateId"
+      params={{ candidateId: row.id }}
+      className="sheet-row items-start sm:items-center"
+    >
+      <Avatar name={name} size="lg" />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="min-w-0 truncate text-[15px] font-semibold leading-6 text-ink">{name}</span>
+          {needsReview(row.confidence) ? (
+            <Pill tone="caution" dot>
+              {t("candidates.review")}
+            </Pill>
           ) : null}
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {languages ? `${languages} · ` : ""}
-            {t("candidates.updated", { date: formatDate(locale, row.updated_at) })}
-          </p>
+          {row.source === "manual" ? <Pill>{t("candidates.source.manual")}</Pill> : null}
+          {row.consent_status === "withdrawn" ? (
+            <Pill tone="negative" dot>
+              {t("candidates.consent.withdrawn")}
+            </Pill>
+          ) : null}
         </div>
-      </Link>
-    </li>
+        <p className="mt-0.5 truncate text-sm text-muted-foreground">{line || t("common.unknown")}</p>
+        {skills.length ? (
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {skills.map((skill) => (
+              <li key={skill} className="min-w-0">
+                <Pill className="max-w-48">
+                  <span className="min-w-0 truncate">{skill}</span>
+                </Pill>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <p className="mt-2 truncate text-[13px] leading-5 text-muted-foreground sm:hidden">
+          {languages ? `${languages} · ` : ""}
+          {updated}
+        </p>
+      </div>
+      <div className="hidden w-44 shrink-0 flex-col items-end text-right text-[13px] leading-5 text-muted-foreground sm:flex">
+        {languages ? (
+          <span className="max-w-full truncate" title={languages}>
+            {languages}
+          </span>
+        ) : null}
+        <span>{updated}</span>
+      </div>
+    </Link>
   );
 }

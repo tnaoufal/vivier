@@ -97,22 +97,24 @@ export function CriteriaEditor({
   }
 
   return (
-    <section className="sheet space-y-4 p-4 sm:p-5">
+    <section className="sheet space-y-6 p-6">
       <div>
-        <h2 className="font-display text-lg text-ink">{t("briefs.criteria.title")}</h2>
+        <h2 className="font-display text-xl text-ink">{t("briefs.criteria.title")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t("briefs.criteria.help")}</p>
       </div>
       {canEdit ? (
         <CriteriaProposals orgId={brief.org_id} briefId={brief.id} modelAvailable={modelAvailable} disabled={busy} onAdd={addProposals} />
       ) : null}
       {rows.length ? (
-        <ul>
+        <ul className="divide-y divide-border">
           {rows.map((row) => (
-            <CriterionRow key={row.id} criterion={row} canEdit={canEdit} disabled={busy} onChange={update} onRemove={() => remove(row.id)} />
+            <li key={row.id} className="py-4 first:pt-0 last:pb-0">
+              <CriterionRow criterion={row} canEdit={canEdit} disabled={busy} onChange={update} onRemove={() => remove(row.id)} />
+            </li>
           ))}
         </ul>
       ) : (
-        <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+        <p className="rounded-2xl border border-dashed border-border px-6 py-8 text-center text-sm text-muted-foreground">
           {t("briefs.criteria.empty")}
         </p>
       )}
@@ -123,8 +125,8 @@ export function CriteriaEditor({
             {t("briefs.criteria.add")}
           </Button>
           <div className="flex items-center gap-3">
-            {incomplete ? <span className="text-xs text-muted-foreground">{t("briefs.criteria.incomplete")}</span> : null}
-            <Button type="button" onClick={() => void save()} disabled={busy || !dirty}>
+            {incomplete ? <span className="text-[13px] text-muted-foreground">{t("briefs.criteria.incomplete")}</span> : null}
+            <Button type="button" variant="outline" onClick={() => void save()} disabled={busy || !dirty}>
               {t("briefs.criteria.save")}
             </Button>
           </div>

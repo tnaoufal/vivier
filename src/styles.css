@@ -322,15 +322,24 @@
   letter-spacing: -0.01em;
 }
 
+/* A label or a meta line: 13/20, medium, muted; sentence case, never caps. */
 @utility label-caps {
   font-family: var(--font-sans);
-  font-size: 0.6875rem;
-  @media (width < 40rem) {
-    font-size: 0.75rem;
-  }
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--color-muted-foreground);
+}
+
+/* The big number of a stat tile: display face, 30/36, digits that line up. */
+@utility stat-number {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 @utility skeleton {
@@ -375,15 +384,49 @@
   color: var(--color-card-foreground);
 }
 
-/* A row inside a sheet: roomy, divided by hairlines, tinted on hover when it leads somewhere. */
+/*
+ * A row inside a sheet: roomy (16px vertical, 24px horizontal, 16px on
+ * phones), divided by hairlines, tinted on hover and focus when the row
+ * is a link (an <a> itself, inside one, or marked data-link). The tint
+ * is the muted token at half strength, so dark mode follows on its own.
+ */
 @utility sheet-row {
   display: flex;
   align-items: center;
   gap: 1rem;
   padding: 1rem 1.5rem;
   min-width: 0;
+  transition: background-color 150ms var(--ease-out-soft);
+  @media (width < 40rem) {
+    padding-inline: 1rem;
+  }
   & + & {
     border-top: 1px solid var(--color-border);
+  }
+  &:is(a):hover,
+  &:is(a):focus-visible,
+  a > &:hover,
+  a:focus-visible > &,
+  &[data-link]:hover,
+  &[data-link]:focus-visible {
+    background-color: color-mix(in oklab, var(--color-muted) 50%, transparent);
+  }
+  &:is(a):focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--color-ring);
+  }
+}
+
+/* The tint of a card that leads somewhere, on hover and keyboard focus. */
+@utility sheet-link {
+  transition:
+    background-color 150ms var(--ease-out-soft),
+    border-color 150ms var(--ease-out-soft);
+  &:hover,
+  &:focus-visible {
+    background-color: color-mix(in oklab, var(--color-muted) 50%, var(--color-card));
+    border-color: color-mix(in oklab, var(--color-primary) 25%, var(--color-border));
+    outline: none;
   }
 }
 

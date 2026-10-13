@@ -1,11 +1,11 @@
 /**
  * /app/shortlists/:shortlistId: the board of one shortlist. The brief in
  * the header with the counts, a way to the brief's search to add
- * candidates and the share dialog (members); three sections, stacked on
- * a phone and side by side from sm: to review, retained, dismissed, each
- * a list of cards; a drawer for one item; the shares under the board.
- * Live through realtime on the shortlist's items, the organisation's
- * votes and comments, each change debounced into one re-read.
+ * candidates and the share dialog (members); three columns from lg,
+ * stacked before: to review, retained, dismissed, each a list of cards;
+ * a drawer for one item; the shares under the board. Live through
+ * realtime on the shortlist's items, the organisation's votes and
+ * comments, each change debounced into one re-read.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -19,6 +19,7 @@ import { ItemCard } from "@/components/shortlist/item-card";
 import { ItemDrawer } from "@/components/shortlist/item-drawer";
 import { StatusSection } from "@/components/shortlist/status-section";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { briefPath } from "@/lib/activity/links";
 import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
@@ -92,17 +93,24 @@ function ShortlistPage() {
   const title = brief ? brief.title : t("shortlists.noBrief");
 
   const backLink = (
-    <Link to="/app/shortlists" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-ink">
-      <ArrowLeft className="size-4" />
-      {t("shortlists.back")}
-    </Link>
+    <div className="mb-4">
+      <Button asChild variant="ghost" size="sm" className="-ml-3 text-muted-foreground hover:text-ink">
+        <Link to="/app/shortlists">
+          <ArrowLeft />
+          {t("shortlists.back")}
+        </Link>
+      </Button>
+    </div>
   );
 
   if (shortlist.loading && !row) {
     return (
       <div>
         {backLink}
-        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+        <div className="space-y-3" aria-busy="true">
+          <Skeleton className="h-8 w-1/2" />
+          <Skeleton className="h-4 w-1/3" />
+        </div>
       </div>
     );
   }
@@ -125,7 +133,7 @@ function ShortlistPage() {
   }
 
   const addLink = briefId ? (
-    <Button asChild variant="outline" className="gap-1.5">
+    <Button asChild variant="outline">
       <Link to={briefPath(briefId)}>
         <UserPlus />
         {t("shortlists.addCandidates")}
@@ -139,7 +147,7 @@ function ShortlistPage() {
       <PageHeader
         eyebrow={
           briefId ? (
-            <Link to={briefPath(briefId)} className="hover:underline">
+            <Link to={briefPath(briefId)} className="hover:text-ink hover:underline">
               {t("shortlists.openBrief")}
             </Link>
           ) : (
@@ -156,7 +164,7 @@ function ShortlistPage() {
           canAct ? (
             <>
               {addLink}
-              <Button type="button" onClick={() => setShareOpen(true)} className="gap-1.5">
+              <Button type="button" onClick={() => setShareOpen(true)}>
                 <Share2 />
                 {t("shortlists.share")}
               </Button>
@@ -165,7 +173,7 @@ function ShortlistPage() {
         }
       />
 
-      {!canAct ? <p className="mb-4 text-sm text-muted-foreground">{t("shortlists.viewer")}</p> : null}
+      {!canAct ? <p className="mb-6 text-sm text-muted-foreground">{t("shortlists.viewer")}</p> : null}
 
       {board.error ? (
         <EmptyState
@@ -177,11 +185,11 @@ function ShortlistPage() {
           }
         />
       ) : board.loading && !board.data ? (
-        <div className="grid gap-4 sm:grid-cols-3" aria-busy="true">
+        <div className="grid items-start gap-6 lg:grid-cols-3" aria-busy="true">
           {ITEM_STATUSES.map((status) => (
-            <div key={status} className="sheet space-y-3 p-3">
-              <div className="skeleton h-4 w-1/2 rounded" />
-              <div className="skeleton h-24 w-full rounded-xl" />
+            <div key={status} className="space-y-4">
+              <Skeleton className="h-7 w-1/2" />
+              <Skeleton className="h-40 w-full rounded-2xl" />
             </div>
           ))}
         </div>
@@ -193,27 +201,30 @@ function ShortlistPage() {
           action={canAct ? addLink : undefined}
         />
       ) : (
-        <div className="grid items-start gap-4 sm:grid-cols-3">
+        <div className="grid items-start gap-6 lg:grid-cols-3">
           {ITEM_STATUSES.map((status) => (
-            <StatusSection key={status} status={status} count={groups[status].length}>
-              {groups[status].map((item) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  orgId={org.id}
-                  tally={tallyVotes(votes.get(item.id) ?? [], userId)}
-                  commentCount={commentCounts?.get(item.id) ?? 0}
-                  canAct={canAct}
-                  onChanged={onChanged}
-                  onOpen={() => setOpenItemId(item.id)}
-                />
-              ))}
-            </StatusSection>
+            <div key={status} className="min-w-0">
+              <StatusSection status={status} count={groups[status].length}>
+                {groups[status].map((item) => (
+                  <li key={item.id} className="min-w-0">
+                    <ItemCard
+                      item={item}
+                      orgId={org.id}
+                      tally={tallyVotes(votes.get(item.id) ?? [], userId)}
+                      commentCount={commentCounts?.get(item.id) ?? 0}
+                      canAct={canAct}
+                      onChanged={onChanged}
+                      onOpen={() => setOpenItemId(item.id)}
+                    />
+                  </li>
+                ))}
+              </StatusSection>
+            </div>
           ))}
         </div>
       )}
 
-      <div className="mt-8">
+      <div className="mt-10">
         <SharesPanel shortlistId={shortlistId} />
       </div>
 

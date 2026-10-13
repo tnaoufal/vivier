@@ -4,7 +4,9 @@
  * ranking of a search's results. Pure: no model, no data access; every
  * rule is stated here once and tested in matching.test.ts. A criterion
  * the profile says nothing about is "not_stated" and never counts
- * against the person; every verdict carries the evidence it rests on.
+ * against the person; a verdict of "missing" is given only when the CV
+ * contradicts the requirement and always carries the evidence it rests
+ * on (the languages or degrees listed, the years, the place).
  */
 import type {
   BriefCriterion,
@@ -45,7 +47,7 @@ export function normalise(text: string | null | undefined): string {
     .trim();
 }
 
-function escapeRegExp(text: string): string {
+export function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
@@ -174,7 +176,15 @@ function evaluateSkill(criterion: BriefCriterion, profile: MatchProfile): Criter
     const present = parts.filter((word) => containsWord(haystack, word));
     if (present.length * 2 >= parts.length) return result(criterion, "partial", present.join(", "));
   }
-  return result(criterion, "missing", null);
+  // A skill the CV does not name is not a skill the person lacks: a CV
+  // lists what it chooses to, and the text may be clipped.
+  return result(criterion, "not_stated", null);
+}
+
+/** "Anglais (C1)", or "Anglais" when no level is stated. */
+function languageText(language: { name: string; level: string | null }): string {
+  const level = typeof language.level === "string" && language.level.trim() ? language.level.trim() : null;
+  return level ? `${language.name.trim()} (${level})` : language.name.trim();
 }
 
 function evaluateLanguage(criterion: BriefCriterion, profile: MatchProfile): CriterionResult {
@@ -183,12 +193,13 @@ function evaluateLanguage(criterion: BriefCriterion, profile: MatchProfile): Cri
   );
   if (!languages.length) return result(criterion, "not_stated", null);
   const found = languages.find((language) => sameLanguage(criterion.value, language.name));
-  if (!found) return result(criterion, "missing", null);
-  const level = typeof found.level === "string" && found.level.trim() ? found.level.trim() : null;
-  const evidence = level ? `${found.name.trim()} (${level})` : found.name.trim();
+  // The languages the CV does list are the evidence of the absence: the
+  // assessment shows them next to a model "yes" so the two readings can be told apart.
+  if (!found) return result(criterion, "missing", languages.map(languageText).join(", "));
+  const evidence = languageText(found);
   const needed = levelRank(criterion.value) ?? levelRank(criterion.label);
   if (needed === null) return result(criterion, "match", evidence);
-  const has = levelRank(level);
+  const has = levelRank(found.level);
   if (has !== null && has >= needed) return result(criterion, "match", evidence);
   return result(criterion, "partial", evidence);
 }
@@ -232,12 +243,14 @@ function evaluateEducation(criterion: BriefCriterion, profile: MatchProfile): Cr
   if (!value) return result(criterion, "not_stated", null);
   const parts = words(value);
   let partial: string | null = null;
+  const listed: string[] = [];
   for (const entry of entries) {
     const degree = typeof entry.degree === "string" ? entry.degree.trim() : "";
     const school = typeof entry.school === "string" ? entry.school.trim() : "";
     const evidence = [degree, school].filter(Boolean).join(", ");
     const text = normalise(evidence);
     if (!text) continue;
+    listed.push(evidence);
     if (text.includes(value)) return result(criterion, "match", evidence);
     if (parts.length >= 2) {
       const present = parts.filter((word) => containsWord(text, word));
@@ -245,7 +258,10 @@ function evaluateEducation(criterion: BriefCriterion, profile: MatchProfile): Cr
       if (partial === null && present.length * 2 >= parts.length) partial = evidence;
     }
   }
-  return partial ? result(criterion, "partial", partial) : result(criterion, "missing", null);
+  if (partial) return result(criterion, "partial", partial);
+  if (!listed.length) return result(criterion, "not_stated", null);
+  // The degrees the CV does list are the evidence of the absence, as the languages are.
+  return result(criterion, "missing", listed.join("; "));
 }
 
 function evaluateAvailability(criterion: BriefCriterion, profile: MatchProfile): CriterionResult {
