@@ -9,7 +9,7 @@
   "vars": {
     // The processor's public URL (Railway); its secret PROCESSOR_SHARED_SECRET
     // is set in the dashboard only. Empty until the service is deployed.
-    "PROCESSOR_URL": "",
+    "PROCESSOR_URL": "https://vivier-production.up.railway.app",
   },
   // Per-client throttle on the server functions that call a model or send
   // email (src/lib/platform/rate-limit.server.ts). Counted per data centre.
