@@ -128,7 +128,7 @@ function CandidatesPage() {
 
       <ProcessingBanner
         orgId={org.id}
-        counts={counts.data ?? { pending: 0, failed: 0 }}
+        counts={counts.data ?? { pending: 0, failed: 0, rejected: 0, quota: 0 }}
         canEdit={canEdit}
         onChanged={() => {
           void refreshCounts();

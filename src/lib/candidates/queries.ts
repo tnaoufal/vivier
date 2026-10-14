@@ -9,6 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { CandidateRow, CandidateStatus, CommentRow, DocumentRow } from "@/lib/db/types";
 
+import { QUOTA_ERROR_PATTERN } from "./quota";
 import { searchOrFilter } from "./search";
 
 export const PAGE_SIZE = 50;
@@ -117,10 +118,12 @@ export async function listCandidateComments(supabase: SupabaseClient, orgId: str
 export interface ProcessingCounts {
   /** queued or processing */
   pending: number;
-  /** failed or needs_ocr */
+  /** failed or needs_ocr, the quota refusals left out: these the service really could not read. */
   failed: number;
   /** rejected: read by the service, which did not take it for a CV; a person may disagree and retry. */
   rejected: number;
+  /** failed at the organisation's monthly cap (quota.ts): not broken, waiting for the quota to allow them. */
+  quota: number;
 }
 
 /** The statuses a person may want to look at: the service could not read them, or set them aside. */
@@ -136,13 +139,32 @@ async function countDocuments(supabase: SupabaseClient, orgId: string, statuses:
   return count ?? 0;
 }
 
+/** The documents the service has not read yet (queued or processing): they take the month's quota before anything re-queued or imported behind them. */
+export async function countPendingDocuments(supabase: SupabaseClient, orgId: string): Promise<number> {
+  return countDocuments(supabase, orgId, ["queued", "processing"]);
+}
+
+/** The failed documents that carry the processor's quota sentence (the same test as isQuotaFailure, in SQL). */
+async function countQuotaFailures(supabase: SupabaseClient, orgId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("documents")
+    .select("id", { count: "exact", head: true })
+    .eq("org_id", orgId)
+    .eq("status", "failed")
+    .like("error", QUOTA_ERROR_PATTERN);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function readProcessingCounts(supabase: SupabaseClient, orgId: string): Promise<ProcessingCounts> {
-  const [pending, failed, rejected] = await Promise.all([
-    countDocuments(supabase, orgId, ["queued", "processing"]),
+  const [pending, unread, rejected, quota] = await Promise.all([
+    countPendingDocuments(supabase, orgId),
     countDocuments(supabase, orgId, ["failed", "needs_ocr"]),
     countDocuments(supabase, orgId, ["rejected"]),
+    countQuotaFailures(supabase, orgId),
   ]);
-  return { pending, failed, rejected };
+  // The quota refusals are failed rows too: they leave the real failures (never below zero, the counts are not one snapshot).
+  return { pending, failed: Math.max(0, unread - quota), rejected, quota };
 }
 
 /** When the hourly purge deletes the candidate, from retention_due_at(); null when unknown. */
@@ -152,15 +174,30 @@ export async function readRetentionDueAt(supabase: SupabaseClient, candidateId: 
   return typeof data === "string" ? data : null;
 }
 
-/** The organisation's documents the service could not read or set aside, newest first, for the list's banner. */
-export async function listFailedDocuments(supabase: SupabaseClient, orgId: string, limit = 50): Promise<DocumentRow[]> {
-  const { data, error } = await supabase
-    .from("documents")
-    .select("*")
-    .eq("org_id", orgId)
-    .in("status", SET_ASIDE_STATUSES)
-    .order("updated_at", { ascending: false })
-    .limit(limit);
+/**
+ * One side of the set-aside documents: "quota" for those the service
+ * refused at the monthly cap, "other" for the real failures, the
+ * unreadable and the rejected ones. Without a group, all of them.
+ */
+export type SetAsideGroup = "quota" | "other";
+
+/**
+ * The organisation's documents the service could not read or set aside,
+ * newest first, for the list's banner. With a `group`, one side only:
+ * the banner reads the two apart so a thousand quota refusals never
+ * push the one real failure past the limit.
+ */
+export async function listFailedDocuments(
+  supabase: SupabaseClient,
+  orgId: string,
+  limit = 50,
+  group?: SetAsideGroup,
+): Promise<DocumentRow[]> {
+  let request = supabase.from("documents").select("*").eq("org_id", orgId).in("status", SET_ASIDE_STATUSES);
+  if (group === "quota") request = request.eq("status", "failed").like("error", QUOTA_ERROR_PATTERN);
+  // A failure without a sentence is a real one; NOT LIKE alone would drop it (NULL is neither).
+  if (group === "other") request = request.or(`error.is.null,error.not.like.${QUOTA_ERROR_PATTERN}`);
+  const { data, error } = await request.order("updated_at", { ascending: false }).limit(limit);
   if (error) throw error;
   return (data ?? []) as unknown as DocumentRow[];
 }

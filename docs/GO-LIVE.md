@@ -137,6 +137,11 @@ provider accounts. Work it in one block before the first real CV.
 
 - [ ] Paddle catalog: Team monthly/yearly, Business monthly/yearly; webhook
       to `/api/paddle/webhook` calling `sync_plan_from_billing()`.
+- [ ] Until then every organisation is on the trial quota of 200 CV a month
+      (`organizations.cv_quota_month`, raised per organisation by the owner in
+      the database); a CV the processor refused at the cap waits as "en attente
+      de quota" and is re-queued from the talent pool's banner once the quota
+      allows.
 
 ## Repository
 
