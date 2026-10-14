@@ -3,7 +3,8 @@
  * count in the display face with digits that line up, the icon in a
  * tinted disc. A tile that links to a page tints on hover. A count that
  * could not be read shows a dash with the reason on hover, never a zero
- * that would look like a fact.
+ * that would look like a fact. A tile that follows work in progress may
+ * draw a thin bar under its number (`progress`: done out of total).
  */
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
@@ -18,6 +19,7 @@ export function StatTile({
   icon,
   to,
   loading,
+  progress,
   className,
 }: {
   label: string;
@@ -26,9 +28,15 @@ export function StatTile({
   /** A path the tile opens; a plain string so routes of other areas need no literal here. */
   to?: string;
   loading: boolean;
+  /** Work in progress behind the number: a 4px bar, done out of total, under it. */
+  progress?: { done: number; total: number } | undefined;
   className?: string;
 }) {
   const t = useT();
+  const percent =
+    progress && progress.total > 0
+      ? Math.min(100, Math.max(0, Math.round((100 * progress.done) / progress.total)))
+      : 0;
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
@@ -44,6 +52,21 @@ export function StatTile({
           {value === null ? "—" : value.toLocaleString()}
         </span>
       )}
+      {!loading && progress && progress.total > 0 ? (
+        <div
+          role="progressbar"
+          aria-label={t("shell.stat.progress", { done: progress.done, total: progress.total })}
+          aria-valuemin={0}
+          aria-valuemax={progress.total}
+          aria-valuenow={progress.done}
+          className="mt-3 h-1 w-full overflow-hidden rounded-full bg-muted"
+        >
+          <div
+            className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out-soft"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      ) : null}
     </>
   );
   const base = cn("sheet block min-w-0 p-6", className);

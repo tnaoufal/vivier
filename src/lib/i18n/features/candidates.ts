@@ -25,6 +25,12 @@ const fr = {
   "candidates.listError": "La liste n'a pas pu être chargée.",
 
   // processing banner
+  "candidates.processing.progress.label": "Progression du traitement",
+  "candidates.processing.progress.active": "Traitement en cours : {done} sur {total} CV ({percent} %)",
+  "candidates.processing.progress.rate.one": "{throughput} CV/min · ≈ 1 min restante",
+  "candidates.processing.progress.rate.many": "{throughput} CV/min · ≈ {eta} min restantes",
+  "candidates.processing.progress.measuring": "Débit en cours de mesure",
+  "candidates.processing.progress.done": "Traitement terminé : {total} CV lus",
   "candidates.processing.pending.one": "1 CV en traitement",
   "candidates.processing.pending.many": "{count} CV en traitement",
   "candidates.processing.failed.one": "1 CV échoué",
@@ -245,6 +251,12 @@ const en = {
   "candidates.previous": "Previous",
   "candidates.listError": "The list could not be loaded.",
 
+  "candidates.processing.progress.label": "Processing progress",
+  "candidates.processing.progress.active": "Processing: {done} of {total} CVs ({percent}%)",
+  "candidates.processing.progress.rate.one": "{throughput} CVs/min · ≈ 1 min left",
+  "candidates.processing.progress.rate.many": "{throughput} CVs/min · ≈ {eta} min left",
+  "candidates.processing.progress.measuring": "Measuring the rate",
+  "candidates.processing.progress.done": "Processing finished: {total} CVs read",
   "candidates.processing.pending.one": "1 CV processing",
   "candidates.processing.pending.many": "{count} CVs processing",
   "candidates.processing.failed.one": "1 CV failed",

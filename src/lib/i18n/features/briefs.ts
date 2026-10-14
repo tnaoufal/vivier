@@ -127,10 +127,10 @@ const fr = {
   "briefs.search.line.read.none": "aucun profil lu",
   "briefs.search.line.read.one": "1 profil lu",
   "briefs.search.line.read.many": "{count} profils lus",
-  "briefs.search.line.present.none": "aucun à présenter",
+  "briefs.search.line.present.none": "0 à présenter",
   "briefs.search.line.present.one": "1 à présenter",
   "briefs.search.line.present.many": "{count} à présenter",
-  "briefs.search.line.deeper.none": "aucun à creuser",
+  "briefs.search.line.deeper.none": "0 à creuser",
   "briefs.search.line.deeper.one": "1 à creuser",
   "briefs.search.line.deeper.many": "{count} à creuser",
   "briefs.search.run": "Lancer l'analyse",
@@ -167,24 +167,28 @@ const fr = {
   "briefs.search.none.title": "Aucun profil trouvé",
   "briefs.search.none.text":
     "Le vivier ne contient aucun profil actif qui réponde aux mots du brief. Importez des CV, ou précisez le besoin.",
-  "briefs.search.nofit.title": "Aucun profil ne correspond à ce brief",
-  "briefs.search.nofit.text":
-    "Sur {count} profils analysés, aucun ne satisfait toutes les exigences.",
-  "briefs.search.nofit.missing": "Exigence la plus souvent manquante : {label}.",
-  "briefs.search.nofit.hint":
-    "Ajustez les exigences du brief ou élargissez le vivier, puis relancez l'analyse.",
+  "briefs.search.nofit.title": "0 profil correspond à ce brief",
+  "briefs.search.nofit.assessed.none": "0 profil analysé",
+  "briefs.search.nofit.assessed.one": "1 profil analysé",
+  "briefs.search.nofit.assessed.many": "{count} profils analysés",
+  "briefs.search.nofit.missing": "exigence la plus souvent manquante : {label}",
   "briefs.search.loadFailed": "Cette analyse n'a pas pu être rouverte.",
 
   // result sections
   "briefs.section.present": "À présenter",
   "briefs.section.present.help":
-    "Métier confirmé et impératifs satisfaits d'après la lecture du modèle ; contre-expertise et classement indiqués sur la fiche quand ils ont eu lieu. L'équipe retient ou non.",
+    "Seuls les profils dont le métier correspond, dont les impératifs sont satisfaits et que la contre-expertise n'a pas remis en cause sont présentés. L'équipe retient ou non.",
+  "briefs.section.present.running": "Les profils à présenter apparaîtront ici au fil des lots.",
+  "briefs.section.present.unread":
+    "Aucun profil lu pour l'instant : la lecture commence après votre vérification.",
+  "briefs.section.present.incomplete":
+    "L'analyse n'est pas terminée : ce qui reste à lire, à contre-expertiser ou à classer peut encore changer cette liste.",
   "briefs.section.deeper": "À creuser",
   "briefs.section.deeper.help":
-    "Un regard humain tranche : le métier est voisin, un impératif est non renseigné ou satisfait en partie, la contre-expertise a émis une réserve, ou le classement les met en retrait. La réserve principale est indiquée sur la fiche quand la lecture l'a nommée.",
+    "Un regard humain tranche : le métier est voisin ou noté sous 70, le score est sous 75, un impératif est non renseigné ou satisfait en partie, la contre-expertise a émis une réserve, ou le classement les met en retrait. La réserve principale est indiquée sur la fiche quand la lecture l'a nommée.",
   "briefs.section.noFit": "Écartés par l'analyse",
   "briefs.section.noFit.help":
-    "D'après la lecture du modèle, le profil ne répond pas au brief : le métier n'est pas celui du poste (cela écarte à lui seul, quelles que soient les autres exigences), une exigence obligatoire n'est pas satisfaite, ou le score est trop bas. Rien n'est supprimé : la fiche reste ouverte.",
+    "D'après la lecture du modèle, le profil ne répond pas au brief : le métier n'est pas celui du poste (cela écarte à lui seul, quelles que soient les autres exigences), une exigence obligatoire n'est pas satisfaite, ou le score est sous 45. Rien n'est supprimé : la fiche reste ouverte.",
   "briefs.section.unassessed": "Non analysés",
   "briefs.section.unassessed.help":
     "Ces profils n'ont pas encore été lus par le modèle : seul le classement sur le texte s'applique.",
@@ -429,10 +433,10 @@ const en = {
   "briefs.search.line.read.none": "no profile read",
   "briefs.search.line.read.one": "1 profile read",
   "briefs.search.line.read.many": "{count} profiles read",
-  "briefs.search.line.present.none": "none to present",
+  "briefs.search.line.present.none": "0 to present",
   "briefs.search.line.present.one": "1 to present",
   "briefs.search.line.present.many": "{count} to present",
-  "briefs.search.line.deeper.none": "none to dig into",
+  "briefs.search.line.deeper.none": "0 to dig into",
   "briefs.search.line.deeper.one": "1 to dig into",
   "briefs.search.line.deeper.many": "{count} to dig into",
   "briefs.search.run": "Run the analysis",
@@ -468,22 +472,26 @@ const en = {
   "briefs.search.none.title": "No profile found",
   "briefs.search.none.text":
     "The talent pool holds no active profile answering the words of the brief. Upload CVs, or refine the need.",
-  "briefs.search.nofit.title": "No profile matches this brief",
-  "briefs.search.nofit.text": "Of {count} profiles analysed, none meets every requirement.",
-  "briefs.search.nofit.missing": "Requirement most often missing: {label}.",
-  "briefs.search.nofit.hint":
-    "Adjust the requirements of the brief or widen the talent pool, then run the analysis again.",
+  "briefs.search.nofit.title": "0 profiles match this brief",
+  "briefs.search.nofit.assessed.none": "0 profiles analysed",
+  "briefs.search.nofit.assessed.one": "1 profile analysed",
+  "briefs.search.nofit.assessed.many": "{count} profiles analysed",
+  "briefs.search.nofit.missing": "requirement most often missing: {label}",
   "briefs.search.loadFailed": "This analysis could not be reopened.",
 
   "briefs.section.present": "To present",
   "briefs.section.present.help":
-    "Role confirmed and must-haves met according to the model's reading; second opinion and tier shown on the card once they ran. The team retains or not.",
+    "Only the profiles whose role matches, whose must-haves are met and that the second opinion did not call into question are presented. The team retains or not.",
+  "briefs.section.present.running": "The profiles to present will appear here as batches return.",
+  "briefs.section.present.unread": "No profile read yet: the reading starts after your check.",
+  "briefs.section.present.incomplete":
+    "The analysis is not complete: what is left to read, to challenge or to tier can still change this list.",
   "briefs.section.deeper": "To dig into",
   "briefs.section.deeper.help":
-    "A human look decides: the role is adjacent, a must-have is not stated or only partly met, the second opinion raised a reservation, or the tiering put them behind. The main reservation is shown on the card when the reading named one.",
+    "A human look decides: the role is adjacent or scored under 70, the score is under 75, a must-have is not stated or only partly met, the second opinion raised a reservation, or the tiering put them behind. The main reservation is shown on the card when the reading named one.",
   "briefs.section.noFit": "Set aside by the analysis",
   "briefs.section.noFit.help":
-    "According to the model's reading, the profile does not answer the brief: the role is not the job's (that alone sets a profile aside, whatever the other requirements), a required requirement is not met, or the score is too low. Nothing is deleted: the profile stays open.",
+    "According to the model's reading, the profile does not answer the brief: the role is not the job's (that alone sets a profile aside, whatever the other requirements), a required requirement is not met, or the score is under 45. Nothing is deleted: the profile stays open.",
   "briefs.section.unassessed": "Not analysed",
   "briefs.section.unassessed.help":
     "These profiles have not been read by the model yet: only the ranking on the text applies.",

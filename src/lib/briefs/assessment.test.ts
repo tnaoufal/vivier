@@ -23,6 +23,7 @@ import {
   REQUIRED_NO_SCORE_CAP,
   REQUIRED_UNKNOWN_SCORE_CAP,
   requirementRows,
+  ROLE_DIMENSION_FIT_MIN,
   ROLE_NO_SCORE_CAP,
   ROLE_PARTIAL_SCORE_CAP,
   ROLE_UNKNOWN_SCORE_CAP,
@@ -330,7 +331,9 @@ describe("enforceAssessment", () => {
     expect(assessment.score).toBe(85);
   });
 
-  it("needs 70 for a fit and 45 for a borderline, whatever the model said", () => {
+  it("needs 75 for a fit and 45 for a borderline, whatever the model said", () => {
+    expect(FIT_MIN_SCORE).toBe(75);
+    expect(BORDERLINE_MIN_SCORE).toBe(45);
     expect(
       enforceAssessment(criteria, none, answer({ decision: "fit", score: FIT_MIN_SCORE - 1 }), "m")
         .decision,
@@ -339,6 +342,10 @@ describe("enforceAssessment", () => {
       enforceAssessment(criteria, none, answer({ decision: "fit", score: FIT_MIN_SCORE }), "m")
         .decision,
     ).toBe("fit");
+    // A 70 the model called a fit is a profile to dig into, not to present.
+    expect(
+      enforceAssessment(criteria, none, answer({ decision: "fit", score: 70 }), "m").decision,
+    ).toBe("borderline");
     expect(
       enforceAssessment(
         criteria,
@@ -849,13 +856,21 @@ const dimensions: NonNullable<ModelAssessmentAnswer["dimensions"]> = {
   achievements: { score: 60, note: "Un résultat chiffré.", evidence: "+30 % de CA en 2023" },
 };
 
+/** The role requirement met with a quote, as a presented profile needs it once the dimensions are scored. */
+const roleYes = {
+  criterionId: "role",
+  met: "yes",
+  evidence: "Business developer chez X (2019-2024)",
+};
+
 describe("enforceAssessment: the dimensions", () => {
   it("uses the composite as the score when the model scored the dimensions, keeps the model's score apart, and stores the lists", () => {
     const assessment = enforceAssessment(
-      criteria,
+      withRole,
       none,
       {
         ...answer({ score: 88 }),
+        requirements: [...answer().requirements, roleYes],
         dimensions,
         strengths: ["Conquête de 12 comptes en 2023", " Anglais C1 "],
         concerns: ["Pas de management d'équipe"],
@@ -863,7 +878,7 @@ describe("enforceAssessment: the dimensions", () => {
       },
       "m",
     );
-    // 36 + 12 + 7.5 + 0.15 × 65 + 15 (every requirement met) = 80.25.
+    // 36 + 12 + 7.5 + 0.15 × 65 + 15 (every requirement met; the role is left out of the coverage) = 80.25.
     expect(assessment.score).toBe(80);
     expect(assessment.modelScore).toBe(88);
     expect(assessment.decision).toBe("fit");
@@ -1003,12 +1018,13 @@ describe("enforceAssessment: the dimensions", () => {
     );
     expect(missing.decision).toBe("no_fit");
     expect(missing.score).toBe(REQUIRED_NO_SCORE_CAP);
-    // A composite under 70 turns the model's fit into a borderline.
+    // A composite under 75 turns the model's fit into a borderline (and so does a métier under 70 on its own).
     const weak = enforceAssessment(
-      criteria,
+      withRole,
       none,
       {
         ...answer({ decision: "fit" }),
+        requirements: [...answer().requirements, roleYes],
         dimensions: { ...dimensions, role: { score: 40, note: "n", evidence: "e" } },
       },
       "m",
@@ -1016,6 +1032,25 @@ describe("enforceAssessment: the dimensions", () => {
     // 16 + 12 + 7.5 + 9.75 + 15 = 60.25.
     expect(weak.score).toBe(60);
     expect(weak.decision).toBe("borderline");
+    // A composite of 72 with the métier at 90: still under 75, still to dig into.
+    const nearly = enforceAssessment(
+      withRole,
+      none,
+      {
+        ...answer({ decision: "fit" }),
+        requirements: [...answer().requirements, roleYes],
+        dimensions: {
+          ...dimensions,
+          seniority: { score: 50, note: "n", evidence: "e" },
+          trajectory: { score: 50, note: "n", evidence: "e" },
+          achievements: { score: 50, note: "n", evidence: "e" },
+        },
+      },
+      "m",
+    );
+    // 36 + 7.5 + 7.5 + 7.5 + 15 = 73.5.
+    expect(nearly.score).toBe(74);
+    expect(nearly.decision).toBe("borderline");
     // The model's own no_fit on a profile the rules cannot fault is the team's call: borderline, the composite kept.
     const unpinned = enforceAssessment(
       criteria,
@@ -1319,6 +1354,126 @@ describe("enforceAssessment: the quotes are checked against what the model was g
     );
     expect(rows[0]).toMatchObject({ id: "skill", met: "partial", evidenceUnverified: true });
     expect("evidenceUnverified" in (rows[1] ?? {})).toBe(false);
+  });
+});
+
+describe("enforceAssessment: a fit with the dimensions needs the métier", () => {
+  /** Every other dimension at 100 and every requirement met, so the composite clears 75 whatever the métier scores: 0.4 × role + 60. */
+  const strong = (roleScore: number): NonNullable<ModelAssessmentAnswer["dimensions"]> => ({
+    role: { score: roleScore, note: "n", evidence: "Business developer chez X (2019-2024)" },
+    seniority: { score: 100, note: "n", evidence: "e" },
+    context: { score: 100, note: "n", evidence: "e" },
+    trajectory: { score: 100, note: "n", evidence: "e" },
+    achievements: { score: 100, note: "n", evidence: "e" },
+  });
+  const requirements = [...answer().requirements, roleYes];
+
+  it("presents a profile at 70 on the métier with the role requirement at yes, and sends one at 69 to dig into", () => {
+    expect(ROLE_DIMENSION_FIT_MIN).toBe(70);
+    const at = enforceAssessment(
+      withRole,
+      none,
+      { ...answer({ decision: "fit" }), requirements, dimensions: strong(ROLE_DIMENSION_FIT_MIN) },
+      "m",
+    );
+    expect(at.score).toBe(88);
+    expect(at.decision).toBe("fit");
+    const under = enforceAssessment(
+      withRole,
+      none,
+      {
+        ...answer({ decision: "fit" }),
+        requirements,
+        dimensions: strong(ROLE_DIMENSION_FIT_MIN - 1),
+      },
+      "m",
+    );
+    // The composite stands (88): only the decision is held back, and the card names the score.
+    expect(under.score).toBe(88);
+    expect(under.decision).toBe("borderline");
+  });
+
+  it("never presents on the dimensions alone: the role requirement must be at yes", () => {
+    for (const met of ["partial", "unknown"] as const) {
+      const held = enforceAssessment(
+        withRole,
+        none,
+        {
+          ...answer({ decision: "fit" }),
+          requirements: [
+            ...answer().requirements,
+            { criterionId: "role", met, evidence: met === "partial" ? "Account manager" : null },
+          ],
+          dimensions: strong(100),
+        },
+        "m",
+      );
+      expect(held.decision).toBe("borderline");
+    }
+    // A brief without a role criterion has no métier judged: with the dimensions, at most borderline (the old path, without them, is unchanged).
+    const noRole = enforceAssessment(
+      criteria,
+      none,
+      { ...answer({ decision: "fit" }), dimensions: strong(100) },
+      "m",
+    );
+    expect(noRole.score).toBe(100);
+    expect(noRole.decision).toBe("borderline");
+    expect(
+      enforceAssessment(criteria, none, answer({ decision: "fit", score: 100 }), "m").decision,
+    ).toBe("fit");
+  });
+
+  it("reads a métier scored on a quote the profile does not hold as neutral, which holds the fit back", () => {
+    const assessment = enforceAssessment(
+      withRole,
+      none,
+      {
+        ...answer({ decision: "fit" }),
+        requirements: [
+          ...answer().requirements,
+          {
+            criterionId: "role",
+            met: "yes",
+            evidence: "Contrôleur de gestion Acme 2018-01 2024-06",
+          },
+        ],
+        dimensions: {
+          ...strong(95),
+          role: { score: 95, note: "n", evidence: "Directeur commercial chez Globex" },
+        },
+      },
+      "m",
+      { texts },
+    );
+    expect(assessment.dimensions?.role.score).toBe(NEUTRAL_SCORE);
+    expect(assessment.decision).toBe("borderline");
+  });
+
+  it("holds a fit back on the métier but never lowers a no_fit or raises anything", () => {
+    const aside = enforceAssessment(
+      withRole,
+      none,
+      {
+        ...answer({ decision: "fit" }),
+        requirements: [
+          ...answer().requirements.filter((row) => row.criterionId !== "lang"),
+          { criterionId: "lang", met: "no", evidence: "Anglais (A2)" },
+          roleYes,
+        ],
+        dimensions: strong(100),
+      },
+      "m",
+    );
+    expect(aside.decision).toBe("no_fit");
+    expect(aside.score).toBe(REQUIRED_NO_SCORE_CAP);
+    const modelsOwn = enforceAssessment(
+      withRole,
+      none,
+      { ...answer({ decision: "borderline" }), requirements, dimensions: strong(100) },
+      "m",
+    );
+    expect(modelsOwn.decision).toBe("borderline");
   });
 });
 

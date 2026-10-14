@@ -1,7 +1,11 @@
 /**
- * Above the list: how many CVs the service is still reading, how many
- * it could not read, how many it set aside because it did not take them
- * for a CV, and how many it refused at the organisation's monthly quota
+ * Above the list: the progress of the wave the service is reading (done
+ * out of total, a bar, the rate and the estimate; said finished for a
+ * moment once nothing is pending), then the figures: how many CVs the
+ * service is still reading (the wave's pending, so the block and the
+ * figure never disagree), how many it could not read, how many it set
+ * aside because it did not take them for a CV, and how many it refused
+ * at the organisation's monthly quota
  * (not broken: waiting). The last three unfold on demand, the quota
  * refusals apart from the real failures, each with the sentence the
  * service left, a link to the file and a retry (a person may disagree
@@ -10,7 +14,7 @@
  * quota was raised or renewed), one button re-queues the waiting CVs up
  * to that room, oldest first.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ExternalLink,
   FileX,
@@ -21,10 +25,12 @@ import {
 } from "lucide-react";
 
 import { Pill } from "@/components/app-shell/pill";
+import { ProcessingProgress } from "@/components/candidates/processing-progress";
 import { Button } from "@/components/ui/button";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { notifyProcessor } from "@/lib/candidates/candidates.functions";
 import { documentStatusKey, documentTone, formatBytes, formatCount } from "@/lib/candidates/format";
+import type { ProcessingWave } from "@/lib/candidates/progress";
 import { listFailedDocuments, type ProcessingCounts } from "@/lib/candidates/queries";
 import { isQuotaFailure, quotaRemaining } from "@/lib/candidates/quota";
 import { requeueQuotaFailures } from "@/lib/candidates/requeue";
@@ -40,15 +46,20 @@ import { cn } from "@/lib/utils";
 
 /** Rows each side of the unfolded list shows; past that, a count. */
 const LIST_LIMIT = 50;
+/** How long the block says the wave is finished before it goes. */
+const FINISHED_MS = 6_000;
 
 export function ProcessingBanner({
   orgId,
   counts,
+  wave,
   canEdit,
   onChanged,
 }: {
   orgId: string;
   counts: ProcessingCounts;
+  /** The wave in progress (readProcessingProgress), its pending the one the figures use; null until read, or when the first read failed. */
+  wave: ProcessingWave | null;
   canEdit: boolean;
   onChanged: () => void;
 }) {
@@ -56,19 +67,40 @@ export function ProcessingBanner({
   const { org } = useCurrentOrg();
   const [open, setOpen] = useState(false);
   const [requeuing, setRequeuing] = useState(false);
+  const pending = wave?.pending ?? 0;
+  // The wave that just ended, said for a moment: the bar reaches the end before it goes. Derived
+  // in render from the previous wave (the moment the pending reaches zero), so the banner never
+  // shows a frame without it; a later read with nothing pending leaves it alone.
+  const [previousWave, setPreviousWave] = useState<ProcessingWave | null>(wave);
+  const [finished, setFinished] = useState<{ total: number } | null>(null);
+  if (wave !== previousWave) {
+    setPreviousWave(wave);
+    if (previousWave && previousWave.pending > 0 && wave && wave.pending === 0) {
+      // The read that saw the end counted what the wave read from its start (it kept that start);
+      // without such a count, the previous read's total. A wave that read nothing (every CV refused
+      // at the cap) says nothing here: the figures below do.
+      const total = wave.startedAt !== null ? wave.total : previousWave.total;
+      if (total > 0) setFinished({ total });
+    }
+  }
+  useEffect(() => {
+    if (!finished) return;
+    const timer = setTimeout(() => setFinished(null), FINISHED_MS);
+    return () => clearTimeout(timer);
+  }, [finished]);
   // The documents the service could not read, and those it set aside: one side of the unfolded list.
   const setAside = counts.failed + counts.rejected;
   const unfoldable = setAside > 0 || counts.quota > 0;
   const quota = org.cv_quota_month;
   // Read again whenever the counts move: each CV processed changes what the month has left.
   const used = useQuery(
-    `quota-used:${orgId}:${counts.quota}:${counts.pending}`,
+    `quota-used:${orgId}:${counts.quota}:${pending}`,
     async () => readCvsProcessedThisMonth(await requireSupabase(), orgId),
     counts.quota > 0,
   );
   // The room left this month once the queue has taken its share: the service reads the queue
   // first, so a CV re-queued behind it only gets what the queue leaves.
-  const room = used.data === null ? null : quotaRemaining(quota, used.data, counts.pending);
+  const room = used.data === null ? null : quotaRemaining(quota, used.data, pending);
   // What one click may send back: that room, never more than what waits.
   const requeueable = room === null ? 0 : Math.min(room, counts.quota);
   const others = useQuery(
@@ -83,13 +115,13 @@ export function ProcessingBanner({
   );
   const actions = useDocumentActions(onChanged);
 
-  if (counts.pending === 0 && !unfoldable) return null;
+  if (pending === 0 && !unfoldable && finished === null) return null;
 
   const count = (value: number): string => formatCount(locale, value);
   const pendingText =
-    counts.pending === 1
+    pending === 1
       ? t("candidates.processing.pending.one")
-      : t("candidates.processing.pending.many", { count: counts.pending });
+      : t("candidates.processing.pending.many", { count: pending });
   const failedText =
     counts.failed === 1
       ? t("candidates.processing.failed.one")
@@ -120,13 +152,13 @@ export function ProcessingBanner({
               ? t("candidates.processing.quota.reachedQueued", {
                   quota: count(quota),
                   used: count(used.data),
-                  pending: count(counts.pending),
+                  pending: count(pending),
                 })
-              : counts.pending > 0
+              : pending > 0
                 ? t("candidates.processing.quota.roomQueued", {
                     quota: count(quota),
                     used: count(used.data),
-                    pending: count(counts.pending),
+                    pending: count(pending),
                     remaining: count(room),
                   })
                 : t("candidates.processing.quota.room", {
@@ -250,8 +282,9 @@ export function ProcessingBanner({
 
   return (
     <section className="sheet mb-4 px-5 py-4 text-sm" aria-live="polite">
+      <ProcessingProgress wave={wave} finishedTotal={finished?.total ?? null} className="mb-4" />
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        {counts.pending > 0 ? (
+        {pending > 0 ? (
           <span className="inline-flex min-w-0 items-center gap-2 text-ink">
             <LoaderCircle
               className="size-4 shrink-0 animate-spin text-primary"

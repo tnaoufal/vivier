@@ -1,14 +1,16 @@
 /**
  * The typed reads of the talent pool, through supabase-js under RLS:
  * the list page (search, status, tag, 50 per page), one profile, its
- * documents and comments, the processing counts of the organisation,
- * the retention due date. Each read filters by the organisation and
- * casts rows at the boundary, as CONVENTIONS.md says.
+ * documents and comments, the set-aside counts of the organisation and
+ * the wave the service is reading, the retention due date. Each read
+ * filters by the organisation and casts rows at the boundary, as
+ * CONVENTIONS.md says.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { CandidateRow, CandidateStatus, CommentRow, DocumentRow } from "@/lib/db/types";
 
+import { THROUGHPUT_WINDOW_MINUTES, earliestOf, waveOf, type ProcessingWave } from "./progress";
 import { QUOTA_ERROR_PATTERN } from "./quota";
 import { searchOrFilter } from "./search";
 
@@ -115,9 +117,12 @@ export async function listCandidateComments(supabase: SupabaseClient, orgId: str
   return (data ?? []) as unknown as CommentRow[];
 }
 
+/**
+ * What the service set aside; the pending share is the wave's
+ * (readProcessingProgress), so one read drives the banner's figures and
+ * its bar alike.
+ */
 export interface ProcessingCounts {
-  /** queued or processing */
-  pending: number;
   /** failed or needs_ocr, the quota refusals left out: these the service really could not read. */
   failed: number;
   /** rejected: read by the service, which did not take it for a CV; a person may disagree and retry. */
@@ -128,6 +133,8 @@ export interface ProcessingCounts {
 
 /** The statuses a person may want to look at: the service could not read them, or set them aside. */
 const SET_ASIDE_STATUSES = ["failed", "needs_ocr", "rejected"];
+/** The statuses of a document the service has not read yet: what the wave still holds. */
+const PENDING_STATUSES = ["queued", "processing"];
 
 async function countDocuments(supabase: SupabaseClient, orgId: string, statuses: string[]): Promise<number> {
   const { count, error } = await supabase
@@ -141,7 +148,7 @@ async function countDocuments(supabase: SupabaseClient, orgId: string, statuses:
 
 /** The documents the service has not read yet (queued or processing): they take the month's quota before anything re-queued or imported behind them. */
 export async function countPendingDocuments(supabase: SupabaseClient, orgId: string): Promise<number> {
-  return countDocuments(supabase, orgId, ["queued", "processing"]);
+  return countDocuments(supabase, orgId, PENDING_STATUSES);
 }
 
 /** The failed documents that carry the processor's quota sentence (the same test as isQuotaFailure, in SQL). */
@@ -157,14 +164,122 @@ async function countQuotaFailures(supabase: SupabaseClient, orgId: string): Prom
 }
 
 export async function readProcessingCounts(supabase: SupabaseClient, orgId: string): Promise<ProcessingCounts> {
-  const [pending, unread, rejected, quota] = await Promise.all([
-    countPendingDocuments(supabase, orgId),
+  const [unread, rejected, quota] = await Promise.all([
     countDocuments(supabase, orgId, ["failed", "needs_ocr"]),
     countDocuments(supabase, orgId, ["rejected"]),
     countQuotaFailures(supabase, orgId),
   ]);
   // The quota refusals are failed rows too: they leave the real failures (never below zero, the counts are not one snapshot).
-  return { pending, failed: Math.max(0, unread - quota), rejected, quota };
+  return { failed: Math.max(0, unread - quota), rejected, quota };
+}
+
+/** Where the wave stands: how many documents wait, and when the earliest of them entered the queue. */
+export interface WaveStart {
+  /** queued or processing */
+  pending: number;
+  /** updated_at of the earliest pending document (an upload or a re-queue sets it); null when nothing is pending. */
+  startedAt: string | null;
+}
+
+/** What a caller of readProcessingProgress may pass: the clock, and the start of the wave it already follows. */
+export interface WaveOptions {
+  /** Injectable for tests. */
+  now?: Date;
+  /**
+   * The previous read's startedAt. While the wave lasts it stays the
+   * anchor (the queue's earliest document moves on as lots are read);
+   * once nothing is pending, the ended wave is counted from it so the
+   * banner can say how many documents it read.
+   */
+  startedAt?: string | null;
+}
+
+/**
+ * One request: the pending count and the instant the earliest of them
+ * entered the queue. updated_at, not created_at: a re-queued CV keeps
+ * the created_at of its import, which would fold every document read
+ * since that import into the wave.
+ */
+export async function readWaveStart(supabase: SupabaseClient, orgId: string): Promise<WaveStart> {
+  const { data, count, error } = await supabase
+    .from("documents")
+    .select("updated_at", { count: "exact" })
+    .eq("org_id", orgId)
+    .in("status", PENDING_STATUSES)
+    .order("updated_at", { ascending: true })
+    .limit(1);
+  if (error) throw error;
+  const pending = count ?? 0;
+  const first = ((data ?? []) as unknown as { updated_at?: unknown }[])[0];
+  const startedAt = pending > 0 && typeof first?.updated_at === "string" ? first.updated_at : null;
+  return { pending, startedAt };
+}
+
+/**
+ * The documents that left the queue at or after `since`: read, set
+ * aside, unreadable or failed (every status change moves updated_at, a
+ * duplicate settled without a model call included), the quota refusals
+ * apart: those never entered the reading and the banner counts them.
+ */
+async function countLeftQueueSince(supabase: SupabaseClient, orgId: string, since: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("documents")
+    .select("id", { count: "exact", head: true })
+    .eq("org_id", orgId)
+    .not("status", "in", `(${PENDING_STATUSES.join(",")})`)
+    .gte("updated_at", since)
+    // A failure without a sentence is a real one; NOT LIKE alone would drop it (NULL is neither).
+    .or(`error.is.null,error.not.like.${QUOTA_ERROR_PATTERN}`);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
+ * The wave from its start (progress.ts): what left the queue since
+ * that instant and over the last THROUGHPUT_WINDOW_MINUTES, in
+ * parallel; with nothing pending, what the ended wave read (one count)
+ * or, without a start, the empty wave with no request at all.
+ */
+export async function readWaveCounts(
+  supabase: SupabaseClient,
+  orgId: string,
+  start: WaveStart,
+  now: Date = new Date(),
+): Promise<ProcessingWave> {
+  if (start.startedAt === null) {
+    return waveOf({ pending: 0, done: 0, leftInWindow: 0, startedAt: null });
+  }
+  if (start.pending === 0) {
+    const done = await countLeftQueueSince(supabase, orgId, start.startedAt);
+    return waveOf({ pending: 0, done, leftInWindow: 0, startedAt: start.startedAt });
+  }
+  const since = new Date(now.getTime() - THROUGHPUT_WINDOW_MINUTES * 60_000).toISOString();
+  const [done, leftInWindow] = await Promise.all([
+    countLeftQueueSince(supabase, orgId, start.startedAt),
+    countLeftQueueSince(supabase, orgId, since),
+  ]);
+  return waveOf({ pending: start.pending, done, leftInWindow, startedAt: start.startedAt });
+}
+
+/**
+ * The wave the service is reading: readWaveStart, then readWaveCounts
+ * from the earlier of the start the caller follows and the queue's.
+ * Two or three requests while something is pending, one when nothing
+ * is (two when the caller's wave just ended). What is counted "done"
+ * is what left the queue since the start: a few documents read in the
+ * seconds before the next lot of an import was queued fall out when
+ * that lot becomes the earliest, so a fresh page may stand a little
+ * behind one that followed the wave from its start; the estimate is
+ * not affected.
+ */
+export async function readProcessingProgress(
+  supabase: SupabaseClient,
+  orgId: string,
+  options: WaveOptions = {},
+): Promise<ProcessingWave> {
+  const start = await readWaveStart(supabase, orgId);
+  const startedAt = earliestOf(options.startedAt ?? null, start.startedAt);
+  return readWaveCounts(supabase, orgId, { pending: start.pending, startedAt }, options.now ?? new Date());
 }
 
 /** When the hourly purge deletes the candidate, from retention_due_at(); null when unknown. */

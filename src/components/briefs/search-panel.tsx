@@ -9,15 +9,20 @@
  * in groups (then of the A's of every group, when there were several).
  * When the search had to write the understanding of the job itself
  * (the role profile, the criteria), nothing is read before the team
- * has looked at it: the deterministic ranking is shown with one
- * sentence and the button that starts the reading. The loop stops when
- * the person interrupts it or leaves the page; a stored analysis
- * resumes the stages it lacks (results without an assessment, retained
- * ones without a second opinion, retained or borderline ones without a
- * tier). Results sit in groups: to present,
- * to dig into, set aside (collapsed), not analysed. A result whose
- * candidate left the pool since the search counts as settled: it is
- * never sent again and does not keep an analysis from being complete.
+ * has looked at it: one sentence says so, with the button that starts
+ * the reading, and the deterministic ranking waits under "not
+ * analysed". The loop stops when the person interrupts it or leaves
+ * the page; a stored analysis resumes the stages it lacks (results
+ * without an assessment, retained ones without a second opinion,
+ * retained or borderline ones without a tier). Results sit in groups:
+ * to present (the one group open, always shown with its count: while a
+ * stage runs and nothing is presented yet it shows the progress, and
+ * once every stage ran it reads "0 profil correspond à ce brief" with
+ * how many were read and the requirement most often missing), to dig
+ * into, set aside and not analysed (collapsed with their counts). A
+ * result whose candidate left the pool since the search counts as
+ * settled: it is never sent again and does not keep an analysis from
+ * being complete.
  * Without a model, or without criteria to check, the panel says so and
  * shows the deterministic ranking alone; when the pool was larger than
  * what one search reads, the line under the results says how many
@@ -493,6 +498,12 @@ export function SearchPanel({
     return t("briefs.search.line.deeper.many", { count });
   }
 
+  function assessedText(count: number): string {
+    if (count === 0) return t("briefs.search.nofit.assessed.none");
+    if (count === 1) return t("briefs.search.nofit.assessed.one");
+    return t("briefs.search.nofit.assessed.many", { count });
+  }
+
   const textOnly = modelAvailable === false;
   /** No requirement to check: the ranking on the text is all there is, as without a model. */
   const noCriteria = current !== null && current.criteria.length === 0;
@@ -503,7 +514,8 @@ export function SearchPanel({
   /** What the three stages still have to send: unread profiles, retained ones without a second opinion, untiered ones. */
   const leftCount = pendingCount(ranked, settledIds);
   const assessedCount = ranked.length - unassessedCount;
-  const complete = ranked.length > 0 && unreadCount === 0;
+  /** Every stage ran on what could be sent: nothing left to read, to challenge or to tier, so "to present" can only be what it is. */
+  const complete = ranked.length > 0 && leftCount === 0;
   const pendingCheck = current !== null && needsCheck?.searchId === current.id ? needsCheck : null;
   const canResume =
     canEdit &&
@@ -568,7 +580,8 @@ export function SearchPanel({
       parts.push(t("briefs.search.line.noCriteria.model"));
     } else {
       parts.push(t("briefs.search.line.model"), readText(assessedCount));
-      if (assessedCount > 0)
+      // Once a profile was read, or every stage ran, the line counts what is to present ("0 à présenter" included).
+      if (assessedCount > 0 || complete)
         parts.push(presentText(buckets.present.length), deeperText(buckets.deeper.length));
       if (unreadCount > 0 && !progress)
         parts.push(t("briefs.search.line.pending", { count: unreadCount }));
@@ -583,16 +596,54 @@ export function SearchPanel({
     return parts.join(" · ");
   }
 
-  function noFitText(view: SearchView): string {
-    const parts = [t("briefs.search.nofit.text", { count: assessedCount })];
+  /** Under "0 profil correspond à ce brief": how many profiles were read, and the requirement most often missing when one is. */
+  function zeroText(view: SearchView): string {
+    const parts = [assessedText(assessedCount)];
     const missing = mostMissingRequirement(view.criteria, ranked);
     if (missing) {
       const label =
         missing.kind === "role" ? `${t(kindKey(missing.kind))} · ${missing.label}` : missing.label;
       parts.push(t("briefs.search.nofit.missing", { label }));
     }
-    parts.push(t("briefs.search.nofit.hint"));
-    return parts.join(" ");
+    return parts.join(" · ");
+  }
+
+  /**
+   * What "to present" shows when it holds nothing: that the cards land
+   * as batches return while a stage runs (the stage and its count are
+   * on the progress line above the results, said once), the calm zero
+   * once every stage ran, or, between the two, why the list is not
+   * final yet. The zero keeps the look of an EmptyState with its
+   * headline as a paragraph: the group's own title is the heading.
+   */
+  function presentEmpty(view: SearchView) {
+    if (progress) {
+      return (
+        <p className="sheet p-6 text-sm text-muted-foreground">
+          {t("briefs.section.present.running")}
+        </p>
+      );
+    }
+    if (complete) {
+      return (
+        <div className="sheet flex flex-col items-center px-6 py-16 text-center">
+          <div className="mb-5 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary [&_svg]:size-6">
+            <SearchX />
+          </div>
+          <p className="max-w-md font-display text-xl text-ink break-words">
+            {t("briefs.search.nofit.title")}
+          </p>
+          <p className="mt-2 max-w-md text-[15px] leading-6 text-muted-foreground">
+            {zeroText(view)}
+          </p>
+        </div>
+      );
+    }
+    return (
+      <p className="sheet p-6 text-sm text-muted-foreground">
+        {t(pendingCheck ? "briefs.section.present.unread" : "briefs.section.present.incomplete")}
+      </p>
+    );
   }
 
   function groups(view: SearchView) {
@@ -611,31 +662,23 @@ export function SearchPanel({
         </ResultGroup>
       );
     }
-    const nothingFits =
-      complete && assessedCount > 0 && buckets.present.length === 0 && buckets.deeper.length === 0;
+    // "To present" is the one group open, and the only one shown when empty: the zero is a result.
     return (
       <>
-        {nothingFits ? (
-          <EmptyState
-            icon={<SearchX />}
-            title={t("briefs.search.nofit.title")}
-            text={noFitText(view)}
-          />
-        ) : null}
-        {buckets.present.length ? (
-          <ResultGroup
-            title={t("briefs.section.present")}
-            help={t("briefs.section.present.help")}
-            count={buckets.present.length}
-          >
-            {cards(buckets.present)}
-          </ResultGroup>
-        ) : null}
+        <ResultGroup
+          title={t("briefs.section.present")}
+          help={t("briefs.section.present.help")}
+          count={buckets.present.length}
+        >
+          {buckets.present.length ? cards(buckets.present) : presentEmpty(view)}
+        </ResultGroup>
         {buckets.deeper.length ? (
           <ResultGroup
             title={t("briefs.section.deeper")}
             help={t("briefs.section.deeper.help")}
             count={buckets.deeper.length}
+            collapsible
+            defaultOpen={false}
           >
             {cards(buckets.deeper)}
           </ResultGroup>
@@ -657,7 +700,7 @@ export function SearchPanel({
             help={t("briefs.section.unassessed.help")}
             count={buckets.unassessed.length}
             collapsible
-            defaultOpen={buckets.present.length + buckets.deeper.length === 0}
+            defaultOpen={false}
           >
             {cards(buckets.unassessed)}
           </ResultGroup>
