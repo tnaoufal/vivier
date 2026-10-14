@@ -1,4 +1,4 @@
-/** Words of the briefs: the list, a new brief, the brief page, its criteria, the analysis of the talent pool and its assessed results. */
+/** Words of the briefs: the list, a new brief, the brief page, its role profile and criteria, the analysis of the talent pool in three stages and its results. */
 const fr = {
   // list
   "briefs.title": "Briefs",
@@ -16,13 +16,15 @@ const fr = {
   "briefs.list.noDescription": "Sans description",
   "briefs.listError": "La liste n'a pas pu être chargée.",
   "briefs.empty.title": "Aucun brief pour l'instant",
-  "briefs.empty.text": "Décrivez le poste en quelques phrases : les critères et la recherche dans le vivier partent de là.",
+  "briefs.empty.text":
+    "Décrivez le poste en quelques phrases : les critères et la recherche dans le vivier partent de là.",
   "briefs.empty.filtered.title": "Aucun brief dans cet état",
   "briefs.empty.filtered.text": "Changez le filtre pour voir les autres.",
 
   // new
   "briefs.new.title": "Nouveau brief",
-  "briefs.new.text": "Un titre et le besoin en texte libre. Les critères viennent ensuite, proposés par le modèle quand il y en a un, validés par vous.",
+  "briefs.new.text":
+    "Un titre et le besoin en texte libre. Les critères viennent ensuite, proposés par le modèle quand il y en a un, validés par vous.",
   "briefs.new.create": "Créer le brief",
   "briefs.new.created": "Brief créé.",
 
@@ -35,22 +37,27 @@ const fr = {
   "briefs.part.search": "Rechercher dans le vivier",
   "briefs.delete": "Supprimer le brief",
   "briefs.delete.title": "Supprimer ce brief ?",
-  "briefs.delete.text": "Ses recherches et sa shortlist partent avec lui. Les candidats restent dans le vivier.",
+  "briefs.delete.text":
+    "Ses recherches et sa shortlist partent avec lui. Les candidats restent dans le vivier.",
   "briefs.deleted": "Brief supprimé.",
 
   // form
   "briefs.form.title": "Titre",
   "briefs.form.title.placeholder": "Ex. Contrôleur de gestion senior",
   "briefs.form.description": "Le besoin",
-  "briefs.form.description.placeholder": "Un contrôleur de gestion senior, anglais courant, Lyon, disponible sous trois mois…",
-  "briefs.form.description.help": "Écrivez comme vous le diriez à un collègue : le poste, le contexte, ce qui compte vraiment.",
+  "briefs.form.description.placeholder":
+    "Un contrôleur de gestion senior, anglais courant, Lyon, disponible sous trois mois…",
+  "briefs.form.description.help":
+    "Écrivez comme vous le diriez à un collègue : le poste, le contexte, ce qui compte vraiment.",
   "briefs.form.status": "Statut",
   "briefs.form.unsaved": "Modifications non enregistrées",
 
   // criteria
   "briefs.criteria.title": "Critères",
-  "briefs.criteria.help": "Le métier est la première exigence : sa définition (missions principales, intitulés équivalents) guide l'analyse, qui juge ce que la personne a fait et non l'intitulé de ses postes. Puis chaque critère est vérifié un par un dans le CV : satisfait, en partie, non satisfait, ou non renseigné quand le CV n'en dit rien. « Obligatoire » écarte de la sélection proposée : un profil qui ne le satisfait pas est présenté à part, rien n'est supprimé.",
-  "briefs.criteria.empty": "Aucun critère pour l'instant. Ajoutez une ligne, demandez des propositions, ou lancez l'analyse : le métier et les exigences seront déduits du brief.",
+  "briefs.criteria.help":
+    "Le métier est la première exigence : sa définition (missions principales, intitulés équivalents) guide l'analyse, qui juge ce que la personne a fait et non l'intitulé de ses postes. Puis chaque critère est vérifié un par un dans le CV : satisfait, en partie, non satisfait, ou non renseigné quand le CV n'en dit rien. « Obligatoire » écarte de la sélection proposée : un profil qui ne le satisfait pas est présenté à part, rien n'est supprimé.",
+  "briefs.criteria.empty":
+    "Aucun critère pour l'instant. Ajoutez une ligne, demandez des propositions, ou lancez l'analyse : le métier et les exigences seront déduits du brief.",
   "briefs.criteria.add": "Ajouter un critère",
   "briefs.criteria.save": "Enregistrer les critères",
   "briefs.criteria.saved": "Critères enregistrés.",
@@ -60,7 +67,8 @@ const fr = {
   "briefs.criteria.label.placeholder": "Libellé affiché, ex. Anglais courant",
   "briefs.criteria.value": "Valeur recherchée",
   "briefs.criteria.value.role": "Définition du métier",
-  "briefs.criteria.value.placeholder.role": "Définition du métier : missions principales, intitulés équivalents, secteur si le brief le précise…",
+  "briefs.criteria.value.placeholder.role":
+    "Définition du métier : missions principales, intitulés équivalents, secteur si le brief le précise…",
   "briefs.criteria.value.placeholder.skill": "Ex. contrôle de gestion",
   "briefs.criteria.value.placeholder.experience": "Années, ex. 5",
   "briefs.criteria.value.placeholder.language": "Ex. anglais C1",
@@ -71,8 +79,12 @@ const fr = {
   "briefs.criteria.required": "Obligatoire",
   "briefs.criteria.weight": "Poids",
   "briefs.criteria.remove": "Retirer ce critère",
-  "briefs.criteria.protected": "Ce critère porte sur une caractéristique protégée : il ne sera pas enregistré.",
-  "briefs.criteria.role.duplicate": "Un seul métier par brief : cette ligne ne sera pas enregistrée.",
+  "briefs.criteria.protected":
+    "Ce critère porte sur une caractéristique protégée : il ne sera pas enregistré.",
+  "briefs.criteria.role.duplicate":
+    "Un seul métier par brief : cette ligne ne sera pas enregistrée.",
+  "briefs.criteria.role.fromProfile":
+    "Définie par le profil du poste : modifiez le profil pour la changer.",
   "briefs.kind.role": "Métier",
   "briefs.kind.skill": "Compétence",
   "briefs.kind.experience": "Expérience",
@@ -90,25 +102,45 @@ const fr = {
   "briefs.proposals.again": "Proposer à nouveau",
   "briefs.proposals.busy": "Lecture du brief…",
   "briefs.proposals.help": "Le modèle propose, vous validez : rien n'est ajouté sans votre geste.",
-  "briefs.proposals.noModel": "Aucun modèle n'est configuré sur ce déploiement : écrivez les critères à la main.",
+  "briefs.proposals.noModel":
+    "Aucun modèle n'est configuré sur ce déploiement : écrivez les critères à la main.",
   "briefs.proposals.title": "Propositions",
   "briefs.proposals.none": "Le modèle n'a rien proposé à partir de ce texte.",
   "briefs.proposals.add": "Ajouter {label}",
   "briefs.proposals.addAll": "Tout ajouter",
   "briefs.proposals.duplicate": "Ce critère est déjà dans la liste.",
-  "briefs.proposals.dropped": "{count} proposition(s) écartée(s) : elles portaient sur une caractéristique protégée.",
+  "briefs.proposals.dropped":
+    "{count} proposition(s) écartée(s) : elles portaient sur une caractéristique protégée.",
 
   // search and analysis
   "briefs.search.help":
-    "L'analyse lit chaque profil du vivier jusqu'à {max} profils actifs ; au-delà, les {limit} profils les plus proches du brief. Le métier est jugé en premier, d'après ce que la personne a fait ; puis chaque exigence du brief est vérifiée une par une avec ce que dit le CV. Seuls les profils qui correspondent sont présentés ; l'analyse propose, l'équipe retient.",
+    "L'analyse lit chaque profil du vivier jusqu'à {max} profils actifs ; au-delà, les {limit} profils les plus proches du brief. Chaque CV est lu comme un recruteur senior le ferait : le métier d'abord, d'après ce que la personne a fait, puis le niveau, le contexte, la trajectoire et les réalisations, et chaque exigence du brief une par une. Les profils retenus passent une contre-expertise, puis sont comparés entre eux par groupes de huit, puis les meilleurs entre eux, et classés. L'analyse propose, l'équipe retient.",
+  "briefs.search.progress.read": "Lecture des profils : {done} / {total}",
+  "briefs.search.progress.challenge": "Contre-expertise : {done} / {total}",
+  "briefs.search.progress.rank": "Classement : {done} / {total}",
+  "briefs.search.progress.final": "Classement final : {done} / {total}",
+  "briefs.search.check.profile":
+    "Le modèle a écrit le profil du poste à partir du brief. Vérifiez le métier et ses missions, puis lancez la lecture des profils.",
+  "briefs.search.check.criteria":
+    "Le modèle a déduit les exigences du brief. Vérifiez-les, puis lancez la lecture des profils.",
+  "briefs.search.check.read": "Lire les profils",
+  "briefs.search.line.read.none": "aucun profil lu",
+  "briefs.search.line.read.one": "1 profil lu",
+  "briefs.search.line.read.many": "{count} profils lus",
+  "briefs.search.line.present.none": "aucun à présenter",
+  "briefs.search.line.present.one": "1 à présenter",
+  "briefs.search.line.present.many": "{count} à présenter",
+  "briefs.search.line.deeper.none": "aucun à creuser",
+  "briefs.search.line.deeper.one": "1 à creuser",
+  "briefs.search.line.deeper.many": "{count} à creuser",
   "briefs.search.run": "Lancer l'analyse",
   "briefs.search.running": "Recherche en cours…",
   "briefs.search.resume": "Reprendre l'analyse",
   "briefs.search.stop": "Interrompre",
-  "briefs.search.progress": "Analyse en cours : {done} / {total} profils",
   "briefs.search.progress.label": "Progression de l'analyse",
   "briefs.search.derived": "Exigences déduites du brief : vérifiez-les.",
-  "briefs.search.failed": "{count} profil(s) n'ont pas pu être analysés. Reprenez l'analyse pour réessayer.",
+  "briefs.search.failed":
+    "{count} profil(s) n'ont pas pu être analysés. Reprenez l'analyse pour réessayer.",
   "briefs.search.saveFirst": "Enregistrez les critères avant de lancer l'analyse.",
   "briefs.search.viewer": "Votre rôle permet de consulter les analyses, pas d'en lancer.",
   "briefs.search.previous": "Analyses précédentes",
@@ -118,42 +150,47 @@ const fr = {
   "briefs.search.count.one": "1 profil",
   "briefs.search.count.many": "{count} profils",
   "briefs.search.line.model": "Analyse par le modèle",
-  "briefs.search.line.assessed.none": "aucun profil analysé",
-  "briefs.search.line.assessed.one": "1 profil analysé",
-  "briefs.search.line.assessed.many": "{count} profils analysés",
-  "briefs.search.line.fit.none": "aucun ne correspond",
-  "briefs.search.line.fit.one": "1 correspond",
-  "briefs.search.line.fit.many": "{count} correspondent",
   "briefs.search.line.pending": "{count} restent à analyser",
-  "briefs.search.line.noModel": "Aucun modèle configuré : classement sur le texte seulement, sans analyse des exigences.",
-  "briefs.search.line.noCriteria": "Ce brief n'a pas de critères : les profils sont classés sur les mots du brief seulement.",
-  "briefs.search.line.noCriteria.model": "Pas d'analyse par le modèle : ce brief n'avait pas de critères.",
+  "briefs.search.line.noModel":
+    "Aucun modèle configuré : classement sur le texte seulement, sans analyse des exigences.",
+  "briefs.search.line.noCriteria":
+    "Ce brief n'a pas de critères : les profils sont classés sur les mots du brief seulement.",
+  "briefs.search.line.noCriteria.model":
+    "Pas d'analyse par le modèle : ce brief n'avait pas de critères.",
   "briefs.search.line.truncated":
     "Vivier de {total} profils : seuls les {read} les plus proches du brief ont été lus, les autres n'ont pas été examinés.",
   "briefs.search.line.roleStale":
     "Cette analyse date d'avant le métier du brief : ses verdicts ne l'ont pas jugé. Relancez l'analyse pour qu'il soit jugé en premier.",
   "briefs.search.empty.title": "Aucune analyse pour l'instant",
-  "briefs.search.empty.text": "Lancez l'analyse : les profils du vivier sont lus et vérifiés exigence par exigence, et seuls ceux qui correspondent sont présentés.",
+  "briefs.search.empty.text":
+    "Lancez l'analyse : les profils du vivier sont lus et vérifiés exigence par exigence, et seuls ceux qui correspondent sont présentés.",
   "briefs.search.none.title": "Aucun profil trouvé",
-  "briefs.search.none.text": "Le vivier ne contient aucun profil actif qui réponde aux mots du brief. Importez des CV, ou précisez le besoin.",
+  "briefs.search.none.text":
+    "Le vivier ne contient aucun profil actif qui réponde aux mots du brief. Importez des CV, ou précisez le besoin.",
   "briefs.search.nofit.title": "Aucun profil ne correspond à ce brief",
-  "briefs.search.nofit.text": "Sur {count} profils analysés, aucun ne satisfait toutes les exigences.",
+  "briefs.search.nofit.text":
+    "Sur {count} profils analysés, aucun ne satisfait toutes les exigences.",
   "briefs.search.nofit.missing": "Exigence la plus souvent manquante : {label}.",
-  "briefs.search.nofit.hint": "Ajustez les exigences du brief ou élargissez le vivier, puis relancez l'analyse.",
+  "briefs.search.nofit.hint":
+    "Ajustez les exigences du brief ou élargissez le vivier, puis relancez l'analyse.",
   "briefs.search.loadFailed": "Cette analyse n'a pas pu être rouverte.",
 
   // result sections
-  "briefs.section.fit": "Profils correspondants",
-  "briefs.section.fit.help": "Le métier correspond et, d'après le CV, toutes les exigences obligatoires sont satisfaites. L'équipe retient ou non.",
-  "briefs.section.borderline": "À vérifier",
-  "briefs.section.borderline.help": "Le métier est voisin, une exigence obligatoire est non renseignée ou satisfaite en partie, ou des exigences importantes manquent : un regard humain tranche.",
+  "briefs.section.present": "À présenter",
+  "briefs.section.present.help":
+    "Métier confirmé et impératifs satisfaits d'après la lecture du modèle ; contre-expertise et classement indiqués sur la fiche quand ils ont eu lieu. L'équipe retient ou non.",
+  "briefs.section.deeper": "À creuser",
+  "briefs.section.deeper.help":
+    "Un regard humain tranche : le métier est voisin, un impératif est non renseigné ou satisfait en partie, la contre-expertise a émis une réserve, ou le classement les met en retrait. La réserve principale est indiquée sur la fiche quand la lecture l'a nommée.",
   "briefs.section.noFit": "Écartés par l'analyse",
   "briefs.section.noFit.help":
     "D'après la lecture du modèle, le profil ne répond pas au brief : le métier n'est pas celui du poste (cela écarte à lui seul, quelles que soient les autres exigences), une exigence obligatoire n'est pas satisfaite, ou le score est trop bas. Rien n'est supprimé : la fiche reste ouverte.",
   "briefs.section.unassessed": "Non analysés",
-  "briefs.section.unassessed.help": "Ces profils n'ont pas encore été lus par le modèle : seul le classement sur le texte s'applique.",
+  "briefs.section.unassessed.help":
+    "Ces profils n'ont pas encore été lus par le modèle : seul le classement sur le texte s'applique.",
   "briefs.section.ranked": "Profils classés",
-  "briefs.section.ranked.help": "Classés sur les mots du brief et les critères vérifiés automatiquement ; aucune lecture par un modèle.",
+  "briefs.section.ranked.help":
+    "Classés sur les mots du brief et les critères vérifiés automatiquement ; aucune lecture par un modèle.",
   "briefs.section.ranked.noCriteria.help":
     "Sans critères, les profils sont classés sur les mots du brief seulement et aucune exigence n'est vérifiée. Ajoutez des critères, puis relancez l'analyse.",
   "briefs.section.show": "Afficher",
@@ -169,7 +206,16 @@ const fr = {
   "briefs.results.requirements": "Exigences du brief",
   "briefs.results.reason": "Exigence non satisfaite : {label}",
   "briefs.results.reason.role": "Le métier ne correspond pas : {label}",
-  "briefs.results.reason.model": "D'après la lecture du modèle, le profil ne répond pas au brief (score {score} sur 100).",
+  "briefs.results.reason.model":
+    "D'après la lecture du modèle, le profil ne répond pas au brief (score {score} sur 100).",
+  "briefs.results.check.role": "Métier voisin : {evidence}",
+  "briefs.results.check.required": "Impératif non renseigné : {label}",
+  "briefs.results.check.partial": "Impératif satisfait en partie : {label}",
+  "briefs.results.check.challenge": "Contre-expertise : {reason}",
+  "briefs.results.check.concern": "Réserve principale : {concern}",
+  "briefs.results.evidence.unverified": "citation non retrouvée dans le CV",
+  "briefs.results.withheld":
+    "{count} phrase(s) du modèle retirée(s) par le filtre (caractéristique protégée ou période sans poste) : la lecture affichée est incomplète.",
   "briefs.results.why": "Lecture du modèle",
   "briefs.results.addToShortlist": "Ajouter à la shortlist",
   "briefs.results.addedToast": "Ajouté à la shortlist.",
@@ -184,6 +230,84 @@ const fr = {
   "briefs.met.partial": "En partie",
   "briefs.met.no": "Non satisfait",
   "briefs.met.unknown": "Non renseigné",
+  "briefs.tier.A": "À présenter",
+  "briefs.tier.B": "À creuser",
+  "briefs.tier.C": "En retrait",
+  "briefs.tier.label": "Classement du modèle : {tier}",
+  "briefs.dimension.role": "Métier",
+  "briefs.dimension.seniority": "Séniorité",
+  "briefs.dimension.context": "Contexte",
+  "briefs.dimension.trajectory": "Trajectoire",
+  "briefs.dimension.achievements": "Réalisations",
+  "briefs.results.dimensions": "Lecture en cinq dimensions",
+  "briefs.results.dimensions.show": "Voir le détail",
+  "briefs.results.dimensions.hide": "Masquer le détail",
+  "briefs.results.dimension.score": "{label} : {score} sur 100",
+  "briefs.results.dimension.weight": "{label} · {weight} %",
+  "briefs.results.modelScore":
+    "Score composé : métier 40 %, séniorité 15 %, contexte 15 %, trajectoire et réalisations 15 %, exigences 15 % ; le modèle seul donnait {score}.",
+  "briefs.results.strengths": "Points forts",
+  "briefs.results.concerns": "Réserves",
+  "briefs.results.questions": "Pour l'entretien",
+  "briefs.results.questions.show": "Afficher les points à vérifier",
+  "briefs.results.questions.hide": "Masquer les points à vérifier",
+  "briefs.results.challenge": "Contre-expertise",
+  "briefs.results.challenge.confirmed": "Contre-expertise : sans réserve majeure.",
+  "briefs.results.rankNote": "Classement du modèle : {note}",
+
+  // the role profile
+  "briefs.profile.title": "Profil du poste",
+  "briefs.profile.help":
+    "La lecture du poste par un recruteur senior, écrite par le modèle à la première analyse et modifiable par l'équipe : chaque CV est lu à sa lumière (métier, niveau, contexte, trajectoire, réalisations).",
+  "briefs.profile.none": "Non défini",
+  "briefs.profile.none.text":
+    "La première analyse l'écrit à partir du brief ; vous pourrez ensuite le modifier ou le réécrire.",
+  "briefs.profile.none.noModel":
+    "Aucun modèle n'est configuré sur ce déploiement : écrivez le profil à la main, ou laissez l'analyse lire le brief seul.",
+  "briefs.profile.generate": "Écrire le profil",
+  "briefs.profile.regenerate": "Régénérer",
+  "briefs.profile.regenerate.busy": "Lecture du brief…",
+  "briefs.profile.regenerate.title": "Réécrire le profil du poste ?",
+  "briefs.profile.regenerate.text":
+    "Le modèle le réécrit à partir du brief ; les modifications de l'équipe sont remplacées. Les analyses déjà faites ne changent pas.",
+  "briefs.profile.regenerated": "Profil du poste réécrit par le modèle : vérifiez-le.",
+  "briefs.profile.derived": "Profil du poste écrit par le modèle à partir du brief : vérifiez-le.",
+  "briefs.profile.saved": "Profil du poste enregistré.",
+  "briefs.profile.protected":
+    "{count} élément(s) écarté(s) : ils portaient sur une caractéristique protégée.",
+  "briefs.profile.by.model": "Écrit par le modèle le {date}",
+  "briefs.profile.by.team": "Écrit par l'équipe",
+  "briefs.profile.domain": "Domaine",
+  "briefs.profile.seniority": "Niveau",
+  "briefs.profile.years": "Années dans le métier",
+  "briefs.profile.years.min": "Minimum",
+  "briefs.profile.years.max": "Maximum",
+  "briefs.profile.years.range": "{min} à {max} ans",
+  "briefs.profile.years.from": "{min} ans au moins",
+  "briefs.profile.years.upTo": "{max} ans au plus",
+  "briefs.profile.missions": "Missions qui définissent le poste",
+  "briefs.profile.equivalentTitles": "Intitulés équivalents",
+  "briefs.profile.adjacentProfiles": "Profils voisins, et ce qui leur manque",
+  "briefs.profile.context": "Contexte",
+  "briefs.profile.context.sector": "Secteur",
+  "briefs.profile.context.product": "Produit",
+  "briefs.profile.context.clients": "Clients",
+  "briefs.profile.context.scope": "Périmètre",
+  "briefs.profile.context.help":
+    "Seulement ce que le brief précise : un contexte absent n'est jamais reproché à un CV.",
+  "briefs.profile.mustHaves": "Impératifs",
+  "briefs.profile.niceToHaves": "Souhaités",
+  "briefs.profile.successFactors": "Facteurs de réussite",
+  "briefs.profile.questions": "Points à vérifier en entretien",
+  "briefs.profile.assumptions": "Ce que le brief ne dit pas",
+  "briefs.profile.assumptions.help":
+    "Ce que le modèle a supposé : à confirmer ou à corriger avant la lecture des profils.",
+  "briefs.profile.list.help": "Un élément par ligne.",
+  "briefs.seniority.junior": "Junior",
+  "briefs.seniority.confirmed": "Confirmé",
+  "briefs.seniority.senior": "Senior",
+  "briefs.seniority.manager": "Manager",
+  "briefs.seniority.executive": "Direction",
 } as const;
 
 const en = {
@@ -202,12 +326,14 @@ const en = {
   "briefs.list.noDescription": "No description",
   "briefs.listError": "The list could not be loaded.",
   "briefs.empty.title": "No brief yet",
-  "briefs.empty.text": "Describe the position in a few sentences: the criteria and the search of the talent pool start from there.",
+  "briefs.empty.text":
+    "Describe the position in a few sentences: the criteria and the search of the talent pool start from there.",
   "briefs.empty.filtered.title": "No brief in this state",
   "briefs.empty.filtered.text": "Change the filter to see the others.",
 
   "briefs.new.title": "New brief",
-  "briefs.new.text": "A title and the need as free text. The criteria come next, proposed by the model when there is one, validated by you.",
+  "briefs.new.text":
+    "A title and the need as free text. The criteria come next, proposed by the model when there is one, validated by you.",
   "briefs.new.create": "Create the brief",
   "briefs.new.created": "Brief created.",
 
@@ -219,20 +345,25 @@ const en = {
   "briefs.part.search": "Search the talent pool",
   "briefs.delete": "Delete the brief",
   "briefs.delete.title": "Delete this brief?",
-  "briefs.delete.text": "Its searches and its shortlist go with it. The candidates stay in the talent pool.",
+  "briefs.delete.text":
+    "Its searches and its shortlist go with it. The candidates stay in the talent pool.",
   "briefs.deleted": "Brief deleted.",
 
   "briefs.form.title": "Title",
   "briefs.form.title.placeholder": "e.g. Senior management controller",
   "briefs.form.description": "The need",
-  "briefs.form.description.placeholder": "A senior management controller, fluent English, Lyon, available within three months…",
-  "briefs.form.description.help": "Write it as you would say it to a colleague: the position, the context, what really matters.",
+  "briefs.form.description.placeholder":
+    "A senior management controller, fluent English, Lyon, available within three months…",
+  "briefs.form.description.help":
+    "Write it as you would say it to a colleague: the position, the context, what really matters.",
   "briefs.form.status": "Status",
   "briefs.form.unsaved": "Unsaved changes",
 
   "briefs.criteria.title": "Criteria",
-  "briefs.criteria.help": "The role is the first requirement: its definition (core missions, equivalent titles) guides the analysis, which judges what the person did, not how their positions were titled. Then each criterion is checked one by one in the CV: met, partly, not met, or not stated when the CV says nothing about it. \"Required\" sets aside from the proposed selection: a profile that does not meet it is presented apart, nothing is deleted.",
-  "briefs.criteria.empty": "No criteria yet. Add a row, ask for proposals, or run the analysis: the role and the requirements will be derived from the brief.",
+  "briefs.criteria.help":
+    'The role is the first requirement: its definition (core missions, equivalent titles) guides the analysis, which judges what the person did, not how their positions were titled. Then each criterion is checked one by one in the CV: met, partly, not met, or not stated when the CV says nothing about it. "Required" sets aside from the proposed selection: a profile that does not meet it is presented apart, nothing is deleted.',
+  "briefs.criteria.empty":
+    "No criteria yet. Add a row, ask for proposals, or run the analysis: the role and the requirements will be derived from the brief.",
   "briefs.criteria.add": "Add a criterion",
   "briefs.criteria.save": "Save the criteria",
   "briefs.criteria.saved": "Criteria saved.",
@@ -242,7 +373,8 @@ const en = {
   "briefs.criteria.label.placeholder": "Label shown, e.g. Fluent English",
   "briefs.criteria.value": "Value to find",
   "briefs.criteria.value.role": "Role definition",
-  "briefs.criteria.value.placeholder.role": "Role definition: core missions, equivalent titles, sector when the brief states it…",
+  "briefs.criteria.value.placeholder.role":
+    "Role definition: core missions, equivalent titles, sector when the brief states it…",
   "briefs.criteria.value.placeholder.skill": "e.g. management control",
   "briefs.criteria.value.placeholder.experience": "Years, e.g. 5",
   "briefs.criteria.value.placeholder.language": "e.g. english C1",
@@ -253,8 +385,10 @@ const en = {
   "briefs.criteria.required": "Required",
   "briefs.criteria.weight": "Weight",
   "briefs.criteria.remove": "Remove this criterion",
-  "briefs.criteria.protected": "This criterion is about a protected characteristic: it will not be saved.",
+  "briefs.criteria.protected":
+    "This criterion is about a protected characteristic: it will not be saved.",
   "briefs.criteria.role.duplicate": "One role per brief: this row will not be saved.",
+  "briefs.criteria.role.fromProfile": "Defined by the role profile: edit the profile to change it.",
   "briefs.kind.role": "Role",
   "briefs.kind.skill": "Skill",
   "briefs.kind.experience": "Experience",
@@ -270,25 +404,45 @@ const en = {
   "briefs.proposals.button": "Propose criteria",
   "briefs.proposals.again": "Propose again",
   "briefs.proposals.busy": "Reading the brief…",
-  "briefs.proposals.help": "The model proposes, you validate: nothing is added without your gesture.",
+  "briefs.proposals.help":
+    "The model proposes, you validate: nothing is added without your gesture.",
   "briefs.proposals.noModel": "No model is set up on this deployment: write the criteria by hand.",
   "briefs.proposals.title": "Proposals",
   "briefs.proposals.none": "The model proposed nothing from this text.",
   "briefs.proposals.add": "Add {label}",
   "briefs.proposals.addAll": "Add all",
   "briefs.proposals.duplicate": "This criterion is already in the list.",
-  "briefs.proposals.dropped": "{count} proposal(s) set aside: they were about a protected characteristic.",
+  "briefs.proposals.dropped":
+    "{count} proposal(s) set aside: they were about a protected characteristic.",
 
   "briefs.search.help":
-    "The analysis reads every profile of the talent pool up to {max} active profiles; beyond that, the {limit} profiles closest to the brief. The role is judged first, from what the person did; then every requirement of the brief is checked one by one against what the CV says. Only the profiles that match are presented; the analysis proposes, the team retains.",
+    "The analysis reads every profile of the talent pool up to {max} active profiles; beyond that, the {limit} profiles closest to the brief. Every CV is read the way a senior recruiter would: the role first, from what the person did, then the level, the context, the trajectory and the achievements, and every requirement of the brief one by one. The retained profiles get a second opinion, then are compared with each other in groups of eight, then the best among themselves, and tiered. The analysis proposes, the team retains.",
+  "briefs.search.progress.read": "Reading the profiles: {done} / {total}",
+  "briefs.search.progress.challenge": "Second opinion: {done} / {total}",
+  "briefs.search.progress.rank": "Tiering: {done} / {total}",
+  "briefs.search.progress.final": "Final tiering: {done} / {total}",
+  "briefs.search.check.profile":
+    "The model wrote the role profile from the brief. Check the role and its missions, then start reading the profiles.",
+  "briefs.search.check.criteria":
+    "The model derived the requirements from the brief. Check them, then start reading the profiles.",
+  "briefs.search.check.read": "Read the profiles",
+  "briefs.search.line.read.none": "no profile read",
+  "briefs.search.line.read.one": "1 profile read",
+  "briefs.search.line.read.many": "{count} profiles read",
+  "briefs.search.line.present.none": "none to present",
+  "briefs.search.line.present.one": "1 to present",
+  "briefs.search.line.present.many": "{count} to present",
+  "briefs.search.line.deeper.none": "none to dig into",
+  "briefs.search.line.deeper.one": "1 to dig into",
+  "briefs.search.line.deeper.many": "{count} to dig into",
   "briefs.search.run": "Run the analysis",
   "briefs.search.running": "Searching…",
   "briefs.search.resume": "Resume the analysis",
   "briefs.search.stop": "Stop",
-  "briefs.search.progress": "Analysis in progress: {done} / {total} profiles",
   "briefs.search.progress.label": "Progress of the analysis",
   "briefs.search.derived": "Requirements derived from the brief: check them.",
-  "briefs.search.failed": "{count} profile(s) could not be analysed. Resume the analysis to try again.",
+  "briefs.search.failed":
+    "{count} profile(s) could not be analysed. Resume the analysis to try again.",
   "briefs.search.saveFirst": "Save the criteria before running the analysis.",
   "briefs.search.viewer": "Your role can read analyses, not run them.",
   "briefs.search.previous": "Previous analyses",
@@ -298,41 +452,44 @@ const en = {
   "briefs.search.count.one": "1 profile",
   "briefs.search.count.many": "{count} profiles",
   "briefs.search.line.model": "Analysis by the model",
-  "briefs.search.line.assessed.none": "no profile analysed",
-  "briefs.search.line.assessed.one": "1 profile analysed",
-  "briefs.search.line.assessed.many": "{count} profiles analysed",
-  "briefs.search.line.fit.none": "none matches",
-  "briefs.search.line.fit.one": "1 matches",
-  "briefs.search.line.fit.many": "{count} match",
   "briefs.search.line.pending": "{count} left to analyse",
-  "briefs.search.line.noModel": "No model is set up: ranking on the text only, without a check of the requirements.",
-  "briefs.search.line.noCriteria": "This brief has no criteria: the profiles are ranked on the words of the brief only.",
+  "briefs.search.line.noModel":
+    "No model is set up: ranking on the text only, without a check of the requirements.",
+  "briefs.search.line.noCriteria":
+    "This brief has no criteria: the profiles are ranked on the words of the brief only.",
   "briefs.search.line.noCriteria.model": "No analysis by the model: this brief had no criteria.",
   "briefs.search.line.truncated":
     "Talent pool of {total} profiles: only the {read} closest to the brief were read, the others were not looked at.",
   "briefs.search.line.roleStale":
     "This analysis predates the brief's role: its verdicts did not judge it. Run the analysis again so it is judged first.",
   "briefs.search.empty.title": "No analysis yet",
-  "briefs.search.empty.text": "Run the analysis: the profiles of the talent pool are read and checked requirement by requirement, and only those that match are presented.",
+  "briefs.search.empty.text":
+    "Run the analysis: the profiles of the talent pool are read and checked requirement by requirement, and only those that match are presented.",
   "briefs.search.none.title": "No profile found",
-  "briefs.search.none.text": "The talent pool holds no active profile answering the words of the brief. Upload CVs, or refine the need.",
+  "briefs.search.none.text":
+    "The talent pool holds no active profile answering the words of the brief. Upload CVs, or refine the need.",
   "briefs.search.nofit.title": "No profile matches this brief",
   "briefs.search.nofit.text": "Of {count} profiles analysed, none meets every requirement.",
   "briefs.search.nofit.missing": "Requirement most often missing: {label}.",
-  "briefs.search.nofit.hint": "Adjust the requirements of the brief or widen the talent pool, then run the analysis again.",
+  "briefs.search.nofit.hint":
+    "Adjust the requirements of the brief or widen the talent pool, then run the analysis again.",
   "briefs.search.loadFailed": "This analysis could not be reopened.",
 
-  "briefs.section.fit": "Matching profiles",
-  "briefs.section.fit.help": "The role matches and, according to the CV, every required requirement is met. The team retains or not.",
-  "briefs.section.borderline": "To check",
-  "briefs.section.borderline.help": "The role is adjacent, a required requirement is not stated or only partly met, or important ones are missing: a human look decides.",
+  "briefs.section.present": "To present",
+  "briefs.section.present.help":
+    "Role confirmed and must-haves met according to the model's reading; second opinion and tier shown on the card once they ran. The team retains or not.",
+  "briefs.section.deeper": "To dig into",
+  "briefs.section.deeper.help":
+    "A human look decides: the role is adjacent, a must-have is not stated or only partly met, the second opinion raised a reservation, or the tiering put them behind. The main reservation is shown on the card when the reading named one.",
   "briefs.section.noFit": "Set aside by the analysis",
   "briefs.section.noFit.help":
     "According to the model's reading, the profile does not answer the brief: the role is not the job's (that alone sets a profile aside, whatever the other requirements), a required requirement is not met, or the score is too low. Nothing is deleted: the profile stays open.",
   "briefs.section.unassessed": "Not analysed",
-  "briefs.section.unassessed.help": "These profiles have not been read by the model yet: only the ranking on the text applies.",
+  "briefs.section.unassessed.help":
+    "These profiles have not been read by the model yet: only the ranking on the text applies.",
   "briefs.section.ranked": "Ranked profiles",
-  "briefs.section.ranked.help": "Ranked on the words of the brief and the criteria checked automatically; no reading by a model.",
+  "briefs.section.ranked.help":
+    "Ranked on the words of the brief and the criteria checked automatically; no reading by a model.",
   "briefs.section.ranked.noCriteria.help":
     "Without criteria, the profiles are ranked on the words of the brief only and no requirement is checked. Add criteria, then run the analysis again.",
   "briefs.section.show": "Show",
@@ -347,7 +504,16 @@ const en = {
   "briefs.results.requirements": "Requirements of the brief",
   "briefs.results.reason": "Requirement not met: {label}",
   "briefs.results.reason.role": "The role does not match: {label}",
-  "briefs.results.reason.model": "According to the model's reading, the profile does not answer the brief (score {score} out of 100).",
+  "briefs.results.reason.model":
+    "According to the model's reading, the profile does not answer the brief (score {score} out of 100).",
+  "briefs.results.check.role": "Adjacent role: {evidence}",
+  "briefs.results.check.required": "Must-have not stated: {label}",
+  "briefs.results.check.partial": "Must-have partly met: {label}",
+  "briefs.results.check.challenge": "Second opinion: {reason}",
+  "briefs.results.check.concern": "Main reservation: {concern}",
+  "briefs.results.evidence.unverified": "quote not found in the CV",
+  "briefs.results.withheld":
+    "{count} sentence(s) of the model withheld by the filter (a protected characteristic or a period without a position): the reading shown is incomplete.",
   "briefs.results.why": "The model's reading",
   "briefs.results.addToShortlist": "Add to the shortlist",
   "briefs.results.addedToast": "Added to the shortlist.",
@@ -362,6 +528,83 @@ const en = {
   "briefs.met.partial": "Partly",
   "briefs.met.no": "Not met",
   "briefs.met.unknown": "Not stated",
+  "briefs.tier.A": "To present",
+  "briefs.tier.B": "To dig into",
+  "briefs.tier.C": "Behind the others",
+  "briefs.tier.label": "The model's tier: {tier}",
+  "briefs.dimension.role": "Role",
+  "briefs.dimension.seniority": "Seniority",
+  "briefs.dimension.context": "Context",
+  "briefs.dimension.trajectory": "Trajectory",
+  "briefs.dimension.achievements": "Achievements",
+  "briefs.results.dimensions": "Reading in five dimensions",
+  "briefs.results.dimensions.show": "Show the detail",
+  "briefs.results.dimensions.hide": "Hide the detail",
+  "briefs.results.dimension.score": "{label}: {score} out of 100",
+  "briefs.results.dimension.weight": "{label} · {weight} %",
+  "briefs.results.modelScore":
+    "Composite score: role 40 %, seniority 15 %, context 15 %, trajectory and achievements 15 %, requirements 15 %; the model alone gave {score}.",
+  "briefs.results.strengths": "Strengths",
+  "briefs.results.concerns": "Reservations",
+  "briefs.results.questions": "For the interview",
+  "briefs.results.questions.show": "Show the points to check",
+  "briefs.results.questions.hide": "Hide the points to check",
+  "briefs.results.challenge": "Second opinion",
+  "briefs.results.challenge.confirmed": "Second opinion: no major reservation.",
+  "briefs.results.rankNote": "The model's tiering: {note}",
+
+  "briefs.profile.title": "Role profile",
+  "briefs.profile.help":
+    "The job as a senior recruiter reads it, written by the model at the first analysis and edited by the team: every CV is read in its light (role, level, context, trajectory, achievements).",
+  "briefs.profile.none": "Not defined",
+  "briefs.profile.none.text":
+    "The first analysis writes it from the brief; you can then edit it or write it again.",
+  "briefs.profile.none.noModel":
+    "No model is set up on this deployment: write the profile by hand, or let the analysis read the brief alone.",
+  "briefs.profile.generate": "Write the profile",
+  "briefs.profile.regenerate": "Regenerate",
+  "briefs.profile.regenerate.busy": "Reading the brief…",
+  "briefs.profile.regenerate.title": "Write the role profile again?",
+  "briefs.profile.regenerate.text":
+    "The model writes it again from the brief; the team's edits are replaced. Analyses already run do not change.",
+  "briefs.profile.regenerated": "Role profile written again by the model: check it.",
+  "briefs.profile.derived": "Role profile written by the model from the brief: check it.",
+  "briefs.profile.saved": "Role profile saved.",
+  "briefs.profile.protected":
+    "{count} item(s) set aside: they were about a protected characteristic.",
+  "briefs.profile.by.model": "Written by the model on {date}",
+  "briefs.profile.by.team": "Written by the team",
+  "briefs.profile.domain": "Domain",
+  "briefs.profile.seniority": "Level",
+  "briefs.profile.years": "Years in the role",
+  "briefs.profile.years.min": "Minimum",
+  "briefs.profile.years.max": "Maximum",
+  "briefs.profile.years.range": "{min} to {max} years",
+  "briefs.profile.years.from": "{min} years at least",
+  "briefs.profile.years.upTo": "{max} years at most",
+  "briefs.profile.missions": "Missions that define the job",
+  "briefs.profile.equivalentTitles": "Equivalent titles",
+  "briefs.profile.adjacentProfiles": "Adjacent profiles, and what they lack",
+  "briefs.profile.context": "Context",
+  "briefs.profile.context.sector": "Sector",
+  "briefs.profile.context.product": "Product",
+  "briefs.profile.context.clients": "Clients",
+  "briefs.profile.context.scope": "Scope",
+  "briefs.profile.context.help":
+    "Only what the brief states: a context left blank is never held against a CV.",
+  "briefs.profile.mustHaves": "Must-haves",
+  "briefs.profile.niceToHaves": "Nice to have",
+  "briefs.profile.successFactors": "Success factors",
+  "briefs.profile.questions": "Points to check in an interview",
+  "briefs.profile.assumptions": "What the brief does not say",
+  "briefs.profile.assumptions.help":
+    "What the model assumed: to confirm or correct before the profiles are read.",
+  "briefs.profile.list.help": "One item per line.",
+  "briefs.seniority.junior": "Junior",
+  "briefs.seniority.confirmed": "Confirmed",
+  "briefs.seniority.senior": "Senior",
+  "briefs.seniority.manager": "Manager",
+  "briefs.seniority.executive": "Executive",
 } as const satisfies Record<keyof typeof fr, string>;
 
 export const briefs = { fr, en };

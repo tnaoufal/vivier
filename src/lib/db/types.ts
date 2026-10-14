@@ -228,6 +228,8 @@ export interface BriefRow {
   title: string;
   description: string;
   criteria: BriefCriterion[];
+  /** Null until the first analysis derives it (or a person writes it). */
+  role_profile: RoleProfile | null;
   status: BriefStatus;
   created_by: string | null;
   created_at: string;
@@ -252,20 +254,101 @@ export interface RequirementAssessment {
   met: RequirementMet;
   /** A short quote or fact from the profile; null when nothing in the CV speaks to it. */
   evidence: string | null;
+  /** True when the evidence was not found in what the model was given: a "yes" so marked is read as "partial". */
+  evidenceUnverified?: boolean;
 }
 
 /** The model's expert reading of a candidate against the whole brief. */
 export type AssessmentDecision = "fit" | "borderline" | "no_fit";
 
+/** One of the five dimensions a senior recruiter scores a profile on. */
+export interface DimensionScore {
+  /** 0..100 */
+  score: number;
+  /** One factual sentence in the brief's language. */
+  note: string;
+  /** A quote or fact from the profile; null when nothing speaks to it. */
+  evidence: string | null;
+  /** True when the evidence was not found in what the model was given: the score is then neutral at most. */
+  evidenceUnverified?: boolean;
+}
+
+export type AssessmentDimension = "role" | "seniority" | "context" | "trajectory" | "achievements";
+
+/** The shortlist tier the comparative pass gives: A present now, B worth a deeper look, C do not present. */
+export type AssessmentTier = "A" | "B" | "C";
+
+/** The second opinion on a retained profile: the reason not to present it, if any. */
+export interface AssessmentChallenge {
+  verdict: "confirmed" | "doubt";
+  reason: string | null;
+  evidence: string | null;
+}
+
 export interface Assessment {
   decision: AssessmentDecision;
-  /** 0..100, the model's overall fit; a required requirement at "no" forces no_fit. */
+  /** 0..100: the composite score computed in code (src/lib/briefs/scoring.ts), gated by the rules. */
   score: number;
   /** Two to four factual sentences for a hiring manager, in the brief's language. */
   summary: string;
   requirements: RequirementAssessment[];
   /** Which model answered, for the audit. */
   model: string;
+  /** The model's own overall score, advisory; absent on assessments made before the dimensions. */
+  modelScore?: number;
+  /** The five dimensions with their evidence; absent on older assessments. */
+  dimensions?: Record<AssessmentDimension, DimensionScore>;
+  /** Facts in the profile's favour, as a recruiter would list them. */
+  strengths?: string[];
+  /** Reservations to weigh, never a protected characteristic, never a career break. */
+  concerns?: string[];
+  /** What to check in an interview. */
+  questions?: string[];
+  /** Set by the comparative pass over the retained profiles. */
+  tier?: AssessmentTier;
+  /** One line from the comparative pass: why this rank among the others. */
+  rankNote?: string | null;
+  /** Set by the second-opinion pass on retained profiles. */
+  challenge?: AssessmentChallenge;
+  /** How many of the model's sentences the filter withheld (a protected characteristic, a period without a position): the reading shown is incomplete by that much. */
+  withheld?: number;
+}
+
+/** The structured understanding of the job, derived from the brief and edited by the team (briefs.role_profile). */
+export type RoleSeniority = "junior" | "confirmed" | "senior" | "manager" | "executive";
+
+export interface RoleProfile {
+  /** The job as the team names it. */
+  title: string;
+  /** The domain written from what the job is in the market (e.g. "développement commercial B2B"). */
+  domain: string;
+  seniority: RoleSeniority;
+  yearsMin: number | null;
+  yearsMax: number | null;
+  /** Three to six core missions that define the job. */
+  missions: string[];
+  equivalentTitles: string[];
+  /** Neighbouring backgrounds that can succeed, each with what it lacks. */
+  adjacentProfiles: string[];
+  context: {
+    sector: string | null;
+    product: string | null;
+    clients: string | null;
+    /** Team size, budget, deal size, territory: the scope markers the brief states. */
+    scope: string | null;
+  };
+  /** Deal-breakers in words, as the brief states them. */
+  mustHaves: string[];
+  niceToHaves: string[];
+  /** What makes someone succeed in this job, as a senior recruiter would say it. */
+  successFactors: string[];
+  /** Points to verify in an interview with every candidate. */
+  questions: string[];
+  /** What the brief does not state and the model had to assume (the exact métier, the level, the scope): for the team to confirm before a CV is read. */
+  assumptions: string[];
+  /** Which model wrote it, and when; edits by the team keep these. */
+  model: string | null;
+  createdAt: string;
 }
 
 /** A candidate near another one (similar_candidates). */
@@ -434,6 +517,8 @@ export interface ShareItem {
   summary: string;
   strengths: string[];
   attention: string[];
+  /** What to verify in an interview, from the assessment; empty for shares made before. */
+  questions: string[];
   /** The assessment's fit score 0..100, null when no model assessed the candidate. */
   score: number | null;
   decision: AssessmentDecision | null;

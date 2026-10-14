@@ -26,6 +26,7 @@ const item = (candidateId: string, name = "Ana"): ShareItem => ({
   summary: "",
   strengths: ["Node"],
   attention: [],
+  questions: ["Rôle sur les mises en production"],
   score: 72,
   decision: "fit",
   requirements: [{ label: "Node.js en production", required: true, met: "yes", evidence: "API Node depuis 2018" }],
@@ -105,6 +106,20 @@ describe("review step", () => {
     expect(state.items[1]?.requirements).toEqual(item("b").requirements);
     expect(state.items[1]?.score).toBe(72);
     expect(state.items[0]).toEqual(item("a"));
+  });
+
+  it("edits the interview questions as a third list, apart from the strengths and the attention points", () => {
+    const state = run(
+      drafted,
+      { type: "setPoint", index: 0, field: "questions", at: 0, value: "Son rôle exact sur les mises en production" },
+      { type: "addPoint", index: 0, field: "questions" },
+      { type: "setPoint", index: 0, field: "questions", at: 1, value: "Niveau d'anglais à l'oral" },
+      { type: "removePoint", index: 0, field: "questions", at: 0 },
+    );
+    expect(state.items[0]?.questions).toEqual(["Niveau d'anglais à l'oral"]);
+    expect(state.items[0]?.strengths).toEqual(["Node"]);
+    expect(state.items[0]?.attention).toEqual([]);
+    expect(state.items[1]).toEqual(item("b", "Bo"));
   });
 
   it("removes an item and refuses to create without any", () => {

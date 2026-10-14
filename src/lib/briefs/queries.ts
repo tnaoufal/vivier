@@ -13,13 +13,16 @@ import type {
   BriefStatus,
   CandidateRow,
   MatchResult,
+  RoleProfile,
   SearchRow,
 } from "@/lib/db/types";
 
 import { parseCriteria } from "./criteria";
+import { parseRoleProfile } from "./role-profile";
 
 /** Every column of BriefRow, named so the embedding vector never travels to the browser. */
-export const BRIEF_COLUMNS = "id, org_id, title, description, criteria, status, created_by, created_at, updated_at";
+export const BRIEF_COLUMNS =
+  "id, org_id, title, description, criteria, role_profile, status, created_by, created_at, updated_at";
 
 export const TITLE_MAX = 160;
 export const DESCRIPTION_MAX = 20000;
@@ -27,11 +30,20 @@ export const DESCRIPTION_MAX = 20000;
 /** A duplicate key: a unique index refused the row. */
 export const UNIQUE_VIOLATION = "23505";
 
+/** The JSON columns guarded at the boundary: the criteria and the role profile (null when the column holds nothing readable). */
 function withParsedCriteria(row: BriefRow): BriefRow {
-  return { ...row, criteria: parseCriteria(row.criteria) };
+  return {
+    ...row,
+    criteria: parseCriteria(row.criteria),
+    role_profile: parseRoleProfile(row.role_profile),
+  };
 }
 
-export async function listBriefs(supabase: SupabaseClient, orgId: string, status: BriefStatus | null): Promise<BriefRow[]> {
+export async function listBriefs(
+  supabase: SupabaseClient,
+  orgId: string,
+  status: BriefStatus | null,
+): Promise<BriefRow[]> {
   let request = supabase.from("briefs").select(BRIEF_COLUMNS).eq("org_id", orgId);
   if (status) request = request.eq("status", status);
   const { data, error } = await request.order("updated_at", { ascending: false }).limit(200);
@@ -40,7 +52,11 @@ export async function listBriefs(supabase: SupabaseClient, orgId: string, status
 }
 
 /** One brief of the organisation, or null when it does not exist. */
-export async function readBrief(supabase: SupabaseClient, orgId: string, briefId: string): Promise<BriefRow | null> {
+export async function readBrief(
+  supabase: SupabaseClient,
+  orgId: string,
+  briefId: string,
+): Promise<BriefRow | null> {
   const { data, error } = await supabase
     .from("briefs")
     .select(BRIEF_COLUMNS)
@@ -77,14 +93,31 @@ export async function createBrief(supabase: SupabaseClient, input: NewBrief): Pr
   return (data as { id: string }).id;
 }
 
-export type BriefPatch = Partial<Pick<BriefRow, "title" | "description" | "status">> & { criteria?: BriefCriterion[] };
+export type BriefPatch = Partial<Pick<BriefRow, "title" | "description" | "status">> & {
+  criteria?: BriefCriterion[];
+  /** The role profile as the team edited it (members may write the column); null clears it. */
+  role_profile?: RoleProfile | null;
+};
 
-export async function updateBrief(supabase: SupabaseClient, orgId: string, briefId: string, patch: BriefPatch): Promise<void> {
-  const { error } = await supabase.from("briefs").update(patch).eq("org_id", orgId).eq("id", briefId);
+export async function updateBrief(
+  supabase: SupabaseClient,
+  orgId: string,
+  briefId: string,
+  patch: BriefPatch,
+): Promise<void> {
+  const { error } = await supabase
+    .from("briefs")
+    .update(patch)
+    .eq("org_id", orgId)
+    .eq("id", briefId);
   if (error) throw error;
 }
 
-export async function deleteBrief(supabase: SupabaseClient, orgId: string, briefId: string): Promise<void> {
+export async function deleteBrief(
+  supabase: SupabaseClient,
+  orgId: string,
+  briefId: string,
+): Promise<void> {
   const { error } = await supabase.from("briefs").delete().eq("org_id", orgId).eq("id", briefId);
   if (error) throw error;
 }
@@ -93,12 +126,20 @@ export async function deleteBrief(supabase: SupabaseClient, orgId: string, brief
 // searches
 // ---------------------------------------------------------------------
 
-export type SearchSummary = Pick<SearchRow, "id" | "brief_id" | "result_count" | "method" | "ran_by" | "created_at">;
+export type SearchSummary = Pick<
+  SearchRow,
+  "id" | "brief_id" | "result_count" | "method" | "ran_by" | "created_at"
+>;
 
 const SEARCH_SUMMARY_COLUMNS = "id, brief_id, result_count, method, ran_by, created_at";
 
 /** The searches of a brief, newest first, without their results (read one at a time). */
-export async function listSearches(supabase: SupabaseClient, orgId: string, briefId: string, limit = 20): Promise<SearchSummary[]> {
+export async function listSearches(
+  supabase: SupabaseClient,
+  orgId: string,
+  briefId: string,
+  limit = 20,
+): Promise<SearchSummary[]> {
   const { data, error } = await supabase
     .from("searches")
     .select(SEARCH_SUMMARY_COLUMNS)
@@ -111,7 +152,11 @@ export async function listSearches(supabase: SupabaseClient, orgId: string, brie
 }
 
 /** One search with its stored results and the criteria of the time. */
-export async function readSearch(supabase: SupabaseClient, orgId: string, searchId: string): Promise<SearchRow | null> {
+export async function readSearch(
+  supabase: SupabaseClient,
+  orgId: string,
+  searchId: string,
+): Promise<SearchRow | null> {
   const { data, error } = await supabase
     .from("searches")
     .select("*")
@@ -132,12 +177,19 @@ export async function readSearch(supabase: SupabaseClient, orgId: string, search
 // the candidates a result list shows
 // ---------------------------------------------------------------------
 
-export type ResultCandidate = Pick<CandidateRow, "id" | "full_name" | "headline" | "location" | "status">;
+export type ResultCandidate = Pick<
+  CandidateRow,
+  "id" | "full_name" | "headline" | "location" | "status"
+>;
 
 const RESULT_CANDIDATE_COLUMNS = "id, full_name, headline, location, status";
 
 /** The name, headline and location of the candidates in a result list; an erased one is absent. */
-export async function readResultCandidates(supabase: SupabaseClient, orgId: string, ids: readonly string[]): Promise<ResultCandidate[]> {
+export async function readResultCandidates(
+  supabase: SupabaseClient,
+  orgId: string,
+  ids: readonly string[],
+): Promise<ResultCandidate[]> {
   if (!ids.length) return [];
   const { data, error } = await supabase
     .from("candidates")
@@ -159,7 +211,11 @@ export interface ShortlistState {
   candidateIds: string[];
 }
 
-export async function readShortlistState(supabase: SupabaseClient, orgId: string, briefId: string): Promise<ShortlistState> {
+export async function readShortlistState(
+  supabase: SupabaseClient,
+  orgId: string,
+  briefId: string,
+): Promise<ShortlistState> {
   const { data, error } = await supabase
     .from("shortlists")
     .select("id")
@@ -177,12 +233,17 @@ export async function readShortlistState(supabase: SupabaseClient, orgId: string
   if (items.error) throw items.error;
   return {
     shortlistId,
-    candidateIds: ((items.data ?? []) as { candidate_id: string }[]).map((item) => item.candidate_id),
+    candidateIds: ((items.data ?? []) as { candidate_id: string }[]).map(
+      (item) => item.candidate_id,
+    ),
   };
 }
 
 /** The brief's shortlist, created now when it does not exist yet (a lost race is fine: the row is then read). */
-export async function ensureShortlist(supabase: SupabaseClient, input: { orgId: string; briefId: string; userId: string }): Promise<string> {
+export async function ensureShortlist(
+  supabase: SupabaseClient,
+  input: { orgId: string; briefId: string; userId: string },
+): Promise<string> {
   const inserted = await supabase
     .from("shortlists")
     .insert({ org_id: input.orgId, brief_id: input.briefId, created_by: input.userId })
@@ -205,7 +266,13 @@ export type AddOutcome = "added" | "already";
 /** Adds a candidate to a shortlist with the match of the search; "already" when the pair exists. */
 export async function addShortlistItem(
   supabase: SupabaseClient,
-  input: { orgId: string; shortlistId: string; candidateId: string; match: MatchResult; userId: string },
+  input: {
+    orgId: string;
+    shortlistId: string;
+    candidateId: string;
+    match: MatchResult;
+    userId: string;
+  },
 ): Promise<AddOutcome> {
   const { error } = await supabase.from("shortlist_items").insert({
     org_id: input.orgId,

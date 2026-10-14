@@ -1,7 +1,8 @@
 /**
- * An editable list of short points (strengths, points of attention) on
- * the review step: one input per point with a remove button, and a
- * button to add one, up to the number the server accepts.
+ * An editable list of short points (strengths, points of attention, the
+ * interview questions) on the review step: one input per point with a
+ * remove button, and a button to add one, up to the number the server
+ * accepts for that list (`max`, the points' cap unless given).
  */
 import { Plus, X } from "lucide-react";
 
@@ -16,7 +17,9 @@ import { FIELD_LABEL } from "./field-label";
 export function PointsEditor({
   id,
   label,
+  help,
   points,
+  max = POINTS_MAX,
   disabled = false,
   onChange,
   onAdd,
@@ -24,7 +27,11 @@ export function PointsEditor({
 }: {
   id: string;
   label: string;
+  /** One muted sentence under the label, when the list needs saying where it comes from. */
+  help?: string | undefined;
   points: string[];
+  /** The most points this list may hold: the add button stops there. */
+  max?: number;
   disabled?: boolean;
   onChange: (at: number, value: string) => void;
   onAdd: () => void;
@@ -36,6 +43,7 @@ export function PointsEditor({
       <Label htmlFor={points.length ? `${id}-0` : undefined} className={FIELD_LABEL}>
         {label}
       </Label>
+      {help ? <p className="text-[13px] leading-5 text-muted-foreground">{help}</p> : null}
       {points.map((point, at) => (
         <div key={at} className="flex items-center gap-1.5">
           <Input
@@ -64,7 +72,7 @@ export function PointsEditor({
         variant="outline"
         size="sm"
         className="gap-1.5"
-        disabled={disabled || points.length >= POINTS_MAX}
+        disabled={disabled || points.length >= max}
         onClick={onAdd}
       >
         <Plus />

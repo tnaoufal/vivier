@@ -37,7 +37,7 @@ together. Paths are relative to the repository root.
 | Database  | `supabase/migrations`                  | Postgres with policies, triggers and SECURITY DEFINER helpers  | everything: one `org_id` on every row                                                   |
 | Processor | `services/processor/src`               | one Node process on Railway, service role                      | the service role key, the model key, the OCR key, the shared secret                     |
 | Resend    | `src/lib/email/email.server.ts`        | called by the Worker only                                      | nothing of ours beyond the emails sent                                                  |
-| Model     | `src/lib/model/model.server.ts`, `services/processor/src/model.ts` | called by the Worker and the processor only  | the text it is sent (CV text, briefs; for the assessment a profile without name, e-mail or phone) for the duration of the call |
+| Model     | `src/lib/model/model.server.ts`, `services/processor/src/model.ts` | called by the Worker and the processor only  | the text it is sent (CV text, briefs; for the screening and the second opinion a profile without name, e-mail or phone; for the tiering sheets of scores and sentences, without name or CV text) for the duration of the call |
 
 ## Flows
 
@@ -102,11 +102,18 @@ Browser (member)             Worker                                   Supabase  
 runSearch({token, org,
   briefId})          ──────▶ requireMember(member)
                              enforceRateLimit("search")
-                             load brief (service role, org filter) ─▶ briefs
-                             no criteria? derive them (a proposal)                        ──▶ JSON {criteria} │ skipped
+                             load brief (service role, org filter) ─▶ briefs (criteria, role_profile)
+                             no role profile? write it (temperature 0,                    ──▶ JSON {assumptions, domain, seniority,
+                               cleaned, guarded, yearsMax only when                           yearsMin/Max, missions, equivalent
+                               the brief states one)                ─▶ briefs.role_profile     titles, adjacent profiles, context,
+                                                                                               mustHaves, …} │ skipped
+                             no criteria? derive them (a proposal;
+                               the profile's must-haves required)                         ──▶ JSON {criteria} │ skipped
                                saved into the brief                 ─▶ briefs.criteria
-                             no role? derive it (label + definition)                      ──▶ JSON {label, value} │ the title
+                             no role? from the profile (no call) │ derive it              ──▶ JSON {label, value} │ the title
                                saved in front of the criteria        ─▶ briefs.criteria
+                             a role and a profile? the role's definition
+                               rewritten from the profile            ─▶ briefs.criteria
                              count active candidates                ─▶ candidates (HEAD, count=exact)
                              ≤ 200: load the whole pool             ─▶ candidates (org filter, active)
                              > 200: queryTextOf(brief)                                    ──▶ embed (1024) │ none
@@ -117,14 +124,19 @@ runSearch({token, org,
                                select the profiles returned         ─▶ candidates (org filter, active)
                              scoreCandidate() per profile:
                                verdict per criterion + evidence
-                               (missing only with contradicting evidence)
+                               (missing only with contradicting evidence;
+                                the role found, never missing)
                                score over evaluable, coverage,
                                blocked when a required one is missing
                              rankResults()
                              insert searches row                    ─▶ query, criteria, results, method, pool_size, ran_by
-                             return {results, criteria, poolSize, criteriaDerived}
-cards "not analysed"; the line says the pool's size and how many profiles were read
-then, six at a time, until done or interrupted ("resume" sends what is left):
+                             return {results, criteria, poolSize,
+                               criteriaDerived, roleProfileDerived, needsCheck}
+cards "not analysed"; the line says the pool's size and how many profiles were read;
+needsCheck (the model wrote the profile, the criteria or the role): one sentence and
+a "Read the profiles" button, nothing read before the team has looked at the job
+then three stages (stages.ts), until done or interrupted; "resume" sends what each stage lacks:
+1. the screening, six at a time:
 assessCandidates({token,
   org, briefId, searchId,
   candidateIds[≤6]})  ──────▶ requireMember(member)
@@ -132,18 +144,48 @@ assessCandidates({token,
                              load brief, load search (org filter)   ─▶ briefs, searches
                              load the profiles (active)             ─▶ candidates
                              per candidate, in parallel:
-                               assessmentPayload(): role apart, then
-                                 requirements, fields + CV text,
-                                 name / e-mail / phone redacted                           ──▶ JSON {requirements, decision,
-                               enforceAssessment(): a row per                                 score, summary}
-                                 criterion, no evidence → unknown,                            (LLM_ASSESSMENT_MODEL | LLM_MODEL)
-                                 role "no" → no_fit, score ≤ 25,
-                                 required "no" → no_fit, score ≤ 39, …
+                               assessmentPayload(): the role apart
+                                 (its definition the profile's), the
+                                 profile compact, the requirements,
+                                 fields + CV text, name / e-mail /
+                                 phone redacted                                           ──▶ JSON {requirements, dimensions ×5
+                               enforceAssessment(): a row per                                 (score, note, evidence), strengths,
+                                 criterion; every quote checked against                       concerns, questions, decision,
+                                 payloadTexts() (not found: yes → partial,                    score, summary}
+                                 no → unknown, a dimension ≤ 50);                             (LLM_ASSESSMENT_MODEL | LLM_MODEL)
+                                 forbidden sentences withheld and counted;
+                                 composite score (scoring.ts: role .40,
+                                 seniority .15, context .15, track .15,
+                                 requirements .15); the gates: role "no"
+                                 → no_fit ≤ 25, "partial" ≤ 65, required
+                                 "no" → no_fit ≤ 39, "unknown" ≤ 69, …
                                recordUsage("assess")                ─▶ ai_usage
                              re-read the row, write the entries     ─▶ searches.results (assessment per entry)
                              carry to unassessed shortlist items    ─▶ shortlist_items.match (+ criteria)
                              return {results, failed}
-cards move to matching / to check / set aside (collapsed)
+cards move to present / dig into / set aside (collapsed)
+2. the second opinion on the retained ones, six at a time:
+challengeCandidates({…,
+  candidateIds[≤6]})  ──────▶ requireMember(member), enforceRateLimit("assess")
+                             load brief, search, the profiles ("fit" only)
+                             per candidate: challengePayload() = the same
+                               redacted profile + the first reading                       ──▶ JSON {verdict, reason, evidence}
+                               applyChallenge(): a doubt quoted from the
+                               profile → borderline, score ≤ 69, the reason
+                               among the concerns; anything else: confirmed
+                             re-read the row, write the entries     ─▶ searches.results (challenge per entry)
+3. the tiering of the retained and borderline ones, groups of 2..8 (then the A's of every group, once):
+rankCandidates({…,
+  candidateIds[2..8]}) ─────▶ requireMember(member), enforceRateLimit("assess")
+                             load brief, search ("fit" or "borderline" only)
+                             rankingSheets(): decision, score, the five
+                               dimension scores, requirement rows, the
+                               seniority note, strengths, concerns, the
+                               doubt: no name, no CV text                                 ──▶ JSON {ranking: [{candidateId, tier, note}]}
+                             applyRanking(): no_fit → C at most,
+                               borderline → B at most, fit at C → borderline
+                             re-read the row, write the entries     ─▶ searches.results (tier, rankNote per entry)
+cards reorder: tier, then score
 "add to shortlist"   ──────▶ (browser, RLS) shortlists (first use) + shortlist_items with the match snapshot
 ```
 
@@ -153,30 +195,44 @@ INVOKER: even called with the service role, the Worker filters by the
 organisation it verified, and the browser can call them only for the
 organisations it belongs to.
 
-The **role requirement** is the criterion of kind `role` a brief holds
-once (`briefs.criteria`, `src/lib/briefs/criteria.ts`): the job as the
-team names it, and its definition (the job's domain, core missions,
-equivalent titles, sector when stated, written from what the job is in
-the market), required and essential by default. The guard against
-protected characteristics reads a role on its core list only, since a
-job's domain is written with words ("famille de produits", "politique
-commerciale") the wider list bans. The extraction proposes it first;
-`runSearch` gives it to a brief that has none (one small call,
-`roleDefinitionPrompt`, else the title; never a title that names a
-protected characteristic, which the parser would drop on the next read)
-and saves it in front of the other criteria, once. The assessment
-payload names it apart (`brief.role`) and the system prompt judges it
-before anything else, from what the person did before the titles, since
-every company names a job differently: a CV full of other missions is a
-`no` with those missions as evidence, not silence; the métier is judged
-on the most recent and longest positions; a title without a description
-is read for what it usually means. `enforceAssessment()` then binds the
-answer on the role first: `no` forces `no_fit` and caps the score at 25
-(`ROLE_NO_SCORE_CAP`), whatever the other requirements and whether or not
-the team kept it required; `partial` caps the decision at `borderline` and
-the score at 65 (`ROLE_PARTIAL_SCORE_CAP`); `unknown` at `borderline` and
-60 (`ROLE_UNKNOWN_SCORE_CAP`). The deterministic pass only finds the role
-in a title that carries the words of its name, never calls it missing.
+The **role profile** (`briefs.role_profile`, `src/lib/briefs/role-profile.ts`)
+is the understanding of the job a senior recruiter writes before reading
+a CV: domain, level and years, core missions, equivalent titles, adjacent
+profiles, the context the brief states, must-haves, nice-to-haves,
+success factors, interview points, and what the brief does not state and
+the model assumed. The Worker writes it once at the first analysis (one
+call at temperature 0, cleaned and guarded: a field naming a protected
+characteristic is dropped, a `yearsMax` the brief did not state is
+dropped) or on "Regenerate"; members edit it in the browser under RLS
+(`GRANT UPDATE (role_profile)`), guarded the same way before the write.
+Every payload reads it: the extraction makes its must-haves required
+criteria, the screening judges the seniority and the context against it,
+the tiering reads its must-haves. The **role requirement** is the
+criterion of kind `role` a brief holds once (`briefs.criteria`,
+`src/lib/briefs/criteria.ts`): the job as the team names it and its
+definition, read off the profile whenever the brief has one
+(`roleDefinitionOf()`: domain, missions, equivalent titles) and rewritten
+from it before each search, so the criterion follows the team's edits;
+a brief with a profile and no role gets it from the profile without a
+call, one with neither from one small call (`roleDefinitionPrompt`) or
+its title. The guard reads a role on the core list only, since a job's
+domain is written with words ("famille de produits", "politique
+commerciale") the wider list bans. The screening judges it before
+anything else, from what the person did before the titles, and the rules
+bind the answer on the role first (`enforceAssessment()`: `no` forces
+`no_fit` and caps the score at 25, `partial` caps at `borderline` and 65,
+`unknown` at `borderline` and 60), then on the required requirements
+(`no` forces `no_fit` and 39, `unknown` caps at `borderline` and 69,
+`partial` at `borderline`); the score is the composite of
+`src/lib/briefs/scoring.ts` (role 0.40, seniority 0.15, context 0.15,
+the mean of trajectory and achievements 0.15, the requirements' weighted
+coverage 0.15), the model's own score kept apart. The second opinion
+(`applyChallenge()`) can only lower a retained profile, on a quote found
+in the profile; the tiering (`applyRanking()`) can only move a `fit` to
+`borderline`, never to `no_fit`. The deterministic pass only finds the
+role in a title that carries the words of its name, never calls it
+missing. The detail of the prompts and the rules is in the README
+("Briefs and search").
 
 ### Share: a dossier to a hiring manager
 
@@ -190,7 +246,9 @@ draftShare({token, org,
                                  and their shortlist match (org filter)
                                one sheet per candidate (draft.ts): facts, requirement table
                                  (assessment, else verdicts), score, decision, synthesis,
-                                 strengths / attention read off the table
+                                 strengths, attention and interview questions from the
+                                 recruiter's reading (the second opinion's doubt among the
+                                 attention points), else strengths / attention read off the table
                                with a model: rewrite the prose only (ai_usage: summary)
                                return { items, brief snapshot }
 team edits the prose (table, score and decision are read-only),
@@ -274,9 +332,12 @@ runs beyond the caller's reach.
    `invitations` or `memberships`, and only moves a document back to
    `queued` (from `failed`, `needs_ocr` or `rejected`). `candidates.phone_digits`
    is computed by the database and written by nobody; `shares.brief` and
-   the assessment in `searches.results` are written by the Worker alone
-   (a member inserts a shortlist item's match, never updates one; the
-   Worker fills only an unassessed one). Triggers stamp `decided_by`, log activities and keep the last
+   the assessment in `searches.results` (the screening, the second
+   opinion, the tier) are written by the Worker alone (a member inserts a
+   shortlist item's match, never updates one; the Worker fills only an
+   unassessed one); `briefs.role_profile` is written by the Worker when an
+   analysis derives it and by members when they edit it, guarded on both
+   sides (`guardRoleProfile()`). Triggers stamp `decided_by`, log activities and keep the last
    owner. Supabase's default privileges (every new table granted to `anon`
    and `authenticated`) are revoked at the top of the migration, so the
    grants written in it are the whole truth. `anon` has no grant on any
@@ -292,9 +353,12 @@ runs beyond the caller's reach.
    organisation it verified. Costly handlers call `enforceRateLimit()`
    first (one scope each: `model`, `search`, `assess`, `share`, `email`,
    `processor`). What leaves for the model is built by pure, tested
-   modules: the assessment payload carries no name, e-mail or phone
-   (`redactIdentity()`), and the answer is bound by rules before it is
-   stored (`enforceAssessment()`). An `AppError` reaches the browser as a code (`AUTH:required`,
+   modules: the screening and second-opinion payloads carry no name,
+   e-mail or phone (`redactIdentity()`), the tiering sheets no CV text at
+   all, and every answer is bound by rules before it is stored
+   (`enforceAssessment()`, `applyChallenge()`, `applyRanking()`), each
+   quote checked against the texts the model was given
+   (`payloadTexts()`). An `AppError` reaches the browser as a code (`AUTH:required`,
    `ORG:forbidden`, `RATE:limited`, `SETUP:model`…) that `errorMessage()`
    turns into a sentence; never free text from the server.
 3. **The processor.** Server-to-server only: every route but `GET /health`
@@ -328,7 +392,7 @@ never a body, a key or a token.
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
 | `SUPABASE_SERVICE_ROLE_KEY`                           | Every row of every organisation, storage signing and removal, the SECURITY DEFINER functions reserved to it (`expired_candidates`, `sync_plan_from_billing`) | Cloudflare dashboard (Worker), Railway (processor), `scripts/backup.sh` never (it uses the database URL) | the browser, git, `/status`, logs          |
 | `PROCESSOR_SHARED_SECRET`                             | `POST /process`, `POST /maintenance`, `GET /metrics` on the processor                                | Cloudflare dashboard and Railway (the same value, 32+ characters)                           | git, the browser, health answers           |
-| `LLM_API_KEY` (with `LLM_BASE_URL`, models, `LLM_ASSESSMENT_MODEL` on the Worker) | The model vendor: structuring and classification, embeddings, criteria, assessments, dossier drafts | Cloudflare dashboard, Railway                                                     | git, the browser, `/status` (names only)   |
+| `LLM_API_KEY` (with `LLM_BASE_URL`, models, `LLM_ASSESSMENT_MODEL` on the Worker) | The model vendor: structuring and classification, embeddings, criteria, role profiles, screenings, second opinions, tiers, dossier drafts | Cloudflare dashboard, Railway                                                     | git, the browser, `/status` (names only)   |
 | `MISTRAL_OCR_API_KEY`                                 | OCR of scanned PDFs                                                                                  | Railway                                                                                     | the Worker, git                            |
 | `RESEND_API_KEY`                                      | Sending email (invitations, shares)                                                                  | Cloudflare dashboard                                                                        | git, the processor, the browser            |
 | Supabase Auth secrets (JWT secret, OAuth client)      | Issuing and verifying sessions                                                                       | Supabase only; the Worker verifies tokens through Auth's `/user`, it never holds the JWT secret | anywhere of ours                        |

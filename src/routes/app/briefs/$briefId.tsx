@@ -1,9 +1,12 @@
 /**
  * /app/briefs/:briefId: the brief page in two parts. The brief itself
- * (title, description, status, criteria with the model's proposals when
- * one is set up) and the analysis of the talent pool: every profile
- * checked requirement by requirement, only the matching ones presented.
- * Live through realtime on this brief.
+ * (title, description, status; the role profile a senior recruiter
+ * would write, derived by the model and edited by the team; the
+ * criteria with the model's proposals when one is set up) and the
+ * analysis of the talent pool: every profile read as a trajectory
+ * against the job, the retained ones challenged and tiered, only the
+ * ones to present and to dig into put forward. Live through realtime on
+ * this brief.
  */
 import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -16,6 +19,7 @@ import { BriefForm } from "@/components/briefs/brief-form";
 import { BriefStatusPill } from "@/components/briefs/brief-status-pill";
 import { CriteriaEditor } from "@/components/briefs/criteria-editor";
 import type { ModelAvailability } from "@/components/briefs/criteria-proposals";
+import { RoleProfileCard } from "@/components/briefs/role-profile-card";
 import { SearchPanel } from "@/components/briefs/search-panel";
 import { Button } from "@/components/ui/button";
 import { requireSupabase } from "@/lib/auth/supabase-client";
@@ -45,13 +49,17 @@ function BriefPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const brief = useQuery(`brief:${org.id}:${briefId}`, async () => readBrief(await requireSupabase(), org.id, briefId));
+  const brief = useQuery(`brief:${org.id}:${briefId}`, async () =>
+    readBrief(await requireSupabase(), org.id, briefId),
+  );
   // Read once per organisation: whether a model can propose criteria and assess results.
   const capabilities = useQuery(`brief-capabilities:${org.id}`, async () =>
     briefCapabilities({ data: { ...(await withToken()), orgId: org.id } }),
   );
   // Unknown (null) while loading or when the read failed: "no model" is only said when the server said so.
-  const modelAvailable: ModelAvailability = capabilities.error ? null : (capabilities.data?.model ?? null);
+  const modelAvailable: ModelAvailability = capabilities.error
+    ? null
+    : (capabilities.data?.model ?? null);
 
   const refreshBrief = brief.refresh;
   useEffect(
@@ -122,7 +130,13 @@ function BriefPage() {
   }
 
   if (!row) {
-    return <EmptyState title={t("briefs.notFound.title")} text={t("briefs.notFound.text")} action={backLink} />;
+    return (
+      <EmptyState
+        title={t("briefs.notFound.title")}
+        text={t("briefs.notFound.text")}
+        action={backLink}
+      />
+    );
   }
 
   return (
@@ -143,7 +157,12 @@ function BriefPage() {
         }
         actions={
           canDelete ? (
-            <Button type="button" variant="outline" onClick={() => setDeleteOpen(true)} className="gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteOpen(true)}
+              className="gap-1.5"
+            >
               <Trash2 />
               {t("briefs.delete")}
             </Button>
@@ -154,6 +173,12 @@ function BriefPage() {
       <div className="grid gap-6 lg:grid-cols-5">
         <div className="space-y-8 lg:col-span-2">
           <BriefForm brief={row} canEdit={canEdit} onSaved={refreshBrief} />
+          <RoleProfileCard
+            brief={row}
+            canEdit={canEdit}
+            modelAvailable={modelAvailable}
+            onSaved={refreshBrief}
+          />
           <CriteriaEditor
             brief={row}
             canEdit={canEdit}
@@ -163,7 +188,12 @@ function BriefPage() {
           />
         </div>
         <div className="min-w-0 lg:col-span-3">
-          <SearchPanel brief={row} canEdit={canEdit} criteriaDirty={criteriaDirty} modelAvailable={modelAvailable} />
+          <SearchPanel
+            brief={row}
+            canEdit={canEdit}
+            criteriaDirty={criteriaDirty}
+            modelAvailable={modelAvailable}
+          />
         </div>
       </div>
 

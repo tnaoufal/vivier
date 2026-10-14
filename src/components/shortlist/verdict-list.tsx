@@ -1,12 +1,14 @@
 /**
  * The match of a shortlist item against its brief, as the drawer shows
  * it: the fit ring (the model's score, a dash when no model assessed the
- * profile) with the analysis's decision, the deterministic score as a
- * muted second reading, one row per requirement through the shared
- * RequirementList (from the assessment when there is one, else from the
- * deterministic verdicts), and the model's sentences introduced as the
- * model's. An item added without a match says so instead of showing a
- * score of zero.
+ * profile) with the analysis's decision and the tier the comparative
+ * pass proposed, the deterministic score as a muted second reading, one
+ * row per requirement through the shared RequirementList (from the
+ * assessment when there is one, else from the deterministic verdicts),
+ * the model's sentences introduced as the model's, and under them the
+ * recruiter's reading when the assessment carries one (the dimensions,
+ * the strengths, the reservations, the interview questions). An item
+ * added without a match says so instead of showing a score of zero.
  */
 import { Pill } from "@/components/app-shell/pill";
 import { RequirementList } from "@/components/app-shell/requirement-list";
@@ -14,8 +16,11 @@ import { ScoreRing } from "@/components/app-shell/score-ring";
 import { DecisionPill } from "@/components/briefs/decision-pill";
 import type { BriefCriterion, MatchResult, RequirementMet } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
-import { assessedScore, modelReading, requirementRowsOf } from "@/lib/shortlists/requirements";
+import { assessedScore, modelReading, requirementRowsOf, tierOf } from "@/lib/shortlists/requirements";
 import { coveragePercent, scorePercent } from "@/lib/shortlists/tally";
+
+import { TierPill } from "./item-bits";
+import { RecruiterReading } from "./recruiter-reading";
 
 export function VerdictList({ match, criteria }: { match: MatchResult | null; criteria: BriefCriterion[] }) {
   const { t } = useI18n();
@@ -34,6 +39,7 @@ export function VerdictList({ match, criteria }: { match: MatchResult | null; cr
   const textScore = scorePercent(match);
   const coverage = coveragePercent(match);
   const reading = modelReading(match);
+  const tier = tierOf(match);
   const markLabel = (met: RequirementMet) => t(`shortlists.met.${met}`);
   return (
     <section className="space-y-4">
@@ -43,6 +49,7 @@ export function VerdictList({ match, criteria }: { match: MatchResult | null; cr
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             {match.assessment ? <DecisionPill decision={match.assessment.decision} /> : <Pill>{t("shortlists.item.noAssessment")}</Pill>}
+            {tier ? <TierPill tier={tier} note={match.assessment?.rankNote} /> : null}
             {match.blocked ? (
               <Pill tone="negative" dot>
                 {t("shortlists.item.blocked")}
@@ -71,6 +78,7 @@ export function VerdictList({ match, criteria }: { match: MatchResult | null; cr
           {reading ?? <span className="text-muted-foreground">{t("shortlists.drawer.match.noWhy")}</span>}
         </p>
       </div>
+      <RecruiterReading match={match} />
     </section>
   );
 }

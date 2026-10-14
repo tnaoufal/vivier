@@ -4,7 +4,9 @@ import type { Assessment, BriefCriterion, MatchResult, ShareItem } from "@/lib/d
 
 import {
   attentionFrom,
+  attentionOf,
   briefSnapshot,
+  challengeReason,
   cleanItems,
   languageLabel,
   latestDocumentByCandidate,
@@ -14,8 +16,10 @@ import {
   orderedCandidates,
   plainDraft,
   plainItem,
+  questionsOf,
   requirementsOf,
   strengthsFrom,
+  strengthsOf,
   summaryAnswer,
   summaryMaxTokens,
   summaryPayload,
@@ -88,6 +92,17 @@ const assessment: Assessment = {
 };
 
 const assessed: MatchResult = { ...deterministic, assessment };
+
+/** The senior recruiter's reading, as an assessment carries it since the five dimensions; `assessment` above is one made before. */
+const reading: Assessment = {
+  ...assessment,
+  strengths: ["Huit ans d'API Node en production", " Anglais B2 à l'écrit et à l'oral ", " ", "Huit ans d'API Node en production"],
+  concerns: ["Kubernetes vu en formation seulement"],
+  questions: ["Quel rôle sur les mises en production ?", "Niveau d'anglais à l'oral"],
+  challenge: { verdict: "doubt", reason: "Les trois derniers postes sont en agence, pas en produit", evidence: "2019-2024 : agence" },
+};
+
+const read: MatchResult = { ...deterministic, assessment: reading };
 
 const noMatch = { candidate: ana, documentId: "doc-1", match: null };
 
@@ -190,6 +205,49 @@ describe("strengthsFrom, attentionFrom and metCount", () => {
   });
 });
 
+describe("strengthsOf, attentionOf, questionsOf and challengeReason", () => {
+  it("reads the recruiter's lists cleaned: trimmed, each once, blanks dropped", () => {
+    expect(strengthsOf(reading)).toEqual(["Huit ans d'API Node en production", "Anglais B2 à l'écrit et à l'oral"]);
+    expect(questionsOf(reading)).toEqual(["Quel rôle sur les mises en production ?", "Niveau d'anglais à l'oral"]);
+  });
+
+  it("adds the second opinion's doubt after the reservations, and nothing when it confirmed or gave no reason", () => {
+    expect(challengeReason(reading)).toBe("Les trois derniers postes sont en agence, pas en produit");
+    expect(attentionOf(reading)).toEqual([
+      "Kubernetes vu en formation seulement",
+      "Les trois derniers postes sont en agence, pas en produit",
+    ]);
+    const confirmed: Assessment = { ...reading, challenge: { verdict: "confirmed", reason: "Rien à redire", evidence: null } };
+    expect(challengeReason(confirmed)).toBeNull();
+    expect(attentionOf(confirmed)).toEqual(["Kubernetes vu en formation seulement"]);
+    const silent: Assessment = { ...reading, challenge: { verdict: "doubt", reason: "  ", evidence: null } };
+    expect(challengeReason(silent)).toBeNull();
+    expect(attentionOf({ ...reading, concerns: [] })).toEqual(["Les trois derniers postes sont en agence, pas en produit"]);
+  });
+
+  it("answers nothing for an assessment made before the reading, none at all, or a malformed stored one", () => {
+    expect(strengthsOf(assessment)).toEqual([]);
+    expect(attentionOf(assessment)).toEqual([]);
+    expect(questionsOf(assessment)).toEqual([]);
+    expect(challengeReason(assessment)).toBeNull();
+    expect(strengthsOf(null)).toEqual([]);
+    expect(questionsOf(undefined)).toEqual([]);
+    const odd = { strengths: "Node", concerns: [3, null, "Réserve"], questions: { a: 1 }, challenge: "doubt" } as unknown as Assessment;
+    expect(strengthsOf(odd)).toEqual([]);
+    expect(attentionOf(odd)).toEqual(["Réserve"]);
+    expect(questionsOf(odd)).toEqual([]);
+    expect(challengeReason(odd)).toBeNull();
+  });
+
+  it("caps the lists: eight points, five questions, three hundred characters each", () => {
+    const many = Array.from({ length: 12 }, (_, i) => `P${i}`);
+    expect(strengthsOf({ strengths: many })).toHaveLength(8);
+    expect(attentionOf({ concerns: many, challenge: { verdict: "doubt", reason: "Doute", evidence: null } })).toHaveLength(8);
+    expect(questionsOf({ questions: many })).toHaveLength(5);
+    expect(strengthsOf({ strengths: ["x".repeat(400)] })[0]).toHaveLength(300);
+  });
+});
+
 describe("plainItem", () => {
   it("copies the profile and the assessment: facts, table, score, decision, the model's summary", () => {
     const item = plainItem({ candidate: ana, documentId: "doc-1", match: assessed }, criteria, "fr");
@@ -206,7 +264,33 @@ describe("plainItem", () => {
     expect(item.requirements).toHaveLength(4);
     expect(item.strengths).toEqual(["Node.js en production"]);
     expect(item.attention).toEqual(["Kubernetes — Docker seulement", "Anglais courant — Anglais B2"]);
+    expect(item.questions).toEqual([]);
     expect(item.documentId).toBe("doc-1");
+  });
+
+  it("takes the recruiter's reading when the assessment carries one: strengths, reservations with the doubt last, questions", () => {
+    const item = plainItem({ candidate: ana, documentId: null, match: read }, criteria, "fr");
+    expect(item.strengths).toEqual(["Huit ans d'API Node en production", "Anglais B2 à l'écrit et à l'oral"]);
+    expect(item.attention).toEqual(["Kubernetes vu en formation seulement", "Les trois derniers postes sont en agence, pas en produit"]);
+    expect(item.questions).toEqual(["Quel rôle sur les mises en production ?", "Niveau d'anglais à l'oral"]);
+    // The table, the score, the decision and the synthesis are the assessment's as before.
+    expect(item.requirements).toHaveLength(4);
+    expect(item.score).toBe(68);
+    expect(item.summary).toBe(reading.summary);
+  });
+
+  it("falls back on the table for a reading that lists nothing, and never asks a question of its own", () => {
+    const empty: MatchResult = { ...deterministic, assessment: { ...assessment, strengths: [], concerns: [], questions: [] } };
+    const item = plainItem({ candidate: ana, documentId: null, match: empty }, criteria, "fr");
+    expect(item.strengths).toEqual(["Node.js en production"]);
+    expect(item.attention).toEqual(["Kubernetes — Docker seulement", "Anglais courant — Anglais B2"]);
+    expect(item.questions).toEqual([]);
+    // The doubt alone is an attention point; the strengths still come off the table.
+    const doubtOnly: MatchResult = { ...deterministic, assessment: { ...reading, strengths: [], concerns: [] } };
+    expect(plainItem({ candidate: ana, documentId: null, match: doubtOnly }, criteria, "fr").attention).toEqual([
+      "Les trois derniers postes sont en agence, pas en produit",
+    ]);
+    expect(plainItem({ candidate: ana, documentId: null, match: doubtOnly }, criteria, "fr").strengths).toEqual(["Node.js en production"]);
   });
 
   it("falls back on the deterministic verdicts and the profile's summary without an assessment", () => {
@@ -351,6 +435,16 @@ describe("summaryPayload", () => {
     const payload = summaryPayload(brief, [ana]);
     expect("assessment" in (payload.candidates[0] ?? {})).toBe(false);
   });
+
+  it("sends the recruiter's reading with the assessment, as the plain draft holds it, and nothing of it for an older one", () => {
+    const payload = summaryPayload(brief, [ana], new Map([[ana.id, read]]));
+    const sent = (payload.candidates[0] ?? {})["assessment"] as Record<string, unknown>;
+    expect(sent["strengths"]).toEqual(["Huit ans d'API Node en production", "Anglais B2 à l'écrit et à l'oral"]);
+    expect(sent["concerns"]).toEqual(["Kubernetes vu en formation seulement", "Les trois derniers postes sont en agence, pas en produit"]);
+    expect(sent["questions"]).toEqual(["Quel rôle sur les mises en production ?", "Niveau d'anglais à l'oral"]);
+    const older = (summaryPayload(brief, [ana], new Map([[ana.id, assessed]])).candidates[0] ?? {})["assessment"] as Record<string, unknown>;
+    expect(Object.keys(older)).toEqual(["decision", "score", "summary", "requirements"]);
+  });
 });
 
 describe("summarySystemPrompt", () => {
@@ -361,18 +455,25 @@ describe("summarySystemPrompt", () => {
     expect(summarySystemPrompt("fr")).toMatch(/JSON only/);
     expect(summarySystemPrompt("fr")).toMatch(/requirement table is fixed/);
   });
+
+  it("asks for the questions and binds the recruiter's lists to their facts", () => {
+    const prompt = summarySystemPrompt("fr");
+    expect(prompt).toContain('"questions":["..."]');
+    expect(prompt).toMatch(/add no fact/);
+    expect(prompt).toMatch(/invent no new point/);
+  });
 });
 
 describe("summaryAnswer", () => {
   it("fills what the model left out", () => {
     const parsed = summaryAnswer.parse({ items: [{ candidateId: ana.id }] });
-    expect(parsed.items[0]).toEqual({ candidateId: ana.id, summary: "", strengths: [], attention: [] });
+    expect(parsed.items[0]).toEqual({ candidateId: ana.id, summary: "", strengths: [], attention: [], questions: [] });
   });
 });
 
 describe("summaryMaxTokens", () => {
   it("grows with the candidates and stays bounded", () => {
-    expect(summaryMaxTokens(1)).toBe(860);
+    expect(summaryMaxTokens(1)).toBe(920);
     expect(summaryMaxTokens(30)).toBe(8000);
   });
 });
@@ -388,12 +489,14 @@ describe("mergeDraft", () => {
           summary: "  Huit ans d'API Node.  Maîtrise PostgreSQL. ",
           strengths: ["Node.js en production", "PostgreSQL", "Anglais C1", "Lyon", "Un de trop"],
           attention: ["Le CV ne mentionne pas Kubernetes en production", "", "Disponibilité non précisée", "Un de trop", "Deux de trop"],
+          questions: [],
         },
       ],
     });
     expect(merged[0]?.summary).toBe("Huit ans d'API Node. Maîtrise PostgreSQL.");
     expect(merged[0]?.strengths).toEqual(["Node.js en production", "PostgreSQL", "Anglais C1", "Lyon"]);
     expect(merged[0]?.attention).toEqual(["Le CV ne mentionne pas Kubernetes en production", "Disponibilité non précisée", "Un de trop"]);
+    expect(merged[0]?.questions).toEqual([]);
     expect(merged[0]?.requirements).toEqual(items[0]?.requirements);
     expect(merged[0]?.score).toBe(68);
     expect(merged[0]?.decision).toBe("borderline");
@@ -401,11 +504,32 @@ describe("mergeDraft", () => {
     expect(merged[1]).toEqual(items[1]);
   });
 
-  it("keeps the plain draft where the model answered nothing", () => {
-    const merged = mergeDraft(items, { items: [{ candidateId: ana.id, summary: "", strengths: [], attention: [] }] });
+  it("keeps the plain draft, the recruiter's lists included, where the model answered nothing", () => {
+    const merged = mergeDraft(items, { items: [{ candidateId: ana.id, summary: "", strengths: [], attention: [], questions: [] }] });
     expect(merged[0]?.summary).toBe(items[0]?.summary);
     expect(merged[0]?.strengths).toEqual(items[0]?.strengths);
-    expect(merged[0]?.attention).toEqual([]);
+    expect(merged[0]?.attention).toEqual(items[0]?.attention);
+    const drafted = plainDraft([ana], new Map(), new Map([[ana.id, read]]), criteria, "fr");
+    const kept = mergeDraft(drafted, { items: [{ candidateId: ana.id, summary: "", strengths: [], attention: [], questions: [] }] });
+    expect(kept[0]?.attention).toEqual(drafted[0]?.attention);
+    expect(kept[0]?.questions).toEqual(drafted[0]?.questions);
+  });
+
+  it("takes the model's reworded questions, five at most, and leaves them editable like the other lists", () => {
+    const drafted = plainDraft([ana], new Map(), new Map([[ana.id, read]]), criteria, "fr");
+    const merged = mergeDraft(drafted, {
+      items: [
+        {
+          candidateId: ana.id,
+          summary: "",
+          strengths: [],
+          attention: [],
+          questions: [" Quel a été son rôle dans les mises en production ? ", "", "Niveau d'anglais à l'oral", "Q3", "Q4", "Q5", "Q6"],
+        },
+      ],
+    });
+    expect(merged[0]?.questions).toEqual(["Quel a été son rôle dans les mises en production ?", "Niveau d'anglais à l'oral", "Q3", "Q4", "Q5"]);
+    expect(merged[0]?.strengths).toEqual(drafted[0]?.strengths);
   });
 });
 
@@ -422,6 +546,7 @@ describe("cleanItems", () => {
     summary: " ok ",
     strengths: [],
     attention: [],
+    questions: [],
     score: null,
     decision: null,
     requirements: [],
@@ -431,7 +556,7 @@ describe("cleanItems", () => {
 
   it("trims, drops empty points and nameless items, and keeps the document id", () => {
     const cleaned = cleanItems([
-      raw({ strengths: ["a", " ", "a", "b"], attention: [""] }),
+      raw({ strengths: ["a", " ", "a", "b"], attention: [""], questions: [" q ", "q"] }),
       raw({ candidateId: anon.id, name: "   ", documentId: null }),
     ]);
     expect(cleaned).toHaveLength(1);
@@ -447,11 +572,18 @@ describe("cleanItems", () => {
       summary: "ok",
       strengths: ["a", "b"],
       attention: [],
+      questions: ["q"],
       score: null,
       decision: null,
       requirements: [],
       documentId: "d3",
     });
+  });
+
+  it("keeps five questions of three hundred characters at most", () => {
+    const [item] = cleanItems([raw({ questions: Array.from({ length: 7 }, (_, i) => `q${i}`.padEnd(400, "x")) })]);
+    expect(item?.questions).toHaveLength(5);
+    expect(item?.questions[0]).toHaveLength(300);
   });
 
   it("clips the facts, the lists, the score and the requirement rows", () => {

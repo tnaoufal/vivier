@@ -3,17 +3,20 @@
  * can be read and tested without the database or the model: the plain
  * draft from the profiles and the analysis the team saw on the shortlist
  * (the requirement table from the assessment or the deterministic
- * verdicts, the score and the decision, strengths and points of
- * attention read off that table), the snapshot of the brief the cover
- * shows, the system prompt and compact payload of the one model call
- * that refines the summaries, the schema of its answer and the merge
- * back into the draft (never into the requirement table), and the
- * clean-up every item goes through before it is stored.
+ * verdicts, the score and the decision, the recruiter's reading when the
+ * assessment carries one: its strengths, its reservations with the
+ * second opinion's doubt among them, its interview questions; else
+ * strengths and points of attention read off the table), the snapshot of
+ * the brief the cover shows, the system prompt and compact payload of
+ * the one model call that refines the wording, the schema of its answer
+ * and the merge back into the draft (never into the requirement table),
+ * and the clean-up every item goes through before it is stored.
  */
 import { z } from "zod";
 
 import { parseCriteria } from "@/lib/briefs/criteria";
 import type {
+  Assessment,
   AssessmentDecision,
   BriefCriterion,
   CandidateLanguage,
@@ -36,6 +39,8 @@ export const SUMMARY_MAX = 1500;
 export const POINT_MAX = 300;
 /** The most points one list keeps after clean-up (the server refuses more). */
 export const POINTS_MAX = 8;
+/** The most interview questions a sheet keeps (the server refuses more): the recruiter's, never more than five. */
+export const QUESTIONS_MAX = 5;
 /** Requirements met copied into strengths, and not met into attention points, when no model drafts them. */
 export const STRENGTHS_FROM_REQUIREMENTS = 5;
 export const ATTENTION_FROM_REQUIREMENTS = 5;
@@ -45,6 +50,7 @@ export const STRENGTHS_FROM_SKILLS = 5;
 export const EVIDENCE_IN_POINT_MAX = 90;
 export const MODEL_STRENGTHS_MAX = 4;
 export const MODEL_ATTENTION_MAX = 3;
+export const MODEL_QUESTIONS_MAX = QUESTIONS_MAX;
 export const LOCATION_MAX = 200;
 export const AVAILABILITY_MAX = 200;
 export const YEARS_MAX = 80;
@@ -263,6 +269,58 @@ export function metCount(requirements: readonly ShareRequirement[]): number {
 }
 
 // ---------------------------------------------------------------------
+// the recruiter's reading
+// ---------------------------------------------------------------------
+
+/** What the sheets take from the senior recruiter's reading, all optional: older assessments lack them. */
+export type RecruiterReading = Partial<Pick<Assessment, "strengths" | "concerns" | "questions" | "challenge">>;
+
+/**
+ * A stored list as points: the match column is JSON the browser wrote,
+ * so a value that is not a list of strings reads as empty, never throws.
+ */
+function pointsOf(value: unknown, max: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return cleanPoints(
+    value.filter((entry): entry is string => typeof entry === "string"),
+    max,
+  );
+}
+
+/** The facts in the profile's favour as the recruiter's reading lists them; empty for an assessment made before it. */
+export function strengthsOf(assessment: RecruiterReading | null | undefined): string[] {
+  return pointsOf(assessment?.strengths, POINTS_MAX);
+}
+
+/**
+ * The second opinion's reason not to present the profile, when it
+ * doubts it; null when it confirmed, gave no reason, or never ran.
+ */
+export function challengeReason(assessment: RecruiterReading | null | undefined): string | null {
+  const challenge = assessment?.challenge;
+  if (!challenge || typeof challenge !== "object" || challenge.verdict !== "doubt") return null;
+  return clip(challenge.reason, POINT_MAX) || null;
+}
+
+/**
+ * The reservations as the recruiter's reading lists them, then the
+ * second opinion's doubt as one more point: on a sheet the reader gets
+ * the reservation itself, not which pass raised it (the board marks it).
+ * Empty for an assessment made before the reading.
+ */
+export function attentionOf(assessment: RecruiterReading | null | undefined): string[] {
+  const doubt = challengeReason(assessment);
+  // The doubt keeps its place at the end even when the reservations fill the list.
+  const concerns = pointsOf(assessment?.concerns, doubt ? POINTS_MAX - 1 : POINTS_MAX);
+  return cleanPoints([...concerns, ...(doubt ? [doubt] : [])], POINTS_MAX);
+}
+
+/** What the interview should verify, as the recruiter's reading lists it; empty for an assessment made before it. */
+export function questionsOf(assessment: RecruiterReading | null | undefined): string[] {
+  return pointsOf(assessment?.questions, QUESTIONS_MAX);
+}
+
+// ---------------------------------------------------------------------
 // the plain draft
 // ---------------------------------------------------------------------
 
@@ -279,9 +337,13 @@ export interface ItemSource {
  * the facts the CV states, the requirement table, the score and the
  * decision when a model assessed the profile, the synthesis as the
  * board shows it (the assessment's summary, else the search's reading
- * of the match, else the profile's own summary), strengths and
- * attention points read off the table (the first skills as strengths
- * only when there is no table at all).
+ * of the match, else the profile's own summary), then the recruiter's
+ * reading when the assessment carries one: its strengths, its
+ * reservations (the second opinion's doubt among them), its interview
+ * questions. An assessment made before that reading, or one that lists
+ * nothing, falls back on the table: strengths and attention points
+ * read off it (the first skills as strengths only when there is no
+ * table at all), and no question.
  */
 export function plainItem(source: ItemSource, criteria: readonly BriefCriterion[], locale: Locale): ShareItem {
   const { candidate, match } = source;
@@ -292,6 +354,8 @@ export function plainItem(source: ItemSource, criteria: readonly BriefCriterion[
   const requirements = requirementsOf(criteria, match);
   const summary =
     clip(assessment?.summary, SUMMARY_MAX) || clip(match?.why, SUMMARY_MAX) || clip(candidate.summary, SUMMARY_MAX);
+  const strengths = strengthsOf(assessment);
+  const attention = attentionOf(assessment);
   return {
     candidateId: candidate.id,
     name: clip(candidate.full_name, NAME_MAX) || FALLBACK_NAME[locale],
@@ -302,8 +366,13 @@ export function plainItem(source: ItemSource, criteria: readonly BriefCriterion[
     skills: cleanPoints(candidate.skills, SKILLS_SHOWN, SKILL_MAX),
     languages: languageLabels(candidate.languages),
     summary,
-    strengths: requirements.length ? strengthsFrom(requirements) : cleanPoints(candidate.skills, STRENGTHS_FROM_SKILLS, SKILL_MAX),
-    attention: attentionFrom(requirements),
+    strengths: strengths.length
+      ? strengths
+      : requirements.length
+        ? strengthsFrom(requirements)
+        : cleanPoints(candidate.skills, STRENGTHS_FROM_SKILLS, SKILL_MAX),
+    attention: attention.length ? attention : attentionFrom(requirements),
+    questions: questionsOf(assessment),
     score: assessment ? cleanScore(assessment.score) : null,
     decision: assessment && isDecision(assessment.decision) ? assessment.decision : null,
     requirements,
@@ -399,12 +468,14 @@ const LANGUAGE: Record<Locale, string> = { fr: "French", en: "English" };
 export function summarySystemPrompt(locale: Locale): string {
   return [
     "You write, for a hiring manager, a short factual presentation of each candidate profile an HR team selected for a job brief. The team selected them and decides; you only describe.",
-    'Answer with JSON only: {"items":[{"candidateId":"...","summary":"...","strengths":["..."],"attention":["..."]}]}, one entry per candidate given, with the candidateId exactly as given.',
+    'Answer with JSON only: {"items":[{"candidateId":"...","summary":"...","strengths":["..."],"attention":["..."],"questions":["..."]}]}, one entry per candidate given, with the candidateId exactly as given.',
     "Rules:",
     `- summary: two or three factual sentences in ${LANGUAGE[locale]} stating what the profile says that relates to the brief.`,
     `- strengths: up to ${MODEL_STRENGTHS_MAX} short factual points taken from the profile (skills, experience, languages, location, availability) that answer the brief.`,
     `- attention: up to ${MODEL_ATTENTION_MAX} short factual points on what the brief asks that the profile does not state or does not meet; say that the CV does not state it when it is silent, never treat silence as a lack.`,
+    `- questions: up to ${MODEL_QUESTIONS_MAX} points the interview should verify, only when the assessment gives some (see below); [] otherwise.`,
     "- When a candidate comes with an assessment (decision, score, requirements with met/partial/no/unknown and the evidence quoted from the CV), rest on it: the requirement table is fixed and is shown as is; your sentences must agree with it, never contradict it, never restate it row by row.",
+    "- When the assessment also carries strengths, concerns or questions (a recruiter's reading the team already saw), your strengths, attention and questions are those lists, in the same order, the first ones when there are more than allowed: reword a point for the reader when its wording needs it, keep every fact it states, add no fact to it, invent no new point.",
     "- Rest only on the profile and the assessment given. No praise, no speculation, no advice, no ranking between candidates, no recommendation to hire or reject, nothing the profile does not say.",
     "- Never mention or infer age, gender, origin, nationality, family situation, health, religion, politics or any other protected characteristic.",
     "- Plain sentences, no markdown, at most 500 characters per summary and 120 per point.",
@@ -428,7 +499,9 @@ export interface SummaryPayload {
 /**
  * Compact profiles: only the fields the CV gave, so the model cannot
  * invent the rest, and the assessment the team saw (with the
- * requirements named by their label) for the candidates that have one.
+ * requirements named by their label, and the recruiter's reading as the
+ * plain draft holds it: strengths, concerns with the second opinion's
+ * doubt among them, questions) for the candidates that have one.
  */
 export function summaryPayload(
   brief: DraftBrief,
@@ -460,12 +533,19 @@ export function summaryPayload(
       const match = matches.get(candidate.id) ?? null;
       const assessment = match?.assessment;
       if (assessment) {
-        profile["assessment"] = {
+        const reading: Record<string, unknown> = {
           decision: assessment.decision,
           score: assessment.score,
           summary: clip(assessment.summary, SUMMARY_MAX),
           requirements: requirementsOf(criteria, match),
         };
+        const strengths = strengthsOf(assessment);
+        if (strengths.length) reading["strengths"] = strengths;
+        const concerns = attentionOf(assessment);
+        if (concerns.length) reading["concerns"] = concerns;
+        const questions = questionsOf(assessment);
+        if (questions.length) reading["questions"] = questions;
+        profile["assessment"] = reading;
       }
       return profile;
     }),
@@ -480,6 +560,7 @@ export const summaryAnswer = z.object({
         summary: z.string().default(""),
         strengths: z.array(z.string()).max(12).default([]),
         attention: z.array(z.string()).max(12).default([]),
+        questions: z.array(z.string()).max(12).default([]),
       }),
     )
     .max(SHARE_ITEMS_MAX + 10),
@@ -487,21 +568,24 @@ export const summaryAnswer = z.object({
 
 /** What the schema lets through, spelled out so the merge reads without the schema's inference. */
 export interface SummaryAnswer {
-  items: { candidateId: string; summary: string; strengths: string[]; attention: string[] }[];
+  items: { candidateId: string; summary: string; strengths: string[]; attention: string[]; questions: string[] }[];
 }
 
-/** The tokens the answer may need: a short block per candidate, bounded. */
+/** The tokens the answer may need: a short block per candidate (the questions included), bounded. */
 export function summaryMaxTokens(candidateCount: number): number {
-  return Math.min(8000, 600 + 260 * Math.max(1, candidateCount));
+  return Math.min(8000, 600 + 320 * Math.max(1, candidateCount));
 }
 
 /**
  * The model's words written into the draft, per candidate it answered
- * for: a non-empty summary replaces the draft's, non-empty strengths
- * replace the draft's, attention points are taken as given. Everything
- * else (the facts, the requirement table, the score, the decision) is
- * untouched: the model refines the prose, never the assessment. An item
- * the model skipped keeps its plain draft.
+ * for: a non-empty summary replaces the draft's, and so do non-empty
+ * strengths, attention points and questions; a list the model left
+ * empty keeps the draft's, since the draft may hold the recruiter's
+ * reading and the model was asked to reword it, never to take it away.
+ * Everything else (the facts, the requirement table, the score, the
+ * decision) is untouched: the model refines the prose, never the
+ * assessment. An item the model skipped keeps its plain draft, and the
+ * team edits every list on the review step.
  */
 export function mergeDraft(items: readonly ShareItem[], answer: SummaryAnswer): ShareItem[] {
   const byId = new Map(answer.items.map((item) => [item.candidateId, item] as const));
@@ -511,11 +595,13 @@ export function mergeDraft(items: readonly ShareItem[], answer: SummaryAnswer): 
     const summary = clip(drafted.summary, SUMMARY_MAX);
     const strengths = cleanPoints(drafted.strengths, MODEL_STRENGTHS_MAX);
     const attention = cleanPoints(drafted.attention, MODEL_ATTENTION_MAX);
+    const questions = cleanPoints(drafted.questions, MODEL_QUESTIONS_MAX);
     return {
       ...item,
       summary: summary || item.summary,
       strengths: strengths.length ? strengths : item.strengths,
-      attention,
+      attention: attention.length ? attention : item.attention,
+      questions: questions.length ? questions : item.questions,
     };
   });
 }
@@ -552,6 +638,7 @@ export function cleanItems(items: readonly ShareItem[]): ShareItem[] {
         summary: item.summary.trim().slice(0, SUMMARY_MAX),
         strengths: cleanPoints(item.strengths, POINTS_MAX),
         attention: cleanPoints(item.attention, POINTS_MAX),
+        questions: cleanPoints(item.questions, QUESTIONS_MAX),
         score: cleanScore(item.score),
         decision: isDecision(item.decision) ? item.decision : null,
         requirements: cleanRequirements(item.requirements),

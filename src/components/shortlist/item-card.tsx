@@ -1,12 +1,14 @@
 /**
  * One candidate on a shortlist board, a sheet of its own: name and
  * headline next to the fit ring (the model's score, a dash when no
- * model assessed the profile), the analysis's decision as a pill when
- * there is one (else the deterministic score as a muted number), who it
- * is assigned to, the votes, the comment count, and for members the
- * actions: retain, dismiss, review again, assign, remove (confirmed).
- * The decision trace under a decided card names who decided and when,
- * from the database. The caller wraps the card in its list item.
+ * model assessed the profile) with the tier the comparative pass
+ * proposed under it when there is one, the analysis's decision as a
+ * pill when there is one (else the deterministic score as a muted
+ * number), who it is assigned to, the votes, the comment count, and for
+ * members the actions: retain, dismiss, review again, assign, remove
+ * (confirmed). The decision trace under a decided card names who
+ * decided and when, from the database. The caller wraps the card in its
+ * list item.
  */
 import { useState } from "react";
 import { Check, MessageSquare, RotateCcw, Trash2, X } from "lucide-react";
@@ -22,12 +24,12 @@ import { useAuth } from "@/lib/auth/auth-context";
 import type { ShortlistItemStatus } from "@/lib/db/types";
 import { formatDateTime, formatRelative, useI18n } from "@/lib/i18n";
 import type { BoardItem } from "@/lib/shortlists/queries";
-import { assessedScore } from "@/lib/shortlists/requirements";
+import { assessedScore, tierOf } from "@/lib/shortlists/requirements";
 import { scorePercent, type VoteTally } from "@/lib/shortlists/tally";
 import { useItemActions } from "@/lib/shortlists/use-item-actions";
 import { useMemberNamer, useTeamMembers } from "@/lib/shortlists/use-members";
 
-import { DecisionTrace, VoteButtons } from "./item-bits";
+import { DecisionTrace, TierPill, VoteButtons } from "./item-bits";
 
 /** Where a card can go from each status; the current one is never offered. */
 const NEXT_STATUSES: Record<ShortlistItemStatus, ShortlistItemStatus[]> = {
@@ -72,6 +74,7 @@ export function ItemCard({
   const score = assessedScore(item.match);
   const scoreLabel = score === null ? t("shortlists.item.noAssessment") : t("shortlists.item.fitScore", { score });
   const textScore = scorePercent(item.match);
+  const tier = tierOf(item.match);
 
   async function confirmRemove() {
     if (await actions.remove()) setRemoving(false);
@@ -91,7 +94,11 @@ export function ItemCard({
           </button>
           {line ? <p className="truncate text-sm text-muted-foreground">{line}</p> : null}
         </div>
-        <ScoreRing score={score} label={scoreLabel} size="md" />
+        {/* The tier sits under the ring, letter only: the full label is in the drawer, the name keeps its room. */}
+        <div className="flex shrink-0 flex-col items-center gap-1.5">
+          <ScoreRing score={score} label={scoreLabel} size="md" />
+          {tier ? <TierPill tier={tier} note={assessment?.rankNote} compact /> : null}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

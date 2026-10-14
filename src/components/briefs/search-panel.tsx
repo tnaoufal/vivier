@@ -2,32 +2,52 @@
  * The analysis of the talent pool for a brief. One button runs the
  * search (the whole pool or the hybrid retrieval, then the deterministic
  * verdicts, stored as a searches row) and, when the deployment has a
- * model, drives the expert assessment of every result a few candidates
- * at a time, one batch after the other, updating the cards as batches
- * return; the loop stops when the person interrupts it or leaves the
- * page, and a stored analysis with unassessed results can be resumed.
- * Results sit in groups by decision: matching, to check, set aside
- * (collapsed), not analysed. A result whose candidate left the pool
- * since the search counts as settled: it is never sent again and does
- * not keep an analysis from being complete. Without a model, or without
- * criteria to check, the panel says so and shows the deterministic
- * ranking alone; when the pool was larger than what one search reads,
- * the line under the results says how many profiles were looked at.
- * Previous analyses reopen from their stored results, assessments
- * included; one run before the brief had its role says so, since its
- * verdicts never judged the métier.
+ * model, drives three stages on its results, one batch after the other,
+ * updating the cards as batches return: the reading of every profile
+ * (a few candidates at a time), the second opinion on the retained
+ * ones, and the comparative tiering of the retained and borderline ones
+ * in groups (then of the A's of every group, when there were several).
+ * When the search had to write the understanding of the job itself
+ * (the role profile, the criteria), nothing is read before the team
+ * has looked at it: the deterministic ranking is shown with one
+ * sentence and the button that starts the reading. The loop stops when
+ * the person interrupts it or leaves the page; a stored analysis
+ * resumes the stages it lacks (results without an assessment, retained
+ * ones without a second opinion, retained or borderline ones without a
+ * tier). Results sit in groups: to present,
+ * to dig into, set aside (collapsed), not analysed. A result whose
+ * candidate left the pool since the search counts as settled: it is
+ * never sent again and does not keep an analysis from being complete.
+ * Without a model, or without criteria to check, the panel says so and
+ * shows the deterministic ranking alone; when the pool was larger than
+ * what one search reads, the line under the results says how many
+ * profiles were looked at. Previous analyses reopen from their stored
+ * results, assessments included; one run before the brief had its role
+ * says so, since its verdicts never judged the métier.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, SearchX } from "lucide-react";
+import { BookOpen, Search, SearchX } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { ASSESS_BATCH_MAX, bucketResults, mostMissingRequirement } from "@/lib/briefs/assessment";
-import { assessCandidates, runSearch, type AssessmentBatch } from "@/lib/briefs/briefs.functions";
+import {
+  assessCandidates,
+  challengeCandidates,
+  rankCandidates,
+  runSearch,
+  type AssessmentBatch,
+} from "@/lib/briefs/briefs.functions";
 import { kindKey, roleCriterion } from "@/lib/briefs/criteria";
 import { rankResults } from "@/lib/briefs/matching";
 import { FULL_POOL_MAX, RETRIEVAL_LIMIT } from "@/lib/briefs/prompts";
@@ -39,6 +59,16 @@ import {
   readSearch,
   readShortlistState,
 } from "@/lib/briefs/queries";
+import {
+  batchesOf,
+  CHALLENGE_BATCH_MAX,
+  finalRankGroup,
+  pendingChallenges,
+  pendingCount,
+  pendingRanks,
+  pendingReads,
+  type AnalysisStage,
+} from "@/lib/briefs/stages";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
 import type { BriefCriterion, BriefRow, MatchResult, SearchMethod } from "@/lib/db/types";
@@ -63,9 +93,20 @@ interface SearchView {
 }
 
 interface Progress {
-  /** Results already looked at in this run (assessed or failed) plus those stored before it. */
+  stage: AnalysisStage;
+  /** Candidates already sent in this stage (answered or failed) plus, for the reading, those stored before it. */
   done: number;
   total: number;
+}
+
+/** The result of one call of a stage: the batch answered, or null when the call failed (the loop stops; a toast said why). */
+type StageCall = (ids: string[]) => Promise<AssessmentBatch | null>;
+
+/** A search whose understanding of the job the model wrote and nobody checked yet: the reading waits for the team. */
+interface PendingCheck {
+  searchId: string;
+  /** What the model wrote: the role profile, or the requirements. */
+  wrote: "profile" | "criteria";
 }
 
 function ResultSkeleton() {
@@ -106,8 +147,9 @@ export function SearchPanel({
   const [progress, setProgress] = useState<Progress | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
   const [autoOpened, setAutoOpened] = useState(false);
-  // The run token: each assessment loop owns one; interrupting, starting
-  // another, or leaving the page changes it and the loop stops at its next batch.
+  const [needsCheck, setNeedsCheck] = useState<PendingCheck | null>(null);
+  // The run token: each analysis loop owns one; interrupting, starting
+  // another, or leaving the page changes it and the loop stops at its next call.
   const runToken = useRef(0);
   // The analysis shown, readable from callbacks without a stale closure.
   const currentRef = useRef<SearchView | null>(null);
@@ -129,13 +171,22 @@ export function SearchPanel({
   // analysis never reads the previous one's candidates as its own.
   const candidates = useQuery(
     `brief-result-candidates:${current?.id ?? ""}`,
-    async () => ({ searchId: current?.id ?? null, rows: await readResultCandidates(await requireSupabase(), brief.org_id, ids) }),
+    async () => ({
+      searchId: current?.id ?? null,
+      rows: await readResultCandidates(await requireSupabase(), brief.org_id, ids),
+    }),
     ids.length > 0,
   );
-  const rows = candidates.data !== null && candidates.data.searchId === current?.id ? candidates.data.rows : null;
-  const byId = useMemo(() => new Map((rows ?? []).map((candidate) => [candidate.id, candidate] as const)), [rows]);
+  const rows =
+    candidates.data !== null && candidates.data.searchId === current?.id
+      ? candidates.data.rows
+      : null;
+  const byId = useMemo(
+    () => new Map((rows ?? []).map((candidate) => [candidate.id, candidate] as const)),
+    [rows],
+  );
   // A result whose candidate left the pool since the search (erased, or
-  // archived: the assessment reads active profiles only) is settled: it is
+  // archived: the stages read active profiles only) is settled: it is
   // never sent again and does not keep the analysis from being complete.
   // Nothing is settled until the candidates are known.
   const settledIds = useMemo(
@@ -143,7 +194,9 @@ export function SearchPanel({
       new Set(
         rows === null
           ? []
-          : ranked.filter((result) => byId.get(result.candidateId)?.status !== "active").map((result) => result.candidateId),
+          : ranked
+              .filter((result) => byId.get(result.candidateId)?.status !== "active")
+              .map((result) => result.candidateId),
       ),
     [byId, ranked, rows],
   );
@@ -153,6 +206,8 @@ export function SearchPanel({
   const open = useCallback(
     async (searchId: string) => {
       setOpening(searchId);
+      // Another analysis opened: the check waiting on the previous one no longer applies.
+      setNeedsCheck((pending) => (pending && pending.searchId === searchId ? pending : null));
       try {
         const row = await readSearch(await requireSupabase(), brief.org_id, searchId);
         if (row) {
@@ -198,7 +253,8 @@ export function SearchPanel({
     }, 800);
     return subscribeToTable("searches", `brief_id=eq.${brief.id}`, (change) => {
       refreshList();
-      if (change.eventType === "UPDATE" && change.new["id"] === currentRef.current?.id) reopenCurrent();
+      if (change.eventType === "UPDATE" && change.new["id"] === currentRef.current?.id)
+        reopenCurrent();
     });
   }, [brief.id, open, refreshSearches]);
   useEffect(() => {
@@ -226,46 +282,108 @@ export function SearchPanel({
   }
 
   /**
-   * Assesses every result of `view` not yet assessed and not in `skip`
-   * (the candidates gone from the pool), ASSESS_BATCH_MAX at a time, one
-   * batch after the other.
+   * Drives the three stages on `view`, skipping the settled candidates:
+   * every result not yet read, ASSESS_BATCH_MAX at a time; then the
+   * retained ones without a second opinion, CHALLENGE_BATCH_MAX at a
+   * time; then the retained and borderline ones without a tier, in
+   * groups. Each stage reads the results as the previous one left them,
+   * so a stored analysis resumes from the stages it lacks.
    */
-  const assess = useCallback(
+  const analyse = useCallback(
     async (view: SearchView, skip: ReadonlySet<string>) => {
       const token = ++runToken.current;
-      const pending = view.results
-        .filter((result) => !result.assessment && !skip.has(result.candidateId))
-        .map((result) => result.candidateId);
-      const total = view.results.length;
-      let done = total - pending.length;
-      let failures = 0;
-      setProgress({ done, total });
-      try {
-        for (let index = 0; index < pending.length; index += ASSESS_BATCH_MAX) {
-          if (runToken.current !== token) return;
-          const batch = pending.slice(index, index + ASSESS_BATCH_MAX);
-          let answer: AssessmentBatch;
+      setNeedsCheck(null);
+      const common = async () => ({
+        ...(await withToken()),
+        orgId: brief.org_id,
+        briefId: brief.id,
+        searchId: view.id,
+      });
+      // The results as the stages leave them, merged into the view as each call returns.
+      let results = view.results;
+      const merge = (answered: readonly MatchResult[]) => {
+        const updated = new Map(answered.map((result) => [result.candidateId, result] as const));
+        results = results.map((result) => updated.get(result.candidateId) ?? result);
+        setCurrent((previous) =>
+          previous && previous.id === view.id
+            ? {
+                ...previous,
+                results: previous.results.map(
+                  (result) => updated.get(result.candidateId) ?? result,
+                ),
+              }
+            : previous,
+        );
+      };
+      const guarded =
+        (call: (ids: string[]) => Promise<AssessmentBatch>): StageCall =>
+        async (batch) => {
           try {
-            answer = await assessCandidates({
-              data: { ...(await withToken()), orgId: brief.org_id, briefId: brief.id, searchId: view.id, candidateIds: batch },
-            });
+            return await call(batch);
           } catch (error) {
             console.error(error);
             toast.error(errorMessage(locale, error));
-            return;
+            return null;
           }
+        };
+      const read = guarded(async (candidateIds) =>
+        assessCandidates({ data: { ...(await common()), candidateIds } }),
+      );
+      const challenge = guarded(async (candidateIds) =>
+        challengeCandidates({ data: { ...(await common()), candidateIds } }),
+      );
+      const rank = guarded(async (candidateIds) =>
+        rankCandidates({ data: { ...(await common()), candidateIds } }),
+      );
+      let failures = 0;
+      /** Sends the batches of one stage one after the other; false when the loop must stop. */
+      const stage = async (
+        name: AnalysisStage,
+        batches: readonly string[][],
+        call: StageCall,
+        already = 0,
+      ): Promise<boolean> => {
+        if (!batches.length) return true;
+        const total = already + batches.reduce((sum, batch) => sum + batch.length, 0);
+        let done = already;
+        setProgress({ stage: name, done, total });
+        for (const batch of batches) {
+          if (runToken.current !== token) return false;
+          const answer = await call(batch);
+          if (!answer) return false;
           // What came back is stored whatever happened here since: merge it, then obey the token.
-          const updated = new Map(answer.results.map((result) => [result.candidateId, result] as const));
-          setCurrent((previous) =>
-            previous && previous.id === view.id
-              ? { ...previous, results: previous.results.map((result) => updated.get(result.candidateId) ?? result) }
-              : previous,
-          );
-          if (runToken.current !== token) return;
+          merge(answer.results);
+          if (runToken.current !== token) return false;
           failures += answer.failed.length;
           done += batch.length;
-          setProgress({ done, total });
+          setProgress({ stage: name, done, total });
         }
+        return true;
+      };
+      try {
+        const reads = pendingReads(results, skip);
+        if (
+          !(await stage(
+            "read",
+            batchesOf(reads, ASSESS_BATCH_MAX),
+            read,
+            results.length - reads.length,
+          ))
+        )
+          return;
+        if (
+          !(await stage(
+            "challenge",
+            batchesOf(pendingChallenges(results, skip), CHALLENGE_BATCH_MAX),
+            challenge,
+          ))
+        )
+          return;
+        const groups = pendingRanks(results, skip);
+        if (!(await stage("rank", groups, rank))) return;
+        // Several groups were tiered apart: the A's of every group are compared once, so their order is one comparison.
+        if (groups.length > 1 && !(await stage("final", finalRankGroup(results, skip), rank)))
+          return;
         if (failures > 0) {
           toast.error(t("briefs.search.failed", { count: failures }));
           // A candidate archived or erased during the run is among them: read the rows again so it settles.
@@ -282,7 +400,9 @@ export function SearchPanel({
     if (!canEdit || running || criteriaDirty || progress) return;
     setRunning(true);
     try {
-      const answer = await runSearch({ data: { ...(await withToken()), orgId: brief.org_id, briefId: brief.id } });
+      const answer = await runSearch({
+        data: { ...(await withToken()), orgId: brief.org_id, briefId: brief.id },
+      });
       const view: SearchView = {
         id: answer.searchId,
         method: answer.method,
@@ -294,9 +414,19 @@ export function SearchPanel({
       setCurrent(view);
       setAutoOpened(true);
       void refreshSearches();
+      if (answer.roleProfileDerived) toast(t("briefs.profile.derived"));
       if (answer.criteriaDerived) toast(t("briefs.search.derived"));
       // No criteria: nothing to check, so no model reads the profiles (the ranked group says so).
-      if (modelAvailable !== false && view.results.length && view.criteria.length) void assess(view, new Set<string>());
+      if (modelAvailable === false || !view.results.length || !view.criteria.length) return;
+      // The model wrote the job's understanding this search rests on: the team checks it before a profile is read.
+      if (answer.needsCheck) {
+        setNeedsCheck({
+          searchId: view.id,
+          wrote: answer.roleProfileDerived ? "profile" : "criteria",
+        });
+        return;
+      }
+      void analyse(view, new Set<string>());
     } catch (error) {
       console.error(error);
       toast.error(errorMessage(locale, error));
@@ -316,7 +446,12 @@ export function SearchPanel({
     try {
       const supabase = await requireSupabase();
       const id =
-        shortlistId ?? (await ensureShortlist(supabase, { orgId: brief.org_id, briefId: brief.id, userId: user.id }));
+        shortlistId ??
+        (await ensureShortlist(supabase, {
+          orgId: brief.org_id,
+          briefId: brief.id,
+          userId: user.id,
+        }));
       const outcome = await addShortlistItem(supabase, {
         orgId: brief.org_id,
         shortlistId: id,
@@ -325,7 +460,9 @@ export function SearchPanel({
         userId: user.id,
       });
       await refreshShortlist();
-      toast.success(outcome === "added" ? t("briefs.results.addedToast") : t("briefs.results.alreadyAdded"));
+      toast.success(
+        outcome === "added" ? t("briefs.results.addedToast") : t("briefs.results.alreadyAdded"),
+      );
     } catch (error) {
       console.error(error);
       toast.error(t("common.error"));
@@ -338,16 +475,22 @@ export function SearchPanel({
     return t("briefs.search.count.many", { count });
   }
 
-  function assessedText(count: number): string {
-    if (count === 0) return t("briefs.search.line.assessed.none");
-    if (count === 1) return t("briefs.search.line.assessed.one");
-    return t("briefs.search.line.assessed.many", { count });
+  function readText(count: number): string {
+    if (count === 0) return t("briefs.search.line.read.none");
+    if (count === 1) return t("briefs.search.line.read.one");
+    return t("briefs.search.line.read.many", { count });
   }
 
-  function fitText(count: number): string {
-    if (count === 0) return t("briefs.search.line.fit.none");
-    if (count === 1) return t("briefs.search.line.fit.one");
-    return t("briefs.search.line.fit.many", { count });
+  function presentText(count: number): string {
+    if (count === 0) return t("briefs.search.line.present.none");
+    if (count === 1) return t("briefs.search.line.present.one");
+    return t("briefs.search.line.present.many", { count });
+  }
+
+  function deeperText(count: number): string {
+    if (count === 0) return t("briefs.search.line.deeper.none");
+    if (count === 1) return t("briefs.search.line.deeper.one");
+    return t("briefs.search.line.deeper.many", { count });
   }
 
   const textOnly = modelAvailable === false;
@@ -355,19 +498,37 @@ export function SearchPanel({
   const noCriteria = current !== null && current.criteria.length === 0;
   const busy = running || progress !== null;
   const unassessedCount = buckets.unassessed.length;
-  /** The unassessed results the model can still read: a candidate gone from the pool is not one. */
-  const pendingCount = buckets.unassessed.filter((result) => !settledIds.has(result.candidateId)).length;
+  /** The unread results the model can still read: a candidate gone from the pool is not one. */
+  const unreadCount = pendingReads(ranked, settledIds).length;
+  /** What the three stages still have to send: unread profiles, retained ones without a second opinion, untiered ones. */
+  const leftCount = pendingCount(ranked, settledIds);
   const assessedCount = ranked.length - unassessedCount;
-  const complete = ranked.length > 0 && pendingCount === 0;
-  const canResume = canEdit && !textOnly && !noCriteria && current !== null && pendingCount > 0 && !busy;
+  const complete = ranked.length > 0 && unreadCount === 0;
+  const pendingCheck = current !== null && needsCheck?.searchId === current.id ? needsCheck : null;
+  const canResume =
+    canEdit &&
+    !textOnly &&
+    !noCriteria &&
+    current !== null &&
+    leftCount > 0 &&
+    !busy &&
+    pendingCheck === null;
   // An analysis stored before the brief had its role (its criteria are the
   // search's, frozen at run time) presents profiles whose métier was never
   // judged: the line says so, and only a new run judges it.
   const roleStale =
-    !textOnly && current !== null && roleCriterion(brief.criteria) !== null && roleCriterion(current.criteria) === null;
+    !textOnly &&
+    current !== null &&
+    roleCriterion(brief.criteria) !== null &&
+    roleCriterion(current.criteria) === null;
 
   const runButton = canEdit ? (
-    <Button type="button" onClick={() => void run()} disabled={busy || criteriaDirty} className="gap-1.5">
+    <Button
+      type="button"
+      onClick={() => void run()}
+      disabled={busy || criteriaDirty}
+      className="gap-1.5"
+    >
       <Search />
       {running ? t("briefs.search.running") : t("briefs.search.run")}
     </Button>
@@ -406,13 +567,17 @@ export function SearchPanel({
       // No criteria at run time (none written, none derived): no model read the profiles.
       parts.push(t("briefs.search.line.noCriteria.model"));
     } else {
-      parts.push(t("briefs.search.line.model"), assessedText(assessedCount));
-      if (assessedCount > 0) parts.push(fitText(buckets.fit.length));
-      if (pendingCount > 0 && !progress) parts.push(t("briefs.search.line.pending", { count: pendingCount }));
+      parts.push(t("briefs.search.line.model"), readText(assessedCount));
+      if (assessedCount > 0)
+        parts.push(presentText(buckets.present.length), deeperText(buckets.deeper.length));
+      if (unreadCount > 0 && !progress)
+        parts.push(t("briefs.search.line.pending", { count: unreadCount }));
     }
     // A pool larger than what one search reads whole: only the closest profiles were looked at, and the line says so.
     if (view.poolSize !== null && view.poolSize > FULL_POOL_MAX) {
-      parts.push(t("briefs.search.line.truncated", { total: view.poolSize, read: view.results.length }));
+      parts.push(
+        t("briefs.search.line.truncated", { total: view.poolSize, read: view.results.length }),
+      );
     }
     parts.push(t("briefs.search.ranAt", { date: formatDateTime(locale, view.createdAt) }));
     return parts.join(" · ");
@@ -422,7 +587,8 @@ export function SearchPanel({
     const parts = [t("briefs.search.nofit.text", { count: assessedCount })];
     const missing = mostMissingRequirement(view.criteria, ranked);
     if (missing) {
-      const label = missing.kind === "role" ? `${t(kindKey(missing.kind))} · ${missing.label}` : missing.label;
+      const label =
+        missing.kind === "role" ? `${t(kindKey(missing.kind))} · ${missing.label}` : missing.label;
       parts.push(t("briefs.search.nofit.missing", { label }));
     }
     parts.push(t("briefs.search.nofit.hint"));
@@ -434,36 +600,55 @@ export function SearchPanel({
       return (
         <ResultGroup
           title={t("briefs.section.ranked")}
-          help={view.criteria.length ? t("briefs.section.ranked.help") : t("briefs.section.ranked.noCriteria.help")}
+          help={
+            view.criteria.length
+              ? t("briefs.section.ranked.help")
+              : t("briefs.section.ranked.noCriteria.help")
+          }
           count={ranked.length}
         >
           {cards(ranked)}
         </ResultGroup>
       );
     }
-    const nothingFits = complete && assessedCount > 0 && buckets.fit.length === 0 && buckets.borderline.length === 0;
+    const nothingFits =
+      complete && assessedCount > 0 && buckets.present.length === 0 && buckets.deeper.length === 0;
     return (
       <>
-        {nothingFits ? <EmptyState icon={<SearchX />} title={t("briefs.search.nofit.title")} text={noFitText(view)} /> : null}
-        {buckets.fit.length ? (
-          <ResultGroup title={t("briefs.section.fit")} help={t("briefs.section.fit.help")} count={buckets.fit.length}>
-            {cards(buckets.fit)}
+        {nothingFits ? (
+          <EmptyState
+            icon={<SearchX />}
+            title={t("briefs.search.nofit.title")}
+            text={noFitText(view)}
+          />
+        ) : null}
+        {buckets.present.length ? (
+          <ResultGroup
+            title={t("briefs.section.present")}
+            help={t("briefs.section.present.help")}
+            count={buckets.present.length}
+          >
+            {cards(buckets.present)}
           </ResultGroup>
         ) : null}
-        {buckets.borderline.length ? (
-          <ResultGroup title={t("briefs.section.borderline")} help={t("briefs.section.borderline.help")} count={buckets.borderline.length}>
-            {cards(buckets.borderline)}
+        {buckets.deeper.length ? (
+          <ResultGroup
+            title={t("briefs.section.deeper")}
+            help={t("briefs.section.deeper.help")}
+            count={buckets.deeper.length}
+          >
+            {cards(buckets.deeper)}
           </ResultGroup>
         ) : null}
-        {buckets.noFit.length ? (
+        {buckets.setAside.length ? (
           <ResultGroup
             title={t("briefs.section.noFit")}
             help={t("briefs.section.noFit.help")}
-            count={buckets.noFit.length}
+            count={buckets.setAside.length}
             collapsible
             defaultOpen={false}
           >
-            {cards(buckets.noFit, true)}
+            {cards(buckets.setAside, true)}
           </ResultGroup>
         ) : null}
         {buckets.unassessed.length ? (
@@ -472,7 +657,7 @@ export function SearchPanel({
             help={t("briefs.section.unassessed.help")}
             count={buckets.unassessed.length}
             collapsible
-            defaultOpen={buckets.fit.length + buckets.borderline.length === 0}
+            defaultOpen={buckets.present.length + buckets.deeper.length === 0}
           >
             {cards(buckets.unassessed)}
           </ResultGroup>
@@ -493,14 +678,32 @@ export function SearchPanel({
         <div className="flex flex-wrap items-center gap-3">
           {runButton}
           {canResume && current ? (
-            <Button type="button" variant="outline" onClick={() => void assess(current, settledIds)} className="gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void analyse(current, settledIds)}
+              className="gap-1.5"
+            >
               {t("briefs.search.resume")}
             </Button>
           ) : null}
-          {canEdit && criteriaDirty ? <span className="text-[13px] text-muted-foreground">{t("briefs.search.saveFirst")}</span> : null}
-          {!canEdit ? <span className="text-[13px] text-muted-foreground">{t("briefs.search.viewer")}</span> : null}
+          {canEdit && criteriaDirty ? (
+            <span className="text-[13px] text-muted-foreground">
+              {t("briefs.search.saveFirst")}
+            </span>
+          ) : null}
+          {!canEdit ? (
+            <span className="text-[13px] text-muted-foreground">{t("briefs.search.viewer")}</span>
+          ) : null}
         </div>
-        {progress ? <AssessmentProgress done={progress.done} total={progress.total} onStop={stop} /> : null}
+        {progress ? (
+          <AssessmentProgress
+            stage={progress.stage}
+            done={progress.done}
+            total={progress.total}
+            onStop={stop}
+          />
+        ) : null}
         {searches.data?.length ? (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
             <Label htmlFor="brief-previous-search">{t("briefs.search.previous")}</Label>
@@ -529,9 +732,36 @@ export function SearchPanel({
       {current ? (
         <>
           <p className="text-sm text-muted-foreground">{methodLine(current)}</p>
-          {roleStale ? <p className="text-sm text-muted-foreground">{t("briefs.search.line.roleStale")}</p> : null}
+          {roleStale ? (
+            <p className="text-sm text-muted-foreground">{t("briefs.search.line.roleStale")}</p>
+          ) : null}
+          {pendingCheck ? (
+            <div className="sheet flex flex-col gap-3 p-6 sm:flex-row sm:items-center sm:justify-between">
+              <p className="min-w-0 text-[15px] leading-6 text-ink">
+                {t(
+                  pendingCheck.wrote === "profile"
+                    ? "briefs.search.check.profile"
+                    : "briefs.search.check.criteria",
+                )}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void analyse(current, settledIds)}
+                disabled={!canEdit || busy}
+                className="shrink-0 gap-1.5"
+              >
+                <BookOpen />
+                {t("briefs.search.check.read")}
+              </Button>
+            </div>
+          ) : null}
           {ranked.length === 0 ? (
-            <EmptyState icon={<SearchX />} title={t("briefs.search.none.title")} text={t("briefs.search.none.text")} />
+            <EmptyState
+              icon={<SearchX />}
+              title={t("briefs.search.none.title")}
+              text={t("briefs.search.none.text")}
+            />
           ) : candidatesPending ? (
             <ResultSkeleton />
           ) : (
@@ -541,7 +771,12 @@ export function SearchPanel({
       ) : opening || (searches.loading && !searches.data) ? (
         <ResultSkeleton />
       ) : (
-        <EmptyState icon={<Search />} title={t("briefs.search.empty.title")} text={t("briefs.search.empty.text")} action={runButton} />
+        <EmptyState
+          icon={<Search />}
+          title={t("briefs.search.empty.title")}
+          text={t("briefs.search.empty.text")}
+          action={runButton}
+        />
       )}
     </section>
   );

@@ -326,60 +326,87 @@ rows of `briefs.criteria`: a kind (`role`, `skill`, `experience`,
 `language`, `location`, `education`, `availability`, `other`), a label
 (what the chip says), a value (what is looked for; up to 600 characters),
 `required`, and a weight 1..3. With a model, `extractCriteria` proposes up
-to twelve from the text, the role first; the person adds the ones they
-keep, one by one or all at once, and nothing reaches the brief without
-their gesture. A proposal naming a protected characteristic is dropped and
-counted; the model's own warnings about requests it refused are shown.
-Without a model, one sentence says so and the criteria are typed in. A
-brief analysed with no criteria gets them derived from its text by the
-same extraction on that first analysis, saved into the brief, and a toast
-asks the person to check them.
+to twelve from the text, the role first, and from the role profile when
+the brief has one (each of its must-haves comes back as a required
+criterion); the person adds the ones they keep, one by one or all at
+once, and nothing reaches the brief without their gesture. A proposal
+naming a protected characteristic is dropped and counted; the model's own
+warnings about requests it refused are shown. Without a model, one
+sentence says so and the criteria are typed in. A brief analysed with no
+criteria gets them derived from its text by the same extraction on that
+first analysis, saved into the brief, and a toast asks the person to
+check them.
 
-**The role comes first.** One criterion of kind `role` per brief is the
-job itself: its label is the job as the team names it ("Business
-Developer"), its value the *role definition*, a short text in the brief's
-language (`src/lib/briefs/criteria.ts`: the job's domain, the three to
-six core missions that define the job, the usual equivalent titles under
-which other companies name it, the sector when the brief says so), which
-the model writes from what the job is in the market, since a brief rarely
-spells out the missions. It is required and essential by default; the
-team edits the definition or unticks required. The guard against
-protected characteristics reads a role's definition on its core list
-only (age, sex, origin, nationality, religion, disability, pregnancy,
-marital status, union, sexual orientation): a job's domain is written
-with words such as "famille de produits" or "politique commerciale" that
-say nothing about a person. A brief written before the role existed gets
-its role on its next analysis (`runSearch`: one small model call,
-`roleDefinitionPrompt`, else the title stands for both; a title that
-itself names a protected characteristic is never saved), saved in front
-of its criteria with the same "check them" toast, and never added twice;
-an analysis stored before that says its verdicts never judged the métier.
-The assessment reads the role apart from the other requirements and
-judges it before anything else, from what the person *did* (missions,
-scope, clients, seniority of the positions) before how the positions were
-titled, since every company names a job differently: `yes` when the
-person held the role or an equivalent one under another title (a title
-with no description is read for what it usually means in its industry),
-`partial` for an adjacent role that shares part of the core missions (an
-account manager keeps clients, a business developer wins them), for a
-role held only long ago or briefly, or for a manager who led the job
-without carrying its missions, `no` when the career is another métier
-(a CV full of other missions is not silence: the `no` quotes them, and a
-core mission met as a side task of another job does not make the role),
-`unknown` only when the profile holds no experience at all; the same
-missions in another sector are the métier, with the sector named in the
-evidence. The rules then bind it before everything else: a role
-at `no` forces `no_fit` and caps the score at 25, whatever the other
-requirements and whether or not it is still required; at `partial` the
-decision is at most `borderline` and the score at most 65; at `unknown`,
-`borderline` and 60. The deterministic pass only ever *finds* the role, in
-a headline or an experience title that carries the words of its name
-(`match`, `partial` for half of them), never `missing`: a different title
-is no proof of a different métier. The cards show the role row first as
-"Métier · Business Developer".
+**The role profile comes before any CV.** `briefs.role_profile` (JSONB,
+migration `20261014090000`, `src/lib/briefs/role-profile.ts`) is what a
+senior recruiter writes down about the job before reading a single CV,
+the way they would brief a junior: the title as the team names it; the
+domain as the job is in the market; the level (`junior`, `confirmed`,
+`senior`, `manager`, `executive`) with the years in the role the brief
+states (`yearsMin`; `yearsMax` only when the brief itself writes a
+maximum, `statesMaximumYears()`: a ceiling the model would infer from the
+level is a proxy for age and is dropped); the three to six core missions
+that define the job; the usual equivalent titles; the adjacent profiles
+with what each lacks ("account manager: keeps clients, does not win
+them"); the context the brief states and nothing more (sector, product,
+clients, scope: a context the brief does not state is null and is never
+held against a CV); the must-haves and nice-to-haves in the brief's
+words; the success factors; three to five points to verify in every
+interview; and, shown first, the **assumptions**: two to four sentences
+on what the brief does not state and the model had to assume (the exact
+métier, the level, the scope), for the team to confirm before a profile
+is read. The model writes it once, from the brief, on the first analysis
+(`runSearch`: one call at temperature 0, `ai_usage` kind `brief`,
+`LLM_MODEL`); "Write the profile" and "Regenerate"
+(`regenerateRoleProfile`) write it again, after a confirmation since the
+team's edits go with it. Members edit it in the card between the brief
+and its criteria (`role-profile-card.tsx`, one item per line for the
+lists), saved as one update under RLS (`GRANT UPDATE (role_profile)`).
+Whatever is saved, from the model or from the team, is clipped
+(`cleanRoleProfile()`: texts of 200 characters, lists of 8 items of 160,
+6 missions, 4 assumptions, years 0..60) and guarded (`guardRoleProfile()`
+drops any field naming a protected characteristic on the core list; the
+toast and the log say how many, nothing of it is stored). The card says
+who wrote it (the model, with its name and date, or the team). Without a
+model the profile is written by hand or the analysis reads the brief
+alone; a damaged column reads as no profile, never a crash
+(`parseRoleProfile()`).
 
-An **analysis** (`runSearch`, members, rate scope `search`) reads the pool,
-then the model reads each result:
+**The role criterion follows the profile.** One criterion of kind `role`
+per brief is the job itself: its label the job as the team names it, its
+value the *role definition* the assessment reads. With a profile, the
+definition is read off it (`roleDefinitionOf()`: the domain, the
+missions, the equivalent titles, up to 600 characters), the editor says
+so ("Defined by the role profile: edit the profile to change it"), and
+`runSearch` rewrites the criterion's value from the profile before each
+search (`refreshRoleFromProfile`), so the stored search, the full-text
+query and the payloads read one source. A brief with a profile and no
+role criterion gets it from the profile without a model call
+(`roleFromProfile`); one with neither gets it from one small call
+(`roleDefinitionPrompt`), else the title stands for both; a title that
+itself names a protected characteristic is never saved. The role is
+required and essential by default; the team may untick required. The
+guard reads a role on the core list only (age, sex, origin, nationality,
+religion, disability, pregnancy, marital status, union, sexual
+orientation): a job's domain is written with words such as "famille de
+produits" or "politique commerciale" that say nothing about a person. An
+analysis stored before the brief had its role says its verdicts never
+judged the métier.
+
+**Nothing is read before the team has looked at the job.** When the
+search had to write the understanding of the job itself (the profile
+derived from the text, the criteria derived, or the role derived from the
+title), `runSearch` answers `needsCheck` and the browser shows the
+deterministic ranking with one sentence ("The model wrote the role
+profile from the brief. Check the role and its missions, then start
+reading the profiles.") and the button that starts the reading. A role
+only copied from a profile the brief already had opens no gate.
+
+An **analysis** (`runSearch`, members, rate scope `search`) reads the
+pool, then the browser drives three stages on its results
+(`src/lib/briefs/stages.ts`, pure: what each stage still has to send is
+read off the stored results, so "resume" picks up where an analysis
+stopped):
 
 1. **The pool**. Up to 200 active candidates (`FULL_POOL_MAX`) the whole
    pool is read, newest first, so no profile is left out by a ranking.
@@ -400,55 +427,235 @@ then the model reads each result:
    given only when the CV contradicts the requirement (a language absent
    from the listed ones, years below the threshold, a place that
    contradicts) and carries that evidence; a skill the CV does not name is
-   `not_stated`. Points are `match` 1, `partial` 0.5, `missing` 0, weighted
-   by the criterion's weight; the score is 0..100 over the criteria that
-   could be evaluated, `coverage` their share, `blocked` true when a
-   required one is missing. Ranking: not blocked first, then score, then
-   coverage. The whole analysis is stored as a `searches` row (query,
-   criteria at run time, results, method, pool size, who ran it) and
-   previous analyses reopen from their stored results, assessments
-   included.
-3. **The expert assessment** (`assessCandidates`, members, rate scope
-   `assess`), with a model and criteria only: does this CV answer this
-   brief? The browser drives it after the search, **six candidates a
-   batch**, one batch after the other (`ASSESS_BATCH_MAX`), updating the
-   cards as batches return; the person may interrupt it and resume later,
-   and leaving the page stops it (what was assessed is stored). Each
-   candidate is one JSON call with the brief and the profile, read as a
-   senior recruitment consultant would before presenting the candidate:
-   the structured fields first, then the CV's text clipped to the budget,
-   with the name, e-mail addresses and phone numbers removed from every
-   text (`redactIdentity()`: the model reads a profile, not a person). It
-   answers one row per requirement (`yes`, `partial`, `no`, `unknown`, with
-   a quote of at most 200 characters), a decision (`fit`, `borderline`,
-   `no_fit`), a score 0..100 and two to four sentences for a hiring
-   manager, in the brief's language. **Rules then bind the answer**
-   (`src/lib/briefs/assessment.ts`, pure, tested): every criterion gets a
-   row (a skipped one is `unknown`); a `yes` without evidence becomes
-   `partial`; a `no` without evidence becomes `unknown`, unless the
-   deterministic pass found the requirement missing with evidence of its
-   own, which is then shown; a `yes` on a required criterion the
-   deterministic pass contradicts becomes `partial` with both readings; a
-   required requirement at `no` forces `no_fit` and caps the score at 39;
-   at `unknown` it caps the decision at `borderline` and the score at 69;
-   at `partial` it caps the decision at `borderline`; `fit` needs 70,
-   `borderline` 45; the model's own stricter decision is never raised. The
-   assessment is written into the same `searches.results` entry (with the
-   model that answered) and carried to the brief's shortlist items that
-   still hold an unassessed match, so the board and the dossier show what
-   the brief page shows. Each call is one `ai_usage` row of kind `assess`
-   and may use its own model (`LLM_ASSESSMENT_MODEL`, see "Model"). One
-   failed candidate leaves that card unassessed and "resume" picks it up.
+   `not_stated`; the role is only ever *found*, in a headline or an
+   experience title that carries the words of its name, never `missing`.
+   Points are `match` 1, `partial` 0.5, `missing` 0, weighted by the
+   criterion's weight; the score is 0..100 over the criteria that could
+   be evaluated, `coverage` their share, `blocked` true when a required
+   one is missing. Ranking: not blocked first, then score, then coverage.
+   The whole analysis is stored as a `searches` row (query, criteria at
+   run time, results, method, pool size, who ran it) and previous
+   analyses reopen from their stored results, the three stages included.
+3. **The screening** (`assessCandidates`, members, rate scope `assess`),
+   with a model and criteria only: does this CV answer this brief? Six
+   candidates a batch (`ASSESS_BATCH_MAX`), one batch after the other,
+   the cards updated as batches return. Each candidate is one JSON call
+   (`assessmentSystemPrompt`, `LLM_ASSESSMENT_MODEL`, temperature 0) with
+   the brief (the role first and apart, its definition the profile's; the
+   profile compact: domain, level, years, missions, equivalent titles,
+   adjacent profiles, context, must-haves, success factors; then the
+   other requirements) and the profile, read as a senior recruitment
+   consultant reads a CV before presenting the candidate, as a trajectory
+   in the context of the job and not a list of keywords: the structured
+   fields first, then the CV's text clipped so the payload stays under
+   about 9 000 characters, the name, e-mail addresses and phone numbers
+   removed from every text (`redactIdentity()`: the model reads a
+   profile, not a person). The profile's must-haves are the team's words
+   and are checked through the requirements only; the brief's text never
+   adds a requirement (something it asks for that no requirement lists is
+   at most a concern or a question). The model answers one row per
+   requirement (`yes`, `partial`, `no`, `unknown`, with a quote of at most
+   200 characters taken from the profile as it is written), judging the
+   role before anything else from what the person *did* (missions, scope,
+   clients, seniority of the positions) before how the positions were
+   titled, on the most recent and longest positions: `yes` when the
+   person held the role or an equivalent one under another title (a title
+   with no description is read for what it usually means in its
+   industry), `partial` for an adjacent role that shares part of the core
+   missions, a role held only long ago or briefly, or a manager who led
+   the job without carrying its missions, `no` when the career is another
+   métier (a CV full of other missions is not silence: the `no` quotes
+   them), `unknown` only when the profile holds no experience at all (for
+   a junior brief, internships and first positions are positions); the
+   same missions in another sector are the métier, with the sector named
+   in the evidence. Then the **five dimensions** a senior recruiter
+   weighs, each a score 0..100 with one factual note and the evidence it
+   rests on: *role* (the métier judgement as a number: 85 or more when
+   the person held the role with the missions in evidence, around 55 for
+   an adjacent métier, 20 or less for another, 50 when no experience
+   says), *seniority* (the level reached and the years in the role
+   against the profile's level and years; above the level is a concern to
+   name, around 60, never a disqualifier, judged on the level reached and
+   never on a number of years, and only when the brief states a maximum),
+   *context* (the sector, product, clients and scope of the positions
+   against the profile's; 50 with "the CV does not say" when the brief
+   states none or the CV is silent), *trajectory* (the progression and
+   coherence of the positions; never a career break, a gap, an age or a
+   family situation, here or anywhere else), *achievements* (quantified
+   results and the scope handled; 50 when the CV states none: a silent CV
+   is not a weak one). Then up to five **strengths** (facts, never
+   praise), four **concerns** (facts a recruiter would weigh; a thing the
+   CV does not state is a question, not a concern), three **questions**
+   for a first call, a decision, its own score, and two to four sentences
+   for a hiring manager, the first saying whether the métier is the role
+   and on what positions that rests, in the brief's language.
 
-The brief page groups the results by decision: **matching**, **to check**,
-**set aside** (collapsed: never deleted, only out of the way, the first
-required requirement missing named on each card), **not analysed**; each
-card carries the fit ring, the decision pill, the requirement rows with
-their evidence and the model's reading, introduced as the model's. Without
-a model, or when the brief has no criteria, the panel says so and shows the
-deterministic ranking alone. The `why` sentences of analyses stored before
-evolution 2 (`ai_usage` kind `explain`) are still read where present;
-nothing writes them any more.
+   **Rules then bind the answer** (`src/lib/briefs/assessment.ts`, pure,
+   tested). Every criterion gets a row (a skipped one is `unknown`).
+   **Every quote is checked against what the model was given**:
+   `payloadTexts()` lists the texts of the payload (one per field, one per
+   experience with its dates, the timeline of the positions as one), and
+   `evidenceGrounded()` looks for the quote in them, case, accents and
+   spacing apart: whole when short, else a window of twelve characters
+   found verbatim, else 60 % of its tokens of four letters or more found
+   as words of one text. A `yes` without a quote, or with one found
+   nowhere, becomes `partial`, the quote kept and marked unverified
+   ("quote not found in the CV" on the card); a `no` without a grounded
+   quote becomes `unknown`, unless the deterministic pass found the
+   requirement missing with evidence of its own, which is then shown; a
+   `yes` on a required criterion the deterministic pass contradicts
+   becomes `partial` with both readings; a dimension's score stands above
+   neutral (50) only on a grounded quote. A note, an evidence, a strength,
+   a concern, a question or a tiering line that names a protected
+   characteristic or a career break (`forbiddenSentence()`: the core
+   list, the wider words in a personal construction such as "sa famille"
+   or "née en 1975", the phrases of a career break or a leave, the job's
+   own collocations such as "politique commerciale" or "race condition"
+   taken out first) is withheld and counted (`withheld`), and the card
+   says the reading shown is incomplete by that much. The **composite
+   score** (`src/lib/briefs/scoring.ts`) replaces the model's: role 0.40,
+   seniority 0.15, context 0.15, the mean of trajectory and achievements
+   0.15, and the weighted coverage of the other requirements 0.15 (`yes`
+   1, `partial` 0.5, `no` 0, weighted 1..3 as the brief says, `unknown`
+   left out, 50 when nothing is evaluable); a dimension the model did not
+   score is neutral; the model's own score is kept apart as `modelScore`,
+   advisory, and the card says what the composite is made of. **The
+   gates** then bound the decision and the score, the role first: a role
+   at `no` forces `no_fit` and caps the score at 25, whatever the other
+   requirements and whether or not it is still required; at `partial` the
+   decision is at most `borderline` and the score at most 65; at
+   `unknown`, `borderline` and 60 (a junior brief keeps the score: a
+   profile with no position at all is the team's to look at, not capped).
+   Then the required requirements: one at `no` forces `no_fit` and caps
+   the score at 39; at `unknown` it caps the decision at `borderline` and
+   the score at 69; at `partial` it caps the decision at `borderline`. A
+   `no_fit` the rules can pin on neither the role nor a required
+   requirement becomes `borderline`: a profile is never set aside with
+   nothing to show for it, and what bothered the model is in its concerns
+   with evidence. `fit` needs 70, `borderline` 45, below that `no_fit`;
+   the model's own stricter decision is never raised. The assessment is
+   written into the same `searches.results` entry (with the model that
+   answered) and carried to the brief's shortlist items that still hold
+   an unassessed match. One failed candidate leaves that card unread and
+   "resume" picks it up.
+4. **The second opinion** (`challengeCandidates`, retained profiles only,
+   six a batch, `CHALLENGE_BATCH_MAX`): one more call per `fit`, with the
+   same brief, the same redacted profile and the first reading (decision,
+   score, summary, the rows with their labels, the dimension scores and
+   notes, the strengths, the concerns), asked for the strongest reason
+   *not* to present this profile, in this order: a métier mismatch hidden
+   behind titles, a seniority mismatch against the profile, a
+   contradiction between facts of the CV, a must-have the first reading
+   marked met that the profile does not meet, a context too far when the
+   brief insists on it; silence is never a reason, nor is a reservation
+   the first reading already lists. It answers `confirmed` (with one
+   sentence on what the profile rests on) or `doubt` with a reason and a
+   quote. `applyChallenge()` can only lower: a doubt whose quote is found
+   in the profile and whose reason names nothing forbidden sends the
+   decision to `borderline` (a `no_fit` is never raised), caps the score
+   at 69, appends the reason to the concerns and stores the challenge; a
+   doubt without a quote, or with one the profile does not hold, is an
+   opinion and is stored as confirmed, changing nothing. The card shows
+   the doubt under its own heading, or "Second opinion: no major
+   reservation".
+5. **The comparative tiers** (`rankCandidates`, `src/lib/briefs/ranking.ts`):
+   the retained and borderline results, best score first, in groups of
+   up to eight (`RANK_GROUP_MAX`; a last group of one takes one from the
+   group before it, since one candidate cannot be compared, and fewer
+   than two is nothing to compare; one profile alone left without a tier
+   is compared again with the best already tiered). One call per group,
+   with the brief in a few lines (title, role definition, must-haves) and
+   one compact sheet per result, never the person: the decision, the
+   score, the five dimension scores, the requirement rows with the
+   required ones marked, the seniority note, the strengths, the concerns,
+   the second opinion's reason. The model answers a tier per candidate,
+   A (present now: the métier is the role, every must-have met, the
+   second opinion raised nothing major), B (worth a deeper look: a real
+   reservation to check; a required requirement at `unknown` or `partial`
+   is B at most), C (not now: within this group the reservations outweigh
+   what the profile brings next to the others), each with one line saying
+   why relative to the others, and the tiers are not quotas: a group of
+   similar profiles may all be A. `applyRanking()` binds it: a `no_fit`
+   gets C at most, a `borderline` B at most, a `fit` at C becomes
+   `borderline` (never `no_fit`: the team decides), an id the group does
+   not hold is ignored, a line naming what no sentence may is withheld.
+   When the tiering took several groups, one last call compares the A's
+   of every group (eight at most, `finalRankGroup`), so the order of what
+   is presented is one comparison and not several.
+
+The progress line names the stage ("Reading the profiles", "Second
+opinion", "Tiering", "Final tiering") with its count; the person may
+interrupt at any batch, and leaving the page stops the loop. What came
+back is stored: each stage re-reads the `searches` row before writing,
+so one browser's batches add up; two people on the same search is
+last-write-wins between batches, and the loser's entries resume.
+"Resume" reads the stored search and sends what each stage lacks:
+results without an assessment, retained ones without a second opinion,
+retained or borderline ones without a tier; a candidate gone from the
+pool since the search is settled and never sent again. The three stages
+use `LLM_ASSESSMENT_MODEL` (see "Model"), and each call is one `ai_usage`
+row of kind `assess`.
+
+The brief page groups the results: **to present** (`fit` at tier A, or
+`fit` the tiering has not reached), **to dig into** (`borderline`, and
+`fit` at B), **set aside** (`no_fit`, collapsed: never deleted, only out
+of the way, the first requirement at `no` named on each card, the role
+first, else the model's reading with its score), **not analysed**; each
+group sorted by tier, then composite score, then deterministic score. A
+card carries the tier and the decision as pills, the fit ring, the five
+dimensions as a row of small meters with the weight each carries in the
+composite (green from 80, amber from 60; the note on hover, the evidence
+when expanded, an unverified quote marked), the requirement rows with
+their evidence (the role first, as "Métier · Business Developer"), the
+model's reading introduced as the model's, with the composite's make-up
+and the model's own score, the strengths and reservations, the interview
+points behind a toggle, the second opinion, the tiering's line in muted
+text, and the count of withheld sentences; a card to dig into names its
+main reservation (an adjacent métier with its evidence, a must-have not
+stated or met in part, the second opinion's doubt, the first concern).
+Without a model, or when the brief has no criteria, the panel says so and
+shows the deterministic ranking alone. The `why` sentences of analyses
+stored before evolution 2 (`ai_usage` kind `explain`) are still read
+where present; nothing writes them any more.
+
+**What the shortlist and the dossier carry.** The whole reading
+(`Assessment`: the rows, the dimensions, `strengths`, `concerns`,
+`questions`, `tier`, `rankNote`, `challenge`, `modelScore`, `withheld`)
+travels as JSON inside `searches.results` and `shortlist_items.match`,
+no column change; every field is optional, so an assessment stored before
+evolution 3 reads as before and the pages show nothing of what it lacks.
+An item added to the shortlist holds the match of that moment: the
+screening is carried to an item added before its batch returned (the
+server fills an unassessed match only), the second opinion and the tier
+are not carried afterwards. The board shows the tier under the ring (the
+letter; its meaning and the tiering's line on hover, always said to be a
+proposal) and the drawer the recruiter's reading
+(`src/lib/shortlists/requirements.ts`, `recruiterReadingOf()`): the
+dimensions, the line among the retained, the strengths, the reservations
+with the second opinion's doubt marked as the counter-reading, the
+interview points. The dossier (`src/lib/shares/draft.ts`) takes a sheet's
+strengths from the reading's, its attention points from the concerns
+with the doubt as one more point, and its **questions** (up to five,
+`ShareItem.questions`) from the reading's, shown on the sheet under
+"Points to verify in an interview" only when there are some and editable
+point by point in the dialog's review step; the model that refines the
+prose rewords those lists and adds no fact to them; an assessment without
+a reading falls back on the requirement table as before, and a share
+made before the questions existed has none.
+
+**What an analysis costs.** Per profile read, one `assess` call of about
+9 000 characters in and a budget of 1 800 to 3 200 tokens out, growing
+with the number of criteria (the five dimensions, the three lists and one
+row per criterion). A retained profile takes a second call (the same
+input, 400 tokens out). Each group of up to eight retained or borderline
+profiles takes one tiering call (a few thousand characters of sheets,
+120 tokens out per candidate), and the A's of several groups one final
+call. So a presented profile is three to four calls (its screening, its
+second opinion, its group's tiering, the final comparison when there
+were several groups), a borderline one its screening and a share of its
+group's call, a set-aside one a single call. The role profile is one
+`brief` call per brief (1 600 tokens out), written once and again on
+request.
 
 ## Shortlists
 
