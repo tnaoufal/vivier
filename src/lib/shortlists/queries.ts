@@ -99,11 +99,12 @@ export async function readShortlist(
   return { ...(row as unknown as ShortlistRow), briefs: one<ShortlistBrief>(row["briefs"]) };
 }
 
-export const ITEM_CANDIDATE_COLUMNS = "id, full_name, headline, location, skills, confidence";
+/** The photo path rides along for the card's avatar: a signed URL in the browser, never a model's input. */
+export const ITEM_CANDIDATE_COLUMNS = "id, full_name, headline, location, skills, confidence, photo_path";
 
 export type ItemCandidate = Pick<
   CandidateRow,
-  "id" | "full_name" | "headline" | "location" | "skills" | "confidence"
+  "id" | "full_name" | "headline" | "location" | "skills" | "confidence" | "photo_path"
 >;
 
 export interface BoardItem extends ShortlistItemRow {

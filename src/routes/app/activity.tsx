@@ -1,10 +1,11 @@
 /**
  * The whole activity log of the organisation, newest first, fifty rows
- * at a time, filtered by family of kinds, refreshed live.
+ * at a time, filtered by family of kinds (chips with their icons),
+ * grouped by day in one timeline, refreshed live.
  */
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Activity } from "lucide-react";
+import { Activity, ChevronDown } from "lucide-react";
 
 import { ActivityList } from "@/components/activity/activity-list";
 import { FamilyFilter } from "@/components/activity/family-filter";
@@ -35,21 +36,27 @@ function ActivityPage() {
 
   return (
     <>
-      <PageHeader eyebrow={t("nav.activity")} title={t("nav.activity")} description={t("activity.subtitle")} />
+      <PageHeader eyebrow={org.name} title={t("nav.activity")} description={t("activity.subtitle")} />
       <div className="mb-6">
         <FamilyFilter value={family} onChange={setFamily} />
       </div>
-      {feed.error ? <p className="mb-4 text-sm text-negative">{t("common.error")}</p> : null}
+      {feed.error ? (
+        <p className="mb-4 text-sm text-negative" role="alert">
+          {t("common.error")}
+        </p>
+      ) : null}
       <ActivityList
         rows={feed.rows}
         names={names}
         loading={feed.loading}
-        emptyState={<EmptyState icon={<Activity />} title={family ? t("activity.emptyFiltered") : t("activity.empty")} />}
+        emptyState={
+          <EmptyState icon={<Activity />} title={family ? t("activity.emptyFiltered") : t("activity.empty")} text={t("dashboard.activity.empty.text")} />
+        }
       />
       {feed.hasMore ? (
         <div className="mt-6 flex justify-center">
-          <Button variant="outline" onClick={() => void feed.loadMore()} disabled={feed.loadingMore}>
-            {t("activity.loadMore")}
+          <Button variant="outline" icon={<ChevronDown />} onClick={() => void feed.loadMore()} disabled={feed.loadingMore}>
+            {feed.loadingMore ? t("common.loading") : t("activity.loadMore")}
           </Button>
         </div>
       ) : null}

@@ -1,7 +1,8 @@
 /**
  * The signed-in area. Without a session the sign-in page takes over;
  * without an organisation the onboarding form does. Every child page
- * renders inside the shell with the organisation context loaded.
+ * renders inside the shell with the organisation context loaded; the
+ * shell animates each page change.
  */
 import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
@@ -23,9 +24,9 @@ export const Route = createFileRoute("/app")({
 /** The whole page while the session or the organisation loads: the brand and one sentence, never a bare spinner. */
 function Splash({ text }: { text: string }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-4">
+    <div className="fade-in flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-4">
       <BrandMark size="md" />
-      <p className="text-[15px] leading-6 text-muted-foreground" aria-live="polite">
+      <p className="text-body text-muted-foreground" aria-live="polite">
         {text}
       </p>
     </div>

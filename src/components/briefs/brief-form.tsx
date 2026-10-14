@@ -1,5 +1,5 @@
 /**
- * The brief itself: title, description and status, edited in place and
+ * The brief itself: title, the need and the status, edited in place and
  * saved as one update under RLS. The form follows the row it shows
  * until the person starts typing; a save answers with the refreshed row.
  */
@@ -8,7 +8,13 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { DESCRIPTION_MAX, TITLE_MAX, updateBrief } from "@/lib/briefs/queries";
@@ -44,7 +50,8 @@ export function BriefForm({
     setStatus(brief.status);
   }, [brief.id, brief.updated_at, brief.title, brief.description, brief.status]);
 
-  const dirty = title !== brief.title || description !== brief.description || status !== brief.status;
+  const dirty =
+    title !== brief.title || description !== brief.description || status !== brief.status;
   const valid = title.trim().length > 0;
 
   async function submit(event: FormEvent) {
@@ -69,10 +76,12 @@ export function BriefForm({
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="sheet space-y-6 p-6">
+    <form onSubmit={(event) => void submit(event)} className="sheet space-y-5 p-6">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-xl text-ink">{t("briefs.part.brief")}</h2>
-        {canEdit && dirty ? <span className="text-[13px] text-muted-foreground">{t("briefs.form.unsaved")}</span> : null}
+        <h2 className="text-base font-semibold text-ink">{t("briefs.part.brief")}</h2>
+        {canEdit && dirty ? (
+          <span className="text-meta text-muted-foreground">{t("briefs.form.unsaved")}</span>
+        ) : null}
       </div>
       <div className="space-y-2">
         <Label htmlFor="brief-title">{t("briefs.form.title")}</Label>
@@ -94,10 +103,10 @@ export function BriefForm({
           onChange={(event) => setDescription(event.target.value)}
           placeholder={t("briefs.form.description.placeholder")}
           maxLength={DESCRIPTION_MAX}
-          rows={8}
+          rows={7}
           disabled={!canEdit || busy}
         />
-        <p className="text-[13px] text-muted-foreground">{t("briefs.form.description.help")}</p>
+        <p className="text-meta text-muted-foreground">{t("briefs.form.description.help")}</p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="brief-status">{t("briefs.form.status")}</Label>

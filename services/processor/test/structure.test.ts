@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_SKILLS,
   ModelProfileSchema,
   STRUCTURE_SYSTEM_PROMPT,
   anchorOrganisationOf,
@@ -192,6 +193,14 @@ describe("mergeProfiles", () => {
     expect(empty.full_name).toBe("Marie Dupont");
   });
 
+  it("keeps a long list an existing candidate holds: the merge unions, it never trims", () => {
+    const long = Array.from({ length: 60 }, (_, i) => `skill ${i}`);
+    const merged = mergeProfiles(profile({ skills: long }), profile({ skills: ["skill 1", "new skill"] }));
+    expect(merged.skills).toHaveLength(61);
+    expect(merged.skills[0]).toBe("skill 0");
+    expect(merged.skills[60]).toBe("new skill");
+  });
+
   it("unions skills and tags case-insensitively and replaces lists when the new ones are at least as sure", () => {
     const incoming = profile({
       skills: ["sql", "Power BI"],
@@ -276,6 +285,21 @@ describe("ModelProfileSchema", () => {
     }
     expect(STRUCTURE_SYSTEM_PROMPT).toContain('"document_kind"');
     expect(STRUCTURE_SYSTEM_PROMPT).toContain('"kind_reason"');
+  });
+
+  it("keeps the first 24 skills, the most central, and asks the model for a recruiter's list", () => {
+    const skills = Array.from({ length: 40 }, (_, i) => `skill ${i}`);
+    const result = ModelProfileSchema.safeParse({ skills });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(MAX_SKILLS).toBe(24);
+    expect(result.data.skills).toHaveLength(MAX_SKILLS);
+    expect(result.data.skills[0]).toBe("skill 0");
+    expect(result.data.skills[23]).toBe("skill 23");
+    expect(STRUCTURE_SYSTEM_PROMPT).toContain("8 to 20 skills");
+    expect(STRUCTURE_SYSTEM_PROMPT).toContain("from the most central to the least");
+    expect(STRUCTURE_SYSTEM_PROMPT).toContain("Never document names");
+    expect(STRUCTURE_SYSTEM_PROMPT).toContain('"communication"');
   });
 
   it("rejects an answer of the wrong shape", () => {

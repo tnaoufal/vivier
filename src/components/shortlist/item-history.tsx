@@ -1,7 +1,8 @@
 /**
  * What happened to a shortlist item, newest first, as sentences built
  * by the activity area's describer: who added, decided, assigned,
- * commented, with the moment. Nothing is shown that the log does not say.
+ * commented, with the moment on a thin rail. Nothing is shown that the
+ * log does not say.
  */
 import { History } from "lucide-react";
 
@@ -24,7 +25,7 @@ export function ItemHistory({
   const { t, locale } = useI18n();
   return (
     <section className="space-y-3">
-      <h3 className="text-base font-semibold leading-6 text-ink">{t("shortlists.history.title")}</h3>
+      <h3 className="text-base font-semibold text-ink">{t("shortlists.history.title")}</h3>
       {error ? (
         <p className="text-sm text-negative">{t("shortlists.history.error")}</p>
       ) : loading && rows.length === 0 ? (
@@ -34,19 +35,23 @@ export function ItemHistory({
           ))}
         </div>
       ) : rows.length === 0 ? (
-        <div className="flex items-center gap-3 rounded-2xl border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
+        <div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
           <History className="size-4 shrink-0" aria-hidden="true" />
           {t("shortlists.history.empty")}
         </div>
       ) : (
-        <ol className="divide-y divide-border">
+        <ol className="stagger relative border-l border-border pl-5">
           {rows.map((row) => (
-            <li key={row.id} className="py-2.5 text-sm leading-5 text-ink break-words">
+            <li key={row.id} className="rise-in relative pb-4 text-sm text-ink break-words last:pb-0">
+              <span
+                aria-hidden="true"
+                className="absolute -left-6 top-1.5 size-2 rounded-full border-2 border-primary bg-card"
+              />
               {describeActivity(row, locale, names)}
               <time
                 dateTime={row.created_at}
                 title={formatDateTime(locale, row.created_at)}
-                className="ml-2 whitespace-nowrap text-[13px] text-muted-foreground"
+                className="ml-2 whitespace-nowrap text-meta text-muted-foreground"
               >
                 {formatRelative(locale, row.created_at)}
               </time>

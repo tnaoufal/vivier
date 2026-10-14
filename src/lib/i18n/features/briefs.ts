@@ -14,6 +14,12 @@ const fr = {
   "briefs.list.criteria.many": "{count} critères",
   "briefs.list.updated": "Mis à jour le {date}",
   "briefs.list.noDescription": "Sans description",
+  "briefs.list.filter": "Filtrer par statut",
+  "briefs.filters.clear": "Effacer le filtre",
+  "briefs.list.analysis.none": "Aucune analyse",
+  "briefs.list.analysis.ranked.none": "Dernière analyse sans résultat",
+  "briefs.list.analysis.ranked.one": "1 profil classé",
+  "briefs.list.analysis.ranked.many": "{count} profils classés",
   "briefs.listError": "La liste n'a pas pu être chargée.",
   "briefs.empty.title": "Aucun brief pour l'instant",
   "briefs.empty.text":
@@ -27,6 +33,8 @@ const fr = {
     "Un titre et le besoin en texte libre. Les critères viennent ensuite, proposés par le modèle quand il y en a un, validés par vous.",
   "briefs.new.create": "Créer le brief",
   "briefs.new.created": "Brief créé.",
+  "briefs.new.forbidden":
+    "Votre rôle ne permet pas de créer un brief. Demandez à un administrateur.",
 
   // the brief page
   "briefs.back": "Retour aux briefs",
@@ -34,7 +42,7 @@ const fr = {
   "briefs.notFound.text": "Il a peut-être été supprimé, ou le lien est incomplet.",
   "briefs.loadError": "Le brief n'a pas pu être chargé.",
   "briefs.part.brief": "Le brief",
-  "briefs.part.search": "Rechercher dans le vivier",
+  "briefs.part.search": "Analyse du vivier",
   "briefs.delete": "Supprimer le brief",
   "briefs.delete.title": "Supprimer ce brief ?",
   "briefs.delete.text":
@@ -114,11 +122,16 @@ const fr = {
 
   // search and analysis
   "briefs.search.help":
-    "L'analyse lit chaque profil du vivier jusqu'à {max} profils actifs ; au-delà, les {limit} profils les plus proches du brief. Chaque CV est lu comme un recruteur senior le ferait : le métier d'abord, d'après ce que la personne a fait, puis le niveau, le contexte, la trajectoire et les réalisations, et chaque exigence du brief une par une. Les profils retenus passent une contre-expertise, puis sont comparés entre eux par groupes de huit, puis les meilleurs entre eux, et classés. L'analyse propose, l'équipe retient.",
+    "Chaque profil actif du vivier (jusqu'à {max} ; au-delà, les {limit} plus proches du brief) est lu comme un recruteur senior le ferait : le métier d'abord, puis chaque exigence, une contre-expertise et un classement. L'analyse propose, l'équipe retient.",
   "briefs.search.progress.read": "Lecture des profils : {done} / {total}",
   "briefs.search.progress.challenge": "Contre-expertise : {done} / {total}",
   "briefs.search.progress.rank": "Classement : {done} / {total}",
   "briefs.search.progress.final": "Classement final : {done} / {total}",
+  "briefs.search.stage.read": "Lecture des profils",
+  "briefs.search.stage.challenge": "Contre-expertise",
+  "briefs.search.stage.rank": "Classement",
+  "briefs.search.stage.final": "Classement final",
+  "briefs.search.stage.count": "{done} sur {total}",
   "briefs.search.check.profile":
     "Le modèle a écrit le profil du poste à partir du brief. Vérifiez le métier et ses missions, puis lancez la lecture des profils.",
   "briefs.search.check.criteria":
@@ -173,6 +186,7 @@ const fr = {
   "briefs.search.nofit.assessed.many": "{count} profils analysés",
   "briefs.search.nofit.missing": "exigence la plus souvent manquante : {label}",
   "briefs.search.loadFailed": "Cette analyse n'a pas pu être rouverte.",
+  "briefs.search.openLatest": "Ouvrir la dernière analyse",
 
   // result sections
   "briefs.section.present": "À présenter",
@@ -225,7 +239,6 @@ const fr = {
   "briefs.results.addedToast": "Ajouté à la shortlist.",
   "briefs.results.alreadyAdded": "Ce candidat est déjà dans la shortlist.",
   "briefs.results.seeShortlist": "Voir la shortlist",
-  "briefs.results.openCandidate": "Voir la fiche",
   "briefs.decision.fit": "Correspond",
   "briefs.decision.borderline": "À vérifier",
   "briefs.decision.no_fit": "Ne correspond pas",
@@ -328,6 +341,12 @@ const en = {
   "briefs.list.criteria.many": "{count} criteria",
   "briefs.list.updated": "Updated on {date}",
   "briefs.list.noDescription": "No description",
+  "briefs.list.filter": "Filter by status",
+  "briefs.filters.clear": "Clear the filter",
+  "briefs.list.analysis.none": "No analysis yet",
+  "briefs.list.analysis.ranked.none": "Last analysis without a result",
+  "briefs.list.analysis.ranked.one": "1 profile ranked",
+  "briefs.list.analysis.ranked.many": "{count} profiles ranked",
   "briefs.listError": "The list could not be loaded.",
   "briefs.empty.title": "No brief yet",
   "briefs.empty.text":
@@ -340,13 +359,14 @@ const en = {
     "A title and the need as free text. The criteria come next, proposed by the model when there is one, validated by you.",
   "briefs.new.create": "Create the brief",
   "briefs.new.created": "Brief created.",
+  "briefs.new.forbidden": "Your role does not allow creating a brief. Ask an administrator.",
 
   "briefs.back": "Back to briefs",
   "briefs.notFound.title": "This brief does not exist",
   "briefs.notFound.text": "It may have been deleted, or the link is incomplete.",
   "briefs.loadError": "The brief could not be loaded.",
   "briefs.part.brief": "The brief",
-  "briefs.part.search": "Search the talent pool",
+  "briefs.part.search": "Analysis of the talent pool",
   "briefs.delete": "Delete the brief",
   "briefs.delete.title": "Delete this brief?",
   "briefs.delete.text":
@@ -420,11 +440,16 @@ const en = {
     "{count} proposal(s) set aside: they were about a protected characteristic.",
 
   "briefs.search.help":
-    "The analysis reads every profile of the talent pool up to {max} active profiles; beyond that, the {limit} profiles closest to the brief. Every CV is read the way a senior recruiter would: the role first, from what the person did, then the level, the context, the trajectory and the achievements, and every requirement of the brief one by one. The retained profiles get a second opinion, then are compared with each other in groups of eight, then the best among themselves, and tiered. The analysis proposes, the team retains.",
+    "Every active profile of the talent pool (up to {max}; beyond that, the {limit} closest to the brief) is read the way a senior recruiter would: the role first, then every requirement, a second opinion and a tiering. The analysis proposes, the team retains.",
   "briefs.search.progress.read": "Reading the profiles: {done} / {total}",
   "briefs.search.progress.challenge": "Second opinion: {done} / {total}",
   "briefs.search.progress.rank": "Tiering: {done} / {total}",
   "briefs.search.progress.final": "Final tiering: {done} / {total}",
+  "briefs.search.stage.read": "Reading the profiles",
+  "briefs.search.stage.challenge": "Second opinion",
+  "briefs.search.stage.rank": "Tiering",
+  "briefs.search.stage.final": "Final tiering",
+  "briefs.search.stage.count": "{done} of {total}",
   "briefs.search.check.profile":
     "The model wrote the role profile from the brief. Check the role and its missions, then start reading the profiles.",
   "briefs.search.check.criteria":
@@ -478,6 +503,7 @@ const en = {
   "briefs.search.nofit.assessed.many": "{count} profiles analysed",
   "briefs.search.nofit.missing": "requirement most often missing: {label}",
   "briefs.search.loadFailed": "This analysis could not be reopened.",
+  "briefs.search.openLatest": "Open the latest analysis",
 
   "briefs.section.present": "To present",
   "briefs.section.present.help":
@@ -527,7 +553,6 @@ const en = {
   "briefs.results.addedToast": "Added to the shortlist.",
   "briefs.results.alreadyAdded": "This candidate is already on the shortlist.",
   "briefs.results.seeShortlist": "See the shortlist",
-  "briefs.results.openCandidate": "Open the profile",
   "briefs.decision.fit": "Matches",
   "briefs.decision.borderline": "To check",
   "briefs.decision.no_fit": "Does not match",

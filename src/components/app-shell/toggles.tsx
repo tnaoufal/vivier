@@ -1,3 +1,8 @@
+/**
+ * The two toggles of the sidebar, both 40px high: the theme (one icon,
+ * named for what it switches to) and the language (the code of the other
+ * language, as the dictionary writes it, next to one icon).
+ */
 import { Languages, Moon, Sun } from "lucide-react";
 
 import { useTheme } from "@/components/theme-context";
@@ -21,14 +26,14 @@ export function LocaleToggle() {
   return (
     <Button
       variant="ghost"
-      size="sm"
+      size="md"
+      icon={<Languages />}
       onClick={() => setLocale(next)}
-      aria-label={t("common.language")}
-      title={t("common.language")}
-      className="gap-1.5 uppercase"
+      aria-label={`${t("common.language")} · ${t(`common.locale.${next}`)}`}
+      title={t(`common.locale.${next}`)}
+      className="px-3"
     >
-      <Languages />
-      {next}
+      {t(`common.locale.code.${next}`)}
     </Button>
   );
 }

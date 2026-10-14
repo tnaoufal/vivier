@@ -1,17 +1,27 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  KEY_SKILLS,
   confidenceTone,
+  currentPosition,
   dateInputToIso,
   dateInputValue,
   displayName,
+  distinctSkills,
   distinctTags,
   documentTone,
+  durationLabel,
+  durationMonths,
   formatBytes,
   formatCount,
   formatDateRange,
+  formatDuration,
+  keySkills,
   languagesLine,
+  metaLine,
+  monthIndex,
   needsReview,
+  parseYearsMin,
   topSkills,
   yearsLabel,
 } from "./format";
@@ -93,6 +103,14 @@ describe("yearsLabel", () => {
     expect(yearsLabel("en", 0.5)).toBe("0.5 years");
     expect(yearsLabel("en", null)).toBe("");
   });
+
+  it("agrees the unit with the rounded figure it shows", () => {
+    expect(yearsLabel("fr", 1.96)).toBe("2 ans");
+    expect(yearsLabel("fr", 1.04)).toBe("1 an");
+    expect(yearsLabel("en", 1.04)).toBe("1 year");
+    expect(yearsLabel("en", 0.96)).toBe("1 year");
+    expect(yearsLabel("en", 1.96)).toBe("2 years");
+  });
 });
 
 describe("row summaries", () => {
@@ -120,6 +138,26 @@ describe("row summaries", () => {
     expect(distinctTags([{ tags: ["b", "a"] }, { tags: ["a", " c "] }])).toEqual(["b", "a", "c"]);
   });
 
+  it("collects distinct skills in order, for the filter's suggestions", () => {
+    expect(distinctSkills([{ skills: ["Python", " SQL "] }, { skills: ["SQL", "", "dbt"] }])).toEqual([
+      "Python",
+      "SQL",
+      "dbt",
+    ]);
+    expect(distinctSkills([])).toEqual([]);
+  });
+
+  it("keeps the three key skills the CV put first", () => {
+    expect(KEY_SKILLS).toBe(3);
+    expect(keySkills(["Figma", " ", "Design systems", "Prototypage", "Recherche"])).toEqual([
+      "Figma",
+      "Design systems",
+      "Prototypage",
+    ]);
+    expect(keySkills(["a", "b"], 1)).toEqual(["a"]);
+    expect(keySkills(undefined)).toEqual([]);
+  });
+
   it("tones a document status", () => {
     expect(documentTone("processed")).toBe("positive");
     expect(documentTone("failed")).toBe("negative");
@@ -131,6 +169,18 @@ describe("row summaries", () => {
   });
 });
 
+describe("parseYearsMin", () => {
+  it("reads a whole number of years and nothing else", () => {
+    expect(parseYearsMin(" 5 ")).toBe(5);
+    expect(parseYearsMin("70")).toBe(70);
+    expect(parseYearsMin("0")).toBeNull();
+    expect(parseYearsMin("71")).toBeNull();
+    expect(parseYearsMin("2.5")).toBeNull();
+    expect(parseYearsMin("")).toBeNull();
+    expect(parseYearsMin("abc")).toBeNull();
+  });
+});
+
 describe("date inputs", () => {
   it("round-trips a day", () => {
     expect(dateInputValue("2026-10-13T08:00:00.000Z")).toBe("2026-10-13");
@@ -138,5 +188,104 @@ describe("date inputs", () => {
     expect(dateInputToIso("2026-10-13")).toBe("2026-10-13T12:00:00.000Z");
     expect(dateInputToIso("")).toBeNull();
     expect(dateInputToIso("13/10/2026")).toBeNull();
+  });
+});
+
+describe("currentPosition", () => {
+  const experience = (title: string, company: string | null, end: string | null) => ({
+    title,
+    company,
+    start: "2020-01",
+    end,
+    description: null,
+  });
+
+  it("reads the first experience without an end", () => {
+    expect(
+      currentPosition({
+        headline: "Designer",
+        experiences: [
+          experience("Lead designer", "Acme ", null),
+          experience("Designer", "Beta", null),
+        ],
+      }),
+    ).toEqual({ title: "Lead designer", company: "Acme" });
+  });
+
+  it("skips ended positions and empty titles, then falls back to the headline", () => {
+    expect(
+      currentPosition({
+        headline: " Product designer ",
+        experiences: [experience("Designer", "Beta", "2023-06"), experience("  ", "Gamma", null)],
+      }),
+    ).toEqual({ title: "Product designer", company: null });
+    // An end that is not a date is still a value the CV wrote: the position ended.
+    expect(
+      currentPosition({ headline: null, experiences: [experience("Designer", "Beta", "present")] }),
+    ).toBeNull();
+    expect(currentPosition({ headline: "  ", experiences: [] })).toBeNull();
+    expect(currentPosition({ headline: null })).toBeNull();
+  });
+
+  it("leaves the company null when the CV names none", () => {
+    expect(currentPosition({ headline: null, experiences: [experience("Freelance", "", null)] })).toEqual({
+      title: "Freelance",
+      company: null,
+    });
+  });
+});
+
+describe("metaLine", () => {
+  it("joins what the CV states, in order, and nothing else", () => {
+    expect(metaLine("fr", { location: "Paris", years_experience: 6, availability: "Janvier" })).toBe(
+      "Paris · 6 ans · Janvier",
+    );
+    expect(metaLine("en", { location: " Lyon ", years_experience: null, availability: null })).toBe("Lyon");
+    expect(metaLine("en", { location: null, years_experience: 1, availability: " " })).toBe("1 year");
+    expect(metaLine("fr", { location: null, years_experience: null, availability: null })).toBe("");
+  });
+});
+
+describe("durations", () => {
+  const now = new Date("2026-10-14T12:00:00Z");
+
+  it("indexes a month, a year alone at its first or last month", () => {
+    expect(monthIndex("2021-06", "start")).toBe(2021 * 12 + 5);
+    expect(monthIndex("2021", "start")).toBe(2021 * 12);
+    expect(monthIndex("2021", "end")).toBe(2021 * 12 + 11);
+    expect(monthIndex("2021-13", "end")).toBeNull();
+    expect(monthIndex("present", "end")).toBeNull();
+    expect(monthIndex(" ", "end")).toBeNull();
+    expect(monthIndex("20211", "start")).toBeNull();
+  });
+
+  it("counts both ends and runs to today when the end is empty", () => {
+    expect(durationMonths("2019-01", "2019-12")).toBe(12);
+    expect(durationMonths("2019", "2019")).toBe(12);
+    expect(durationMonths("2021-06", null, now)).toBe(65);
+    expect(durationMonths("2026-10", "", now)).toBe(1);
+  });
+
+  it("estimates nothing it cannot read", () => {
+    expect(durationMonths(null, "2020")).toBeNull();
+    expect(durationMonths("2020", "present")).toBeNull();
+    expect(durationMonths("2022-03", "2021-01")).toBeNull();
+  });
+
+  it("speaks both languages and agrees the units", () => {
+    expect(durationLabel("fr", 1)).toBe("1 mois");
+    expect(durationLabel("fr", 12)).toBe("1 an");
+    expect(durationLabel("fr", 28)).toBe("2 ans 4 mois");
+    expect(durationLabel("en", 1)).toBe("1 month");
+    expect(durationLabel("en", 13)).toBe("1 year 1 month");
+    expect(durationLabel("en", 36)).toBe("3 years");
+    expect(durationLabel("en", 0)).toBe("");
+    expect(durationLabel("en", null)).toBe("");
+  });
+
+  it("formats an experience's duration in one call", () => {
+    expect(formatDuration("fr", "2021-06", null, now)).toBe("5 ans 5 mois");
+    expect(formatDuration("en", "2019", "2019")).toBe("1 year");
+    expect(formatDuration("en", null, null)).toBe("");
   });
 });

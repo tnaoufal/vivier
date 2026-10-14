@@ -1,3 +1,8 @@
+/**
+ * A yes/no question before something hard to undo: a small dialog with
+ * the question as its title, one sentence of consequence, cancel on the
+ * left and the one confirming button (negative when destructive).
+ */
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -11,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import { useT } from "@/lib/i18n";
 
-/** A yes/no question before something hard to undo. */
 export function ConfirmDialog({
   open,
   onOpenChange,
@@ -34,7 +38,7 @@ export function ConfirmDialog({
   const t = useT();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {text ? <DialogDescription>{text}</DialogDescription> : null}
@@ -43,7 +47,11 @@ export function ConfirmDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             {t("common.cancel")}
           </Button>
-          <Button variant={destructive ? "destructive" : "default"} onClick={() => void onConfirm()} disabled={busy}>
+          <Button
+            variant={destructive ? "destructive" : "primary"}
+            onClick={() => void onConfirm()}
+            disabled={busy}
+          >
             {confirmLabel ?? t("common.confirm")}
           </Button>
         </DialogFooter>

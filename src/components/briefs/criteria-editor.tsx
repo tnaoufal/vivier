@@ -14,7 +14,15 @@ import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { requireSupabase } from "@/lib/auth/supabase-client";
-import { cleanCriteria, CRITERIA_MAX, emptyCriterion, hasSimilar, isComplete, roleCriterion, sameCriteria } from "@/lib/briefs/criteria";
+import {
+  cleanCriteria,
+  CRITERIA_MAX,
+  emptyCriterion,
+  hasSimilar,
+  isComplete,
+  roleCriterion,
+  sameCriteria,
+} from "@/lib/briefs/criteria";
 import { updateBrief } from "@/lib/briefs/queries";
 import { roleDefinitionOf } from "@/lib/briefs/role-profile";
 import type { BriefCriterion, BriefRow } from "@/lib/db/types";
@@ -54,7 +62,9 @@ export function CriteriaEditor({
   useEffect(() => {
     const previous = seen.current;
     seen.current = brief.criteria;
-    setRows((current) => (sameCriteria(cleanCriteria(current), previous) ? brief.criteria : current));
+    setRows((current) =>
+      sameCriteria(cleanCriteria(current), previous) ? brief.criteria : current,
+    );
   }, [brief.criteria]);
 
   useEffect(() => {
@@ -70,7 +80,9 @@ export function CriteriaEditor({
   }
 
   function addRow() {
-    setRows((current) => (current.length >= CRITERIA_MAX ? current : [...current, emptyCriterion()]));
+    setRows((current) =>
+      current.length >= CRITERIA_MAX ? current : [...current, emptyCriterion()],
+    );
   }
 
   /**
@@ -118,39 +130,74 @@ export function CriteriaEditor({
   }
 
   return (
-    <section className="sheet space-y-6 p-6">
-      <div>
-        <h2 className="font-display text-xl text-ink">{t("briefs.criteria.title")}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{t("briefs.criteria.help")}</p>
+    <section className="sheet space-y-5 p-6">
+      <div className="min-w-0">
+        <h2 className="text-base font-semibold text-ink">
+          {t("briefs.criteria.title")}
+          {rows.length ? (
+            <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">
+              {rows.length}
+            </span>
+          ) : null}
+        </h2>
+        <p className="mt-1 text-meta text-muted-foreground">{t("briefs.criteria.help")}</p>
       </div>
       {canEdit ? (
-        <CriteriaProposals orgId={brief.org_id} briefId={brief.id} modelAvailable={modelAvailable} disabled={busy} onAdd={addProposals} />
+        <CriteriaProposals
+          orgId={brief.org_id}
+          briefId={brief.id}
+          modelAvailable={modelAvailable}
+          disabled={busy}
+          onAdd={addProposals}
+        />
       ) : null}
       {rows.length ? (
         <ul className="divide-y divide-border">
           {rows.map((row) => (
             <li key={row.id} className="space-y-2 py-4 first:pt-0 last:pb-0">
-              <CriterionRow criterion={row} canEdit={canEdit} disabled={busy} roleDefinition={row.id === roleId ? roleDefinition : null} onChange={update} onRemove={() => remove(row.id)} />
+              <CriterionRow
+                criterion={row}
+                canEdit={canEdit}
+                disabled={busy}
+                roleDefinition={row.id === roleId ? roleDefinition : null}
+                onChange={update}
+                onRemove={() => remove(row.id)}
+              />
               {row.kind === "role" && row.id !== roleId ? (
-                <p className="text-[13px] leading-5 text-caution-foreground dark:text-caution">{t("briefs.criteria.role.duplicate")}</p>
+                <p className="text-meta text-caution-foreground dark:text-caution">
+                  {t("briefs.criteria.role.duplicate")}
+                </p>
               ) : null}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="rounded-2xl border border-dashed border-border px-6 py-8 text-center text-sm text-muted-foreground">
-          {t("briefs.criteria.empty")}
-        </p>
+        <p className="text-body text-muted-foreground">{t("briefs.criteria.empty")}</p>
       )}
       {canEdit ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={addRow} disabled={busy || rows.length >= CRITERIA_MAX} className="gap-1">
-            <Plus />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            icon={<Plus />}
+            onClick={addRow}
+            disabled={busy || rows.length >= CRITERIA_MAX}
+          >
             {t("briefs.criteria.add")}
           </Button>
-          <div className="flex items-center gap-3">
-            {incomplete ? <span className="text-[13px] text-muted-foreground">{t("briefs.criteria.incomplete")}</span> : null}
-            <Button type="button" variant="outline" onClick={() => void save()} disabled={busy || !dirty}>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {incomplete ? (
+              <span className="text-meta text-muted-foreground">
+                {t("briefs.criteria.incomplete")}
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void save()}
+              disabled={busy || !dirty}
+            >
               {t("briefs.criteria.save")}
             </Button>
           </div>

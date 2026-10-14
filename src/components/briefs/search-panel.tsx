@@ -28,12 +28,18 @@
  * what one search reads, the line under the results says how many
  * profiles were looked at. Previous analyses reopen from their stored
  * results, assessments included; one run before the brief had its role
- * says so, since its verdicts never judged the métier.
+ * says so, since its verdicts never judged the métier. The cards rise
+ * in once, in the order they land: a batch that returns unfolds card by
+ * card, a card already on screen never moves again, a reopened analysis
+ * unfolds afresh. A stored analysis that could not be reopened says so
+ * in place of the results and offers to try again; one that landed
+ * while nothing was open offers to open it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Search, SearchX } from "lucide-react";
+import { BookOpen, Play, SearchX, Sparkles, TriangleAlert } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
+import { Section } from "@/components/app-shell/section";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -43,6 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { ASSESS_BATCH_MAX, bucketResults, mostMissingRequirement } from "@/lib/briefs/assessment";
@@ -55,6 +62,7 @@ import {
 } from "@/lib/briefs/briefs.functions";
 import { kindKey, roleCriterion } from "@/lib/briefs/criteria";
 import { rankResults } from "@/lib/briefs/matching";
+import { arrivalIndexes, type ResultGroupName } from "@/lib/briefs/presentation";
 import { FULL_POOL_MAX, RETRIEVAL_LIMIT } from "@/lib/briefs/prompts";
 import {
   addShortlistItem,
@@ -78,6 +86,7 @@ import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
 import type { BriefCriterion, BriefRow, MatchResult, SearchMethod } from "@/lib/db/types";
 import { formatDateTime, useI18n } from "@/lib/i18n";
+import { staggerVars } from "@/lib/motion";
 import { errorMessage, withToken } from "@/lib/platform/call";
 import { toast } from "@/lib/toast";
 
@@ -116,16 +125,16 @@ interface PendingCheck {
 
 function ResultSkeleton() {
   return (
-    <ul className="space-y-6">
+    <ul className="space-y-4" aria-busy="true" aria-hidden="true">
       {Array.from({ length: 3 }, (_, index) => (
         <li key={index} className="sheet flex gap-4 p-6">
-          <div className="skeleton size-10 rounded-full" />
-          <div className="flex-1 space-y-3">
-            <div className="skeleton h-4 w-1/3 rounded" />
-            <div className="skeleton h-3 w-2/3 rounded" />
-            <div className="skeleton h-10 w-full rounded-xl" />
+          <Skeleton className="size-11 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-3">
+            <Skeleton className="h-4 w-1/3 max-w-48" />
+            <Skeleton className="h-3 w-2/3 max-w-80" />
+            <Skeleton className="h-10 w-full rounded-lg" />
           </div>
-          <div className="skeleton size-14 rounded-full" />
+          <Skeleton className="size-14 shrink-0 rounded-full" />
         </li>
       ))}
     </ul>
@@ -152,6 +161,9 @@ export function SearchPanel({
   const [progress, setProgress] = useState<Progress | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
   const [autoOpened, setAutoOpened] = useState(false);
+  // The stored analysis that could not be reopened (a toast said so): the
+  // panel offers to try it again instead of pretending nothing ran.
+  const [openFailed, setOpenFailed] = useState<string | null>(null);
   const [needsCheck, setNeedsCheck] = useState<PendingCheck | null>(null);
   // The run token: each analysis loop owns one; interrupting, starting
   // another, or leaving the page changes it and the loop stops at its next call.
@@ -161,6 +173,13 @@ export function SearchPanel({
   currentRef.current = current;
   const assessing = useRef(false);
   assessing.current = progress !== null;
+  // The turn each card took when it landed, per analysis: a card keeps
+  // its turn across renders (so it never animates twice), a new batch
+  // counts from zero, and another analysis starts afresh.
+  const turns = useRef<{ searchId: string | null; map: Map<string, number> }>({
+    searchId: null,
+    map: new Map(),
+  });
 
   const searches = useQuery(`brief-searches:${brief.id}`, async () =>
     listSearches(await requireSupabase(), brief.org_id, brief.id),
@@ -211,6 +230,7 @@ export function SearchPanel({
   const open = useCallback(
     async (searchId: string) => {
       setOpening(searchId);
+      setOpenFailed(null);
       // Another analysis opened: the check waiting on the previous one no longer applies.
       setNeedsCheck((pending) => (pending && pending.searchId === searchId ? pending : null));
       try {
@@ -227,6 +247,7 @@ export function SearchPanel({
         }
       } catch (error) {
         console.error(error);
+        setOpenFailed(searchId);
         toast.error(t("briefs.search.loadFailed"));
       } finally {
         setOpening(null);
@@ -534,26 +555,51 @@ export function SearchPanel({
     roleCriterion(brief.criteria) !== null &&
     roleCriterion(current.criteria) === null;
 
+  const candidatesPending = ids.length > 0 && rows === null && candidates.error === null;
+
+  // The one filled button of the page: the analysis, unless the model's
+  // understanding of the job waits for the team's check, when "read the
+  // profiles" is the next step and takes the filled look.
   const runButton = canEdit ? (
     <Button
       type="button"
+      variant={pendingCheck ? "outline" : "primary"}
+      icon={<Sparkles />}
       onClick={() => void run()}
       disabled={busy || criteriaDirty}
-      className="gap-1.5"
     >
-      <Search />
       {running ? t("briefs.search.running") : t("briefs.search.run")}
     </Button>
   ) : null;
 
-  const candidatesPending = ids.length > 0 && rows === null && candidates.error === null;
+  const resumeButton =
+    canResume && current ? (
+      <Button
+        type="button"
+        variant="outline"
+        icon={<Play />}
+        onClick={() => void analyse(current, settledIds)}
+      >
+        {t("briefs.search.resume")}
+      </Button>
+    ) : null;
 
-  function cards(list: readonly MatchResult[], muted = false) {
+  /** The cards of one group, each rising in at the turn it took when it landed. */
+  function cards(list: readonly MatchResult[], group: ResultGroupName, muted = false) {
     if (!current) return null;
+    if (turns.current.searchId !== current.id)
+      turns.current = { searchId: current.id, map: new Map() };
+    const keys = list.map((result) => `${group}:${result.candidateId}`);
+    const next = arrivalIndexes(turns.current.map, keys);
+    for (const [key, turn] of next) turns.current.map.set(key, turn);
     return (
-      <ul className="space-y-6">
+      <ul className="space-y-4">
         {list.map((result) => (
-          <li key={result.candidateId}>
+          <li
+            key={result.candidateId}
+            className="rise-in"
+            style={staggerVars(next.get(`${group}:${result.candidateId}`) ?? 0)}
+          >
             <ResultCard
               result={result}
               criteria={current.criteria}
@@ -561,6 +607,7 @@ export function SearchPanel({
               shortlistId={shortlistId}
               added={addedIds.has(result.candidateId)}
               canEdit={canEdit}
+              group={group}
               muted={muted}
               onAdd={() => add(result)}
             />
@@ -613,34 +660,32 @@ export function SearchPanel({
    * as batches return while a stage runs (the stage and its count are
    * on the progress line above the results, said once), the calm zero
    * once every stage ran, or, between the two, why the list is not
-   * final yet. The zero keeps the look of an EmptyState with its
+   * final yet. The zero keeps the look of a compact EmptyState with its
    * headline as a paragraph: the group's own title is the heading.
    */
   function presentEmpty(view: SearchView) {
     if (progress) {
       return (
-        <p className="sheet p-6 text-sm text-muted-foreground">
+        <p className="sheet fade-in p-6 text-sm text-muted-foreground">
           {t("briefs.section.present.running")}
         </p>
       );
     }
     if (complete) {
       return (
-        <div className="sheet flex flex-col items-center px-6 py-16 text-center">
-          <div className="mb-5 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary [&_svg]:size-6">
-            <SearchX />
+        <div className="sheet fade-in flex flex-col items-center px-5 py-10 text-center">
+          <div className="mb-5 flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary [&_svg]:size-5">
+            <SearchX aria-hidden="true" />
           </div>
-          <p className="max-w-md font-display text-xl text-ink break-words">
+          <p className="max-w-md font-display text-lg text-ink break-words">
             {t("briefs.search.nofit.title")}
           </p>
-          <p className="mt-2 max-w-md text-[15px] leading-6 text-muted-foreground">
-            {zeroText(view)}
-          </p>
+          <p className="mt-2 max-w-md text-body text-muted-foreground">{zeroText(view)}</p>
         </div>
       );
     }
     return (
-      <p className="sheet p-6 text-sm text-muted-foreground">
+      <p className="sheet fade-in p-6 text-sm text-muted-foreground">
         {t(pendingCheck ? "briefs.section.present.unread" : "briefs.section.present.incomplete")}
       </p>
     );
@@ -658,7 +703,7 @@ export function SearchPanel({
           }
           count={ranked.length}
         >
-          {cards(ranked)}
+          {cards(ranked, "ranked")}
         </ResultGroup>
       );
     }
@@ -670,7 +715,7 @@ export function SearchPanel({
           help={t("briefs.section.present.help")}
           count={buckets.present.length}
         >
-          {buckets.present.length ? cards(buckets.present) : presentEmpty(view)}
+          {buckets.present.length ? cards(buckets.present, "present") : presentEmpty(view)}
         </ResultGroup>
         {buckets.deeper.length ? (
           <ResultGroup
@@ -680,7 +725,7 @@ export function SearchPanel({
             collapsible
             defaultOpen={false}
           >
-            {cards(buckets.deeper)}
+            {cards(buckets.deeper, "deeper")}
           </ResultGroup>
         ) : null}
         {buckets.setAside.length ? (
@@ -691,7 +736,7 @@ export function SearchPanel({
             collapsible
             defaultOpen={false}
           >
-            {cards(buckets.setAside, true)}
+            {cards(buckets.setAside, "setAside", true)}
           </ResultGroup>
         ) : null}
         {buckets.unassessed.length ? (
@@ -702,123 +747,151 @@ export function SearchPanel({
             collapsible
             defaultOpen={false}
           >
-            {cards(buckets.unassessed)}
+            {cards(buckets.unassessed, "unassessed")}
           </ResultGroup>
         ) : null}
       </>
     );
   }
 
+  const hasSearches = (searches.data?.length ?? 0) > 0;
+  const hint =
+    canEdit && criteriaDirty
+      ? t("briefs.search.saveFirst")
+      : !canEdit
+        ? t("briefs.search.viewer")
+        : null;
+  // Nothing ran yet and nothing waits: the empty state below carries the one filled button.
+  const nothingYet = !current && !opening && !hasSearches && !searches.loading;
+  // The list is known but the latest analysis has not started opening yet
+  // (the effect fires right after this render): the skeleton bridges that frame.
+  const autoOpenPending = hasSearches && !autoOpened;
+  const latestId = searches.data?.[0]?.id ?? null;
+  const statusShown = progress !== null || current !== null || hasSearches || hint !== null;
+
   return (
     <section className="space-y-8">
-      <div className="sheet space-y-4 p-6">
-        <div>
-          <h2 className="font-display text-xl text-ink">{t("briefs.part.search")}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("briefs.search.help", { max: FULL_POOL_MAX, limit: RETRIEVAL_LIMIT })}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {runButton}
-          {canResume && current ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void analyse(current, settledIds)}
-              className="gap-1.5"
-            >
-              {t("briefs.search.resume")}
-            </Button>
-          ) : null}
-          {canEdit && criteriaDirty ? (
-            <span className="text-[13px] text-muted-foreground">
-              {t("briefs.search.saveFirst")}
-            </span>
-          ) : null}
-          {!canEdit ? (
-            <span className="text-[13px] text-muted-foreground">{t("briefs.search.viewer")}</span>
-          ) : null}
-        </div>
-        {progress ? (
-          <AssessmentProgress
-            stage={progress.stage}
-            done={progress.done}
-            total={progress.total}
-            onStop={stop}
-          />
-        ) : null}
-        {searches.data?.length ? (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <Label htmlFor="brief-previous-search">{t("briefs.search.previous")}</Label>
-            <Select
-              value={current?.id ?? ""}
-              onValueChange={(value) => {
-                if (value && value !== current?.id) void open(value);
-              }}
-              disabled={opening !== null || busy}
-            >
-              <SelectTrigger id="brief-previous-search" className="sm:w-96">
-                <SelectValue placeholder={t("briefs.search.pick")} />
-              </SelectTrigger>
-              <SelectContent>
-                {searches.data.map((search) => (
-                  <SelectItem key={search.id} value={search.id}>
-                    {`${formatDateTime(locale, search.created_at)} · ${countText(search.result_count)}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <Section
+        title={t("briefs.part.search")}
+        description={t("briefs.search.help", { max: FULL_POOL_MAX, limit: RETRIEVAL_LIMIT })}
+        action={
+          nothingYet ? null : (
+            <>
+              {resumeButton}
+              {runButton}
+            </>
+          )
+        }
+      >
+        {statusShown ? (
+          <div className="sheet space-y-4 p-6">
+            {progress ? (
+              <AssessmentProgress
+                stage={progress.stage}
+                done={progress.done}
+                total={progress.total}
+                onStop={stop}
+              />
+            ) : null}
+            {current && pendingCheck ? (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="min-w-0 text-body text-ink">
+                  {t(
+                    pendingCheck.wrote === "profile"
+                      ? "briefs.search.check.profile"
+                      : "briefs.search.check.criteria",
+                  )}
+                </p>
+                <Button
+                  type="button"
+                  variant="primary"
+                  icon={<BookOpen />}
+                  onClick={() => void analyse(current, settledIds)}
+                  disabled={!canEdit || busy}
+                  className="shrink-0"
+                >
+                  {t("briefs.search.check.read")}
+                </Button>
+              </div>
+            ) : null}
+            {current ? (
+              <p className="text-meta text-muted-foreground">{methodLine(current)}</p>
+            ) : null}
+            {roleStale ? (
+              <p className="flex items-start gap-2 text-meta text-caution-foreground dark:text-caution">
+                <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0">{t("briefs.search.line.roleStale")}</span>
+              </p>
+            ) : null}
+            {hint ? <p className="text-meta text-muted-foreground">{hint}</p> : null}
+            {hasSearches && searches.data ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <Label htmlFor="brief-previous-search" className="shrink-0">
+                  {t("briefs.search.previous")}
+                </Label>
+                <Select
+                  value={current?.id ?? ""}
+                  onValueChange={(value) => {
+                    if (value && value !== current?.id) void open(value);
+                  }}
+                  disabled={opening !== null || busy}
+                >
+                  <SelectTrigger id="brief-previous-search" className="sm:w-80">
+                    <SelectValue placeholder={t("briefs.search.pick")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {searches.data.map((search) => (
+                      <SelectItem key={search.id} value={search.id}>
+                        {`${formatDateTime(locale, search.created_at)} · ${countText(search.result_count)}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </div>
         ) : null}
-      </div>
+      </Section>
 
       {current ? (
-        <>
-          <p className="text-sm text-muted-foreground">{methodLine(current)}</p>
-          {roleStale ? (
-            <p className="text-sm text-muted-foreground">{t("briefs.search.line.roleStale")}</p>
-          ) : null}
-          {pendingCheck ? (
-            <div className="sheet flex flex-col gap-3 p-6 sm:flex-row sm:items-center sm:justify-between">
-              <p className="min-w-0 text-[15px] leading-6 text-ink">
-                {t(
-                  pendingCheck.wrote === "profile"
-                    ? "briefs.search.check.profile"
-                    : "briefs.search.check.criteria",
-                )}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void analyse(current, settledIds)}
-                disabled={!canEdit || busy}
-                className="shrink-0 gap-1.5"
-              >
-                <BookOpen />
-                {t("briefs.search.check.read")}
-              </Button>
-            </div>
-          ) : null}
-          {ranked.length === 0 ? (
-            <EmptyState
-              icon={<SearchX />}
-              title={t("briefs.search.none.title")}
-              text={t("briefs.search.none.text")}
-            />
-          ) : candidatesPending ? (
-            <ResultSkeleton />
-          ) : (
-            groups(current)
-          )}
-        </>
-      ) : opening || (searches.loading && !searches.data) ? (
+        ranked.length === 0 ? (
+          <EmptyState
+            icon={<SearchX />}
+            title={t("briefs.search.none.title")}
+            text={t("briefs.search.none.text")}
+          />
+        ) : candidatesPending ? (
+          <ResultSkeleton />
+        ) : (
+          groups(current)
+        )
+      ) : opening || autoOpenPending || (searches.loading && !searches.data) ? (
         <ResultSkeleton />
-      ) : (
+      ) : nothingYet ? (
         <EmptyState
-          icon={<Search />}
+          icon={<Sparkles />}
           title={t("briefs.search.empty.title")}
           text={t("briefs.search.empty.text")}
           action={runButton}
+        />
+      ) : (
+        // Analyses exist but none is on screen: one failed to reopen, or one
+        // landed while nothing was open. The header carries the run button.
+        <EmptyState
+          compact
+          title={t(openFailed ? "briefs.search.loadFailed" : "briefs.search.pick")}
+          action={
+            latestId ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void open(openFailed ?? latestId)}
+                disabled={busy}
+              >
+                {t(openFailed ? "common.retry" : "briefs.search.openLatest")}
+              </Button>
+            ) : null
+          }
         />
       )}
     </section>

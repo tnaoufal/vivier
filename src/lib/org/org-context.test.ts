@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { OrganizationRow } from "@/lib/db/types";
-import { initialsOf, memberName, pickOrg } from "./org-context";
+import { initialsOf, memberName, pickOrg, readShowPhotos } from "./org-context";
 
 const org = (id: string): OrganizationRow => ({
   id,
@@ -12,6 +12,7 @@ const org = (id: string): OrganizationRow => ({
   plan: "trial",
   seat_limit: 3,
   cv_quota_month: 200,
+  show_photos: true,
   created_by: null,
   created_at: "",
   updated_at: "",
@@ -40,5 +41,18 @@ describe("names", () => {
     expect(initialsOf("Ana Lu Torres")).toBe("AT");
     expect(initialsOf("ana")).toBe("A");
     expect(initialsOf("")).toBe("?");
+  });
+});
+
+describe("readShowPhotos", () => {
+  it("is on unless the organisation turned it off", () => {
+    expect(readShowPhotos(org("a"))).toBe(true);
+    expect(readShowPhotos({ ...org("a"), show_photos: false })).toBe(false);
+  });
+
+  it("reads as on without an organisation or without the column", () => {
+    expect(readShowPhotos(null)).toBe(true);
+    expect(readShowPhotos(undefined)).toBe(true);
+    expect(readShowPhotos({ show_photos: undefined as unknown as boolean })).toBe(true);
   });
 });

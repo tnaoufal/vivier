@@ -1,12 +1,16 @@
 /**
  * The first screen of a person with no organisation: create one (they
- * become its owner) or follow an invitation link. Also used by
- * /app/organizations/new.
+ * become its owner) or follow an invitation link. One centred card under
+ * the brand, the name first, the working language, the one button.
+ * `standalone` is /app/organizations/new, inside the app shell: the same
+ * form as an ordinary page, under its PageHeader, without the brand or
+ * the invitation line.
  */
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { LocaleChips } from "@/components/app-shell/locale-chips";
+import { PageHeader } from "@/components/app-shell/page-header";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,21 +41,25 @@ export function Onboarding({ standalone = false }: { standalone?: boolean }) {
   const [name, setName] = useState("");
   const [orgLocale, setOrgLocale] = useState<Locale>(locale);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const localeLabelId = useId();
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const trimmed = name.trim();
     if (!trimmed || busy) return;
     setBusy(true);
+    setError(null);
     try {
       const supabase = await requireSupabase();
-      const { data, error } = await supabase.rpc("create_organization", {
+      const { data, error: rpcError } = await supabase.rpc("create_organization", {
         p_name: trimmed,
         p_slug: slugOf(trimmed),
         p_locale: orgLocale,
       });
-      if (error) {
-        toast.error(error.code === "23505" ? t("onboarding.slugTaken") : t("common.error"));
+      if (rpcError) {
+        console.error(rpcError);
+        setError(rpcError.code === "23505" ? t("onboarding.slugTaken") : t("common.error"));
         return;
       }
       const orgId = data as string;
@@ -64,40 +72,72 @@ export function Onboarding({ standalone = false }: { standalone?: boolean }) {
     }
   }
 
+  const fields = (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor="org-name">{t("onboarding.orgName")}</Label>
+        <Input
+          id="org-name"
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            if (error) setError(null);
+          }}
+          placeholder={t("onboarding.orgName.placeholder")}
+          maxLength={120}
+          autoFocus
+          required
+          disabled={busy}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "org-name-error" : undefined}
+        />
+        {error ? (
+          <p id="org-name-error" role="alert" className="text-meta text-negative">
+            {error}
+          </p>
+        ) : null}
+      </div>
+      <div className="space-y-2">
+        <Label id={localeLabelId}>{t("onboarding.locale")}</Label>
+        <div role="group" aria-labelledby={localeLabelId}>
+          <LocaleChips value={orgLocale} onChange={setOrgLocale} disabled={busy} />
+        </div>
+      </div>
+    </>
+  );
+  const create = (
+    <Button type="submit" className="mt-8 w-full" disabled={busy || !name.trim()}>
+      {t("onboarding.create")}
+    </Button>
+  );
+
+  if (standalone) {
+    return (
+      <>
+        <PageHeader eyebrow={t("nav.newOrg")} title={t("onboarding.title")} description={t("onboarding.text")} />
+        <form onSubmit={submit} className="sheet max-w-md p-6 sm:p-8" aria-label={t("onboarding.title")}>
+          <div className="space-y-6">{fields}</div>
+          {create}
+        </form>
+      </>
+    );
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
-      <div className="w-full max-w-md">
-        <BrandMark size="md" className="mb-10 justify-center" to={standalone ? "/app" : "/"} />
-        <form onSubmit={submit} className="sheet p-8">
-          <h1 className="font-display text-2xl text-ink">{t("onboarding.title")}</h1>
-          <p className="mt-2 text-[15px] leading-6 text-muted-foreground">{t("onboarding.text")}</p>
-          <div className="mt-8 space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="org-name">{t("onboarding.orgName")}</Label>
-              <Input
-                id="org-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={t("onboarding.orgName.placeholder")}
-                maxLength={120}
-                autoFocus
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("onboarding.locale")}</Label>
-              <LocaleChips value={orgLocale} onChange={setOrgLocale} disabled={busy} />
-            </div>
-          </div>
-          <Button type="submit" className="mt-8 w-full" disabled={busy || !name.trim()}>
-            {t("onboarding.create")}
-          </Button>
-          {!standalone ? (
-            <p className="mt-8 text-center text-[13px] leading-5 text-muted-foreground">
-              <span className="font-medium text-ink">{t("onboarding.pending")}</span> {t("onboarding.pending.help")}
-            </p>
-          ) : null}
+      <div className="rise-in w-full max-w-md">
+        <BrandMark size="md" className="mb-8 justify-center" to="/" />
+        <form onSubmit={submit} className="sheet p-6 sm:p-8" aria-labelledby="onboarding-title">
+          <h1 id="onboarding-title" className="font-display text-2xl text-ink">
+            {t("onboarding.title")}
+          </h1>
+          <p className="mt-2 text-body text-muted-foreground">{t("onboarding.text")}</p>
+          <div className="mt-8 space-y-6">{fields}</div>
+          {create}
         </form>
+        <p className="mt-6 text-center text-meta text-muted-foreground">
+          <span className="font-medium text-ink">{t("onboarding.pending")}</span> {t("onboarding.pending.help")}
+        </p>
       </div>
     </div>
   );

@@ -1,12 +1,13 @@
 /**
- * /app/briefs/:briefId: the brief page in two parts. The brief itself
- * (title, description, status; the role profile a senior recruiter
- * would write, derived by the model and edited by the team; the
- * criteria with the model's proposals when one is set up) and the
- * analysis of the talent pool: every profile read as a trajectory
- * against the job, the retained ones challenged and tiered, only the
- * ones to present and to dig into put forward. Live through realtime on
- * this brief.
+ * /app/briefs/:briefId: the brief page under a slim sticky header (the
+ * title, its status, when it changed, the way to delete it), in two
+ * columns from `lg`. On the left, the brief itself (title, the need,
+ * the status), the role profile a senior recruiter would write (derived
+ * by the model, edited by the team) and the criteria (with the model's
+ * proposals when one is set up). On the right, the analysis of the
+ * talent pool: every profile read as a trajectory against the job, the
+ * retained ones challenged and tiered, only the ones to present and to
+ * dig into put forward. Live through realtime on this brief.
  */
 import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -22,6 +23,8 @@ import type { ModelAvailability } from "@/components/briefs/criteria-proposals";
 import { RoleProfileCard } from "@/components/briefs/role-profile-card";
 import { SearchPanel } from "@/components/briefs/search-panel";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { briefCapabilities } from "@/lib/briefs/briefs.functions";
 import { deleteBrief, readBrief } from "@/lib/briefs/queries";
@@ -98,31 +101,63 @@ function BriefPage() {
     </Button>
   );
 
+  // The way back is the header's eyebrow in every state: the header keeps its place while the brief loads, fails or is missing.
+  const eyebrow = (
+    <Link
+      to="/app/briefs"
+      className="rounded-sm hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {t("nav.briefs")}
+    </Link>
+  );
+
   if (brief.error) {
     return (
-      <EmptyState
-        title={t("briefs.loadError")}
-        action={
-          <Button type="button" variant="outline" onClick={() => void refreshBrief()}>
-            {t("common.retry")}
-          </Button>
-        }
-      />
+      <div>
+        <PageHeader sticky eyebrow={eyebrow} title={t("briefs.title")} />
+        <EmptyState
+          title={t("briefs.loadError")}
+          action={
+            <Button type="button" variant="outline" onClick={() => void refreshBrief()}>
+              {t("common.retry")}
+            </Button>
+          }
+        />
+      </div>
     );
   }
 
   if (brief.loading && !brief.data) {
     return (
-      <div className="space-y-8">
-        <div className="skeleton h-9 w-1/2 rounded-lg" />
-        <div className="grid gap-6 lg:grid-cols-5">
-          <div className="sheet space-y-4 p-6 lg:col-span-2">
-            <div className="skeleton h-4 w-1/3 rounded" />
-            <div className="skeleton h-24 w-full rounded-xl" />
+      <div>
+        <PageHeader
+          sticky
+          eyebrow={eyebrow}
+          title={
+            <span
+              className="skeleton inline-block h-5 w-56 max-w-full rounded-sm align-middle"
+              aria-hidden="true"
+            />
+          }
+        />
+        <p className="sr-only">{t("common.loading")}</p>
+        <div className="grid gap-6 lg:grid-cols-5 lg:gap-8" aria-busy="true">
+          <div className="space-y-6 lg:col-span-2">
+            <div className="sheet space-y-4 p-6">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-10 w-full rounded-full" />
+              <Skeleton className="h-24 w-full rounded-lg" />
+            </div>
+            <div className="sheet space-y-3 p-6">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3.5 w-full" />
+              <Skeleton className="h-3.5 w-5/6" />
+            </div>
           </div>
           <div className="sheet space-y-4 p-6 lg:col-span-3">
-            <div className="skeleton h-4 w-1/3 rounded" />
-            <div className="skeleton h-9 w-40 rounded-full" />
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-3.5 w-2/3" />
+            <Skeleton className="h-10 w-40 rounded-full" />
           </div>
         </div>
       </div>
@@ -131,47 +166,53 @@ function BriefPage() {
 
   if (!row) {
     return (
-      <EmptyState
-        title={t("briefs.notFound.title")}
-        text={t("briefs.notFound.text")}
-        action={backLink}
-      />
+      <div>
+        <PageHeader sticky eyebrow={eyebrow} title={t("briefs.title")} />
+        <EmptyState
+          title={t("briefs.notFound.title")}
+          text={t("briefs.notFound.text")}
+          action={backLink}
+        />
+      </div>
     );
   }
 
   return (
     <div>
       <PageHeader
-        className="mb-8"
-        eyebrow={
-          <Link to="/app/briefs" className="hover:underline">
-            {t("nav.briefs")}
-          </Link>
-        }
+        sticky
+        eyebrow={eyebrow}
         title={row.title}
-        description={
-          <span className="inline-flex flex-wrap items-center gap-2">
-            <BriefStatusPill status={row.status} />
-            <span>{t("briefs.list.updated", { date: formatDate(locale, row.updated_at) })}</span>
-          </span>
+        meta={
+          <>
+            <BriefStatusPill status={row.status} size="sm" />
+            <span className="text-meta text-muted-foreground">
+              {t("briefs.list.updated", { date: formatDate(locale, row.updated_at) })}
+            </span>
+          </>
         }
         actions={
           canDelete ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setDeleteOpen(true)}
-              className="gap-1.5"
-            >
-              <Trash2 />
-              {t("briefs.delete")}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setDeleteOpen(true)}
+                  aria-label={t("briefs.delete")}
+                >
+                  <Trash2 />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("briefs.delete")}</TooltipContent>
+            </Tooltip>
           ) : null
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="space-y-8 lg:col-span-2">
+      <div className="grid gap-6 lg:grid-cols-5 lg:gap-8">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           <BriefForm brief={row} canEdit={canEdit} onSaved={refreshBrief} />
           <RoleProfileCard
             brief={row}

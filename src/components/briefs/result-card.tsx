@@ -1,32 +1,36 @@
 /**
- * One result of an analysis: who, the tier of the comparative pass and
- * the decision of the analysis as pills, the fit score as a ring (empty
- * when no model read the profile), the five dimensions as a row of
- * small meters, one row per requirement of the brief with the evidence
- * the verdict rests on (the role first, named as such: "Métier ·
- * Business Developer"), the model's reading when it answered, its
- * strengths and reservations as two short lists, the points to verify
- * in an interview behind a toggle, the second opinion's reservation
- * under its own heading when it doubted, the tiering's line in muted
- * text, and the way to the shortlist. A requirement the CV says nothing
- * about reads "not stated", never as a lack; a quote the model gave
- * that was not found in the CV says so next to it; a set-aside profile
- * says which requirement it does not meet, the métier first (or that
- * the model's reading set it aside, with its score); a profile to dig
- * into names its main reservation (an adjacent métier, a must-have not
- * stated or met in part, the second opinion's doubt, the first
- * concern); the sentences the filter withheld are counted, so the
- * reading is never taken for complete. Every card stays one click from
- * its page.
+ * One result of an analysis, built for a recruiter deciding whether to
+ * present the person: who (the photo when the organisation shows
+ * photos, the name, the position held today, where), the decision of
+ * the analysis as a pill, with the tier of the comparative pass when
+ * the group the card sits in does not already say it, the fit
+ * score as a ring (a dash when no model read the profile), the model's
+ * reading, the five dimensions as a compact grid of meters (the notes
+ * and the evidence behind a toggle), its strengths and reservations as
+ * two short lists with a check and an alert mark, the second opinion's
+ * reservation when it doubted, the points for the interview behind a
+ * toggle, one row per requirement of the brief with the evidence the
+ * verdict rests on (the role first, named as such: "Métier · Business
+ * Developer"), and the way to the shortlist. A requirement the CV says
+ * nothing about reads "not stated", never as a lack; a quote the model
+ * gave that was not found in the CV says so next to it; a set-aside
+ * profile says which requirement it does not meet, the métier first
+ * (or that the model's reading set it aside, with its score); a profile
+ * to dig into names its main reservation; the sentences the filter
+ * withheld are counted, so the reading is never taken for complete.
+ * Every card stays one click from its page: the name is the link.
  */
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
+  Check,
   ChevronDown,
-  ExternalLink,
+  CircleAlert,
+  CircleCheck,
+  CircleX,
+  ListChecks,
   ListPlus,
   MessageSquare,
-  ThumbsUp,
   TriangleAlert,
 } from "lucide-react";
 
@@ -43,36 +47,48 @@ import {
 } from "@/lib/briefs/assessment";
 import { kindKey } from "@/lib/briefs/criteria";
 import { candidatePath, shortlistPath } from "@/lib/briefs/paths";
+import { tierGroup, type ResultGroupName } from "@/lib/briefs/presentation";
 import type { ResultCandidate } from "@/lib/briefs/queries";
+import { currentPosition, displayName } from "@/lib/candidates/format";
+import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
 import type { BriefCriterion, MatchResult, RequirementMet } from "@/lib/db/types";
 import { useT } from "@/lib/i18n";
+import { useOrg } from "@/lib/org/org-context";
 import { cn } from "@/lib/utils";
 
 import { DecisionPill } from "./decision-pill";
 import { DimensionMeters } from "./dimension-meters";
 import { TierPill } from "./tier-pill";
 
-/** A short list of facts with a leading icon, so the two lists read apart without colour alone. */
+const MARK_TONES = {
+  positive: "text-positive",
+  caution: "text-caution-foreground dark:text-caution",
+  neutral: "text-muted-foreground",
+} as const;
+
+/** A short list of facts, each led by one mark in a tone, so the lists read apart without colour alone. */
 function FactList({
   title,
   items,
   icon,
+  tone,
   className,
 }: {
-  title: string;
+  title: string | null;
   items: readonly string[];
-  icon: typeof ThumbsUp;
+  icon: typeof Check;
+  tone: keyof typeof MARK_TONES;
   className?: string;
 }) {
   const Icon = icon;
   if (!items.length) return null;
   return (
     <div className={cn("min-w-0", className)}>
-      <span className="label-caps">{title}</span>
-      <ul className="mt-1 space-y-1.5">
+      {title ? <span className="label-caps">{title}</span> : null}
+      <ul className={cn("space-y-1.5", title && "mt-1.5")}>
         {items.map((item) => (
-          <li key={item} className="flex items-start gap-2 text-sm leading-5 text-ink">
-            <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <li key={item} className="flex items-start gap-2 text-sm text-ink">
+            <Icon aria-hidden="true" className={cn("mt-0.5 size-4 shrink-0", MARK_TONES[tone])} />
             <span className="min-w-0">{item}</span>
           </li>
         ))}
@@ -88,6 +104,7 @@ export function ResultCard({
   shortlistId,
   added,
   canEdit,
+  group,
   muted = false,
   onAdd,
 }: {
@@ -99,20 +116,23 @@ export function ResultCard({
   shortlistId: string | null;
   added: boolean;
   canEdit: boolean;
+  /** The group the card sits in: its tier pill is shown only when it says something else. */
+  group: ResultGroupName;
   /** True for a profile the analysis set aside: shown quieter, still complete. */
   muted?: boolean;
   onAdd: () => Promise<void>;
 }) {
   const t = useT();
+  const { showPhotos } = useOrg();
+  const photoUrl = usePhotoUrl(candidate?.photo_path ?? null, showPhotos && candidate !== null);
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState(false);
   const [questionsOpen, setQuestionsOpen] = useState(false);
   const name = candidate
-    ? candidate.full_name?.trim() || t("briefs.results.noName")
+    ? displayName(candidate, t("briefs.results.noName"))
     : t("briefs.results.gone");
-  const line = candidate
-    ? [candidate.headline, candidate.location].filter((part) => part && part.trim()).join(" · ")
-    : "";
+  const position = candidate ? currentPosition(candidate) : null;
+  const location = candidate?.location?.trim() || null;
   const assessment = result.assessment ?? null;
   const decision = decisionOf(result);
   const tier = tierOf(result);
@@ -164,6 +184,7 @@ export function ResultCard({
           })
         : t("briefs.results.reason.model", { score })
       : checkLine();
+  const ReasonIcon = decision === "no_fit" ? CircleX : CircleAlert;
   const scoreLabel =
     score === null
       ? t("briefs.results.noScore")
@@ -187,21 +208,17 @@ export function ResultCard({
     }
   }
 
+  // A set-aside card is quieter by its surface (no shadow), never by fading its text: every line keeps AA.
   return (
-    <article
-      className={cn(
-        "sheet space-y-6 p-6 transition-opacity duration-150",
-        muted && "opacity-75 hover:opacity-100",
-      )}
-    >
+    <article className={cn("sheet space-y-5 p-6", muted && "shadow-none")}>
       <div className="flex items-start gap-4">
-        <Avatar name={name} size="lg" className="mt-0.5" />
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <Avatar name={name} size="lg" photoUrl={photoUrl} className="mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
             {candidate ? (
               <Link
                 to={candidatePath(candidate.id)}
-                className="min-w-0 truncate text-base font-semibold text-ink hover:underline"
+                className="min-w-0 truncate text-base font-semibold text-ink hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {name}
               </Link>
@@ -210,33 +227,55 @@ export function ResultCard({
                 {name}
               </span>
             )}
-            {tier ? <TierPill tier={tier} /> : null}
+            {tier && tierGroup(tier) !== group ? <TierPill tier={tier} /> : null}
             <DecisionPill decision={decision} />
-            {candidate?.status === "archived" ? <Pill>{t("briefs.results.archived")}</Pill> : null}
+            {candidate?.status === "archived" ? (
+              <Pill dot>{t("briefs.results.archived")}</Pill>
+            ) : null}
           </div>
-          <p className="truncate text-sm text-muted-foreground">
-            {line || (candidate ? t("common.unknown") : t("briefs.results.goneText"))}
+          <p className="mt-0.5 truncate text-sm text-ink/85">
+            {candidate ? (
+              position ? (
+                <>
+                  {position.title}
+                  {position.company ? (
+                    <span className="text-muted-foreground"> @ {position.company}</span>
+                  ) : null}
+                  {location ? <span className="text-muted-foreground"> · {location}</span> : null}
+                </>
+              ) : (
+                <span className="text-muted-foreground">{location ?? t("common.unknown")}</span>
+              )
+            ) : (
+              <span className="text-muted-foreground">{t("briefs.results.goneText")}</span>
+            )}
           </p>
           {reasonLine ? (
             <p
               className={cn(
-                "text-sm",
-                decision === "no_fit"
-                  ? "text-negative"
-                  : "text-caution-foreground dark:text-caution",
+                "mt-2 flex items-start gap-1.5 text-sm",
+                decision === "no_fit" ? "text-negative" : MARK_TONES.caution,
               )}
             >
-              {reasonLine}
+              <ReasonIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+              <span className="min-w-0">{reasonLine}</span>
             </p>
           ) : null}
           {rankNote ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="mt-1 text-meta text-muted-foreground">
               {t("briefs.results.rankNote", { note: rankNote })}
             </p>
           ) : null}
         </div>
         <ScoreRing score={score} label={scoreLabel} />
       </div>
+
+      {assessment?.summary ? (
+        <div className="border-l-2 border-primary/40 pl-4">
+          <span className="label-caps">{t("briefs.results.why")}</span>
+          <p className="mt-1 text-body text-ink">{assessment.summary}</p>
+        </div>
+      ) : null}
 
       {assessment?.dimensions ? (
         <div>
@@ -248,51 +287,46 @@ export function ResultCard({
               size="sm"
               onClick={() => setDetail((value) => !value)}
               aria-expanded={detail}
-              className="gap-1.5"
+              icon={
+                <ChevronDown
+                  className={cn(
+                    "transition-transform duration-base ease-out-soft",
+                    detail && "rotate-180",
+                  )}
+                />
+              }
             >
-              <ChevronDown
-                className={cn("transition-transform duration-150", detail && "rotate-180")}
-              />
               {detail ? t("briefs.results.dimensions.hide") : t("briefs.results.dimensions.show")}
             </Button>
           </div>
-          <DimensionMeters dimensions={assessment.dimensions} expanded={detail} className="mt-1" />
-        </div>
-      ) : null}
-
-      {rows.length ? (
-        <div>
-          <span className="label-caps">{t("briefs.results.requirements")}</span>
-          <RequirementList
-            rows={rows}
-            markLabel={markLabel}
-            requiredLabel={t("common.required")}
-            className="mt-1"
-          />
-        </div>
-      ) : null}
-
-      {assessment?.summary ? (
-        <div>
-          <span className="label-caps">{t("briefs.results.why")}</span>
-          <p className="mt-1 text-[15px] leading-6 text-ink">{assessment.summary}</p>
+          <DimensionMeters dimensions={assessment.dimensions} expanded={detail} className="mt-2" />
         </div>
       ) : null}
 
       {strengths.length || concerns.length ? (
-        <div className="grid gap-6 sm:grid-cols-2">
-          <FactList title={t("briefs.results.strengths")} items={strengths} icon={ThumbsUp} />
-          <FactList title={t("briefs.results.concerns")} items={concerns} icon={TriangleAlert} />
+        <div className="grid gap-5 sm:grid-cols-2">
+          <FactList
+            title={t("briefs.results.strengths")}
+            items={strengths}
+            icon={CircleCheck}
+            tone="positive"
+          />
+          <FactList
+            title={t("briefs.results.concerns")}
+            items={concerns}
+            icon={TriangleAlert}
+            tone="caution"
+          />
         </div>
       ) : null}
 
       {doubt ? (
         <div>
           <span className="label-caps">{t("briefs.results.challenge")}</span>
-          <p className="mt-1 flex items-start gap-2 text-[15px] leading-6 text-ink">
+          <p className="mt-1 flex items-start gap-2 text-body text-ink">
             <TriangleAlert
               aria-hidden="true"
-              className="mt-1 size-4 shrink-0 text-caution-foreground dark:text-caution"
+              className={cn("mt-1 size-4 shrink-0", MARK_TONES.caution)}
             />
             <span className="min-w-0">{doubt.reason}</span>
           </p>
@@ -301,7 +335,10 @@ export function ResultCard({
           ) : null}
         </div>
       ) : challenge?.verdict === "confirmed" ? (
-        <p className="text-sm text-muted-foreground">{t("briefs.results.challenge.confirmed")}</p>
+        <p className="flex items-center gap-2 text-meta text-muted-foreground">
+          <CircleCheck aria-hidden="true" className="size-4 shrink-0" />
+          {t("briefs.results.challenge.confirmed")}
+        </p>
       ) : null}
 
       {questions.length ? (
@@ -312,62 +349,70 @@ export function ResultCard({
             size="sm"
             onClick={() => setQuestionsOpen((value) => !value)}
             aria-expanded={questionsOpen}
-            className="-ml-4 gap-1.5"
+            className="-ml-3.5"
+            icon={
+              <ChevronDown
+                className={cn(
+                  "transition-transform duration-base ease-out-soft",
+                  questionsOpen && "rotate-180",
+                )}
+              />
+            }
           >
-            <ChevronDown
-              className={cn("transition-transform duration-150", questionsOpen && "rotate-180")}
-            />
-            {questionsOpen
-              ? t("briefs.results.questions.hide")
-              : t("briefs.results.questions.show")}
+            {t("briefs.results.questions")}
+            <span className="text-muted-foreground tabular-nums">{questions.length}</span>
           </Button>
           {questionsOpen ? (
             <FactList
-              title={t("briefs.results.questions")}
+              title={null}
               items={questions}
               icon={MessageSquare}
-              className="mt-2"
+              tone="neutral"
+              className="fade-in mt-1 pl-1"
             />
           ) : null}
         </div>
       ) : null}
 
+      {rows.length ? (
+        <div>
+          <span className="label-caps">{t("briefs.results.requirements")}</span>
+          <RequirementList
+            rows={rows}
+            markLabel={markLabel}
+            requiredLabel={t("common.required")}
+            compact
+            className="mt-1"
+          />
+        </div>
+      ) : null}
+
       {withheld > 0 ? (
-        <p className="text-[13px] leading-5 text-muted-foreground">
+        <p className="text-meta text-muted-foreground">
           {t("briefs.results.withheld", { count: withheld })}
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {added && shortlistId ? (
-          <Button asChild variant="outline" size="sm">
-            <Link to={shortlistPath(shortlistId)} className="gap-1.5">
-              <ListPlus />
-              {t("briefs.results.seeShortlist")}
-            </Link>
+      {added && shortlistId ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild variant="outline" size="sm" icon={<ListChecks />}>
+            <Link to={shortlistPath(shortlistId)}>{t("briefs.results.seeShortlist")}</Link>
           </Button>
-        ) : canEdit && candidate ? (
+        </div>
+      ) : canEdit && candidate ? (
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
+            icon={<ListPlus />}
             onClick={() => void add()}
             disabled={busy}
-            className="gap-1.5"
           >
-            <ListPlus />
             {t("briefs.results.addToShortlist")}
           </Button>
-        ) : null}
-        {candidate ? (
-          <Button asChild variant="ghost" size="sm">
-            <Link to={candidatePath(candidate.id)} className="gap-1.5">
-              <ExternalLink />
-              {t("briefs.results.openCandidate")}
-            </Link>
-          </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </article>
   );
 }

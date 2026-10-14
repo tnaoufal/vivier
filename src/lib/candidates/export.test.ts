@@ -27,6 +27,7 @@ const candidate: CandidateRow = {
   last_contact_at: null,
   status: "active",
   fingerprint: "secret-key",
+  photo_path: null,
   search_text: "index text",
   created_by: "u1",
   created_at: "2026-10-13T08:00:00Z",
@@ -66,7 +67,15 @@ describe("buildExport", () => {
     expect(data.candidate.tags).toEqual(["finance"]);
     expect(data.documents[0]?.extracted_text).toBe("hello");
     expect("storage_path" in (data.documents[0] ?? {})).toBe(false);
+    expect(data.photo).toBeNull();
     expect(JSON.parse(exportJson(data))).toEqual(data);
+  });
+
+  it("carries the photo as a signed link when the profile has one", () => {
+    const photo = { path: "o1/c1.png", url: "https://signed/c1.png", expiresAt: "2026-10-13T11:00:00.000Z" };
+    const data = buildExport({ ...candidate, photo_path: "o1/c1.png" }, [], new Date("2026-10-13T10:00:00Z"), photo);
+    expect(data.photo).toEqual(photo);
+    expect(data.candidate.photo_path).toBe("o1/c1.png");
   });
 });
 

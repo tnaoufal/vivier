@@ -27,6 +27,7 @@ const row: CandidateRow = {
   last_contact_at: null,
   status: "active",
   fingerprint: null,
+  photo_path: null,
   search_text: null,
   created_by: null,
   created_at: "2026-10-13T08:00:00Z",

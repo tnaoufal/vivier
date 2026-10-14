@@ -8,6 +8,7 @@ import { roleAtLeast } from "@/lib/db/types";
 import {
   OrgContext,
   pickOrg,
+  readShowPhotos,
   rememberOrgId,
   storedOrgId,
   type OrgContextValue,
@@ -122,6 +123,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         if (currentId) await loadMembers(currentId);
       },
       can: (min: OrgRole) => roleAtLeast(current?.role ?? null, min),
+      showPhotos: readShowPhotos(current?.org),
     }),
     [current, currentId, loadMembers, loadMemberships, loading, members, memberships],
   );

@@ -1,11 +1,13 @@
 /**
- * GDPR on one card: the consent (unknown, given, withdrawn), the last
- * contact, and the date the hourly purge deletes the profile, read from
- * retention_due_at() and never computed in the browser. Withdrawing
- * consent is confirmed first, because the purge then deletes the
- * profile at once. Spacing and type follow docs/DESIGN.md.
+ * GDPR on one card, folded by default behind one line that says what
+ * matters ("Consentement inconnu · suppression le 14 oct. 2028"): the
+ * consent (unknown, given, withdrawn), the last contact, and the date
+ * the hourly purge deletes the profile, read from retention_due_at()
+ * and never computed in the browser. Withdrawing consent is confirmed
+ * first, because the purge then deletes the profile at once.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { ChevronDown } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -14,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { dateInputToIso, dateInputValue } from "@/lib/candidates/format";
 import type { CandidateRow, ConsentStatus } from "@/lib/db/types";
 import { formatDate, useI18n } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 const CONSENT_OPTIONS: readonly ConsentStatus[] = ["unknown", "given", "withdrawn"];
 
@@ -39,6 +42,8 @@ export function ConsentCard({
   onSave: (patch: ConsentPatch) => Promise<void>;
 }) {
   const { t, locale } = useI18n();
+  const bodyId = useId();
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const [lastContact, setLastContact] = useState(dateInputValue(candidate.last_contact_at));
@@ -85,51 +90,88 @@ export function ConsentCard({
     void save({ last_contact_at: iso });
   }
 
+  const consent = t(`candidates.consent.${candidate.consent_status}`);
+  const summary = retentionDueAt
+    ? t("candidates.consent.summary", { consent, date: formatDate(locale, retentionDueAt) })
+    : t("candidates.consent.summaryUnknown", { consent });
+
   return (
-    <section className="sheet space-y-4 p-6">
-      <h2 className="text-base font-semibold text-ink">{t("candidates.consent.title")}</h2>
-      <div className="space-y-2">
-        <Label htmlFor="consent-status">{t("candidates.consent.status")}</Label>
-        <Select value={candidate.consent_status} onValueChange={changeConsent} disabled={!canEdit || busy}>
-          <SelectTrigger id="consent-status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CONSENT_OPTIONS.map((option) => (
-              <SelectItem key={option} value={option}>
-                {t(`candidates.consent.option.${option}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {candidate.consent_status === "given" && candidate.consent_at ? (
-          <p className="text-[13px] leading-5 text-muted-foreground">
-            {t("candidates.consent.givenAt", { date: formatDate(locale, candidate.consent_at) })}
+    <section className="sheet">
+      <h2 className="text-base font-semibold text-ink">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          className="flex w-full cursor-pointer items-start justify-between gap-3 rounded-lg p-6 text-left transition-colors duration-fast hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block">{t("candidates.consent.title")}</span>
+            <span
+              className={cn(
+                "mt-1 block text-meta font-normal",
+                candidate.consent_status === "withdrawn" ? "text-negative" : "text-muted-foreground",
+              )}
+            >
+              {summary}
+            </span>
+          </span>
+          <ChevronDown
+            className={cn(
+              "mt-1 size-4 shrink-0 text-muted-foreground transition-transform duration-base ease-out-soft",
+              open && "rotate-180",
+            )}
+            aria-hidden="true"
+          />
+          <span className="sr-only">{open ? t("candidates.section.collapse") : t("candidates.section.expand")}</span>
+        </button>
+      </h2>
+      {open ? (
+        <div id={bodyId} className="fade-in space-y-4 border-t border-border p-6">
+          <div className="space-y-2">
+            <Label htmlFor="consent-status">{t("candidates.consent.status")}</Label>
+            <Select value={candidate.consent_status} onValueChange={changeConsent} disabled={!canEdit || busy}>
+              <SelectTrigger id="consent-status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CONSENT_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {t(`candidates.consent.option.${option}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {candidate.consent_status === "given" && candidate.consent_at ? (
+              <p className="text-meta text-muted-foreground">
+                {t("candidates.consent.givenAt", { date: formatDate(locale, candidate.consent_at) })}
+              </p>
+            ) : null}
+            {candidate.consent_status === "withdrawn" ? (
+              <p className="text-meta text-negative">{t("candidates.consent.withdrawn.note")}</p>
+            ) : null}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="last-contact">{t("candidates.consent.lastContact")}</Label>
+            <Input
+              id="last-contact"
+              type="date"
+              value={lastContact}
+              onChange={(event) => setLastContact(event.target.value)}
+              onBlur={commitLastContact}
+              disabled={!canEdit || busy}
+            />
+          </div>
+          <p className="text-meta text-muted-foreground">
+            {retentionDueAt
+              ? t("candidates.consent.retention", {
+                  date: formatDate(locale, retentionDueAt),
+                  months: retentionMonths,
+                })
+              : t("candidates.consent.retentionUnknown")}
           </p>
-        ) : null}
-        {candidate.consent_status === "withdrawn" ? (
-          <p className="text-[13px] leading-5 text-negative">{t("candidates.consent.withdrawn.note")}</p>
-        ) : null}
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="last-contact">{t("candidates.consent.lastContact")}</Label>
-        <Input
-          id="last-contact"
-          type="date"
-          value={lastContact}
-          onChange={(event) => setLastContact(event.target.value)}
-          onBlur={commitLastContact}
-          disabled={!canEdit || busy}
-        />
-      </div>
-      <p className="text-[13px] leading-5 text-muted-foreground">
-        {retentionDueAt
-          ? t("candidates.consent.retention", {
-              date: formatDate(locale, retentionDueAt),
-              months: retentionMonths,
-            })
-          : t("candidates.consent.retentionUnknown")}
-      </p>
+        </div>
+      ) : null}
       <ConfirmDialog
         open={confirmWithdraw}
         onOpenChange={(open) => {

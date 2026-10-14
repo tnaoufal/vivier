@@ -1,21 +1,29 @@
 /**
- * One criterion of a brief as an editable row: its kind, its label (what
- * the requirement row says), its value (what is looked for in a
- * profile; for the role, the job's definition in a few lines), whether
- * it is required (a profile that does not meet it is set aside by the
- * analysis), and its weight as three buttons. A row that becomes the
- * role starts required and essential. When the brief has a role profile,
- * the role's definition is the profile's: shown read-only with a word
- * saying so, since the team edits the profile, not the row. A row about
- * a protected characteristic says under itself that it will not be
- * saved (the clean-up leaves it out). The editor wraps the row in the
- * list item that carries the hairline.
+ * One criterion of a brief as an editable row: its kind as a muted
+ * prefix before the label (what the requirement row says), its value
+ * under them (what is looked for in a profile; for the role, the job's
+ * definition in a few lines), then whether it is required (a switch: a
+ * profile that does not meet it is set aside by the analysis) and its
+ * weight as a segmented control. A row that becomes the role starts
+ * required and essential. When the brief has a role profile, the role's
+ * definition is the profile's: shown read-only with a word saying so,
+ * since the team edits the profile, not the row. A row about a
+ * protected characteristic says under itself that it will not be saved
+ * (the clean-up leaves it out). The editor wraps the row in the list
+ * item that carries the hairline.
  */
-import { Check, X } from "lucide-react";
+import { TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Segmented } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   CRITERION_KINDS,
@@ -25,13 +33,15 @@ import {
   protectedCriterion,
   ROLE_REQUIRED,
   ROLE_WEIGHT,
+  toWeight,
   VALUE_MAX,
   WEIGHTS,
   weightKey,
 } from "@/lib/briefs/criteria";
 import type { BriefCriterion } from "@/lib/db/types";
 import { useT } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
+
+import { ToggleSwitch } from "./toggle-switch";
 
 export function CriterionRow({
   criterion,
@@ -56,18 +66,23 @@ export function CriterionRow({
   const isRole = criterion.kind === "role";
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+      <div className="flex items-center gap-2">
         <Select
           value={criterion.kind}
           onValueChange={(value) => {
             if (!isCriterionKind(value)) return;
             // The job itself is required and essential unless the team says otherwise.
-            if (value === "role") onChange({ ...criterion, kind: value, required: ROLE_REQUIRED, weight: ROLE_WEIGHT });
+            if (value === "role")
+              onChange({ ...criterion, kind: value, required: ROLE_REQUIRED, weight: ROLE_WEIGHT });
             else onChange({ ...criterion, kind: value });
           }}
           disabled={locked}
         >
-          <SelectTrigger aria-label={t("briefs.criteria.kind")} className="sm:w-44">
+          {/* The kind reads as a muted prefix of the label: no border, no field look, its one chevron. */}
+          <SelectTrigger
+            aria-label={t("briefs.criteria.kind")}
+            className="h-8 w-auto shrink-0 border-transparent bg-transparent px-2.5 text-meta font-medium text-muted-foreground shadow-none hover:border-transparent hover:bg-accent hover:text-ink"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -85,67 +100,59 @@ export function CriterionRow({
           aria-label={t("briefs.criteria.label")}
           maxLength={LABEL_MAX}
           disabled={locked}
-          className="sm:flex-1"
+          className="min-w-0 flex-1"
         />
-        {isRole && roleDefinition ? (
-          <div className="min-w-0 space-y-1 sm:flex-1">
-            <p className="text-[15px] leading-6 text-ink">{roleDefinition}</p>
-            <p className="text-[13px] leading-5 text-muted-foreground">{t("briefs.criteria.role.fromProfile")}</p>
-          </div>
-        ) : isRole ? (
-          <Textarea
-            value={criterion.value}
-            onChange={(event) => onChange({ ...criterion, value: event.target.value })}
-            placeholder={t(placeholderKey)}
-            aria-label={t("briefs.criteria.value.role")}
-            maxLength={VALUE_MAX}
-            rows={3}
-            disabled={locked}
-            className="min-h-0 sm:flex-1"
-          />
-        ) : (
-          <Input
-            value={criterion.value}
-            onChange={(event) => onChange({ ...criterion, value: event.target.value })}
-            placeholder={t(placeholderKey)}
-            aria-label={t("briefs.criteria.value")}
-            maxLength={VALUE_MAX}
-            disabled={locked}
-            className="sm:flex-1"
-          />
-        )}
       </div>
-      {isProtected ? <p className="text-[13px] leading-5 text-negative">{t("briefs.criteria.protected")}</p> : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant={criterion.required ? "default" : "outline"}
-          aria-pressed={criterion.required}
-          onClick={() => onChange({ ...criterion, required: !criterion.required })}
-          disabled={locked}
-          className="gap-1"
-        >
-          {criterion.required ? <Check /> : null}
-          {t("briefs.criteria.required")}
-        </Button>
-        <div className="inline-flex rounded-full border border-input p-0.5" role="group" aria-label={t("briefs.criteria.weight")}>
-          {WEIGHTS.map((weight) => (
-            <button
-              key={weight}
-              type="button"
-              onClick={() => onChange({ ...criterion, weight })}
-              disabled={locked}
-              aria-pressed={criterion.weight === weight}
-              className={cn(
-                "h-7 rounded-full px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                criterion.weight === weight ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent",
-              )}
-            >
-              {t(weightKey(weight))}
-            </button>
-          ))}
+      {isRole && roleDefinition ? (
+        <div className="min-w-0 space-y-1 pl-2.5">
+          <p className="text-body text-ink">{roleDefinition}</p>
+          <p className="text-meta text-muted-foreground">{t("briefs.criteria.role.fromProfile")}</p>
         </div>
+      ) : isRole ? (
+        <Textarea
+          value={criterion.value}
+          onChange={(event) => onChange({ ...criterion, value: event.target.value })}
+          placeholder={t(placeholderKey)}
+          aria-label={t("briefs.criteria.value.role")}
+          maxLength={VALUE_MAX}
+          rows={3}
+          disabled={locked}
+          className="min-h-0"
+        />
+      ) : (
+        <Input
+          value={criterion.value}
+          onChange={(event) => onChange({ ...criterion, value: event.target.value })}
+          placeholder={t(placeholderKey)}
+          aria-label={t("briefs.criteria.value")}
+          maxLength={VALUE_MAX}
+          disabled={locked}
+        />
+      )}
+      {isProtected ? (
+        <p className="flex items-start gap-2 text-meta text-negative">
+          <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          <span className="min-w-0">{t("briefs.criteria.protected")}</span>
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <ToggleSwitch
+          checked={criterion.required}
+          onCheckedChange={(required) => onChange({ ...criterion, required })}
+          label={t("briefs.criteria.required")}
+          disabled={locked}
+        />
+        <Segmented
+          size="sm"
+          aria-label={t("briefs.criteria.weight")}
+          value={String(criterion.weight)}
+          onChange={(value) => onChange({ ...criterion, weight: toWeight(Number(value)) })}
+          options={WEIGHTS.map((weight) => ({
+            value: String(weight),
+            label: t(weightKey(weight)),
+            disabled: locked,
+          }))}
+        />
         {canEdit ? (
           <Button
             type="button"
@@ -155,7 +162,7 @@ export function CriterionRow({
             disabled={disabled}
             aria-label={t("briefs.criteria.remove")}
             title={t("briefs.criteria.remove")}
-            className="ml-auto h-8 w-8"
+            className="ml-auto text-muted-foreground hover:text-ink"
           >
             <X />
           </Button>

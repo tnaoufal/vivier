@@ -68,9 +68,16 @@ export function supabaseUploadDeps(supabase: SupabaseClient, target: UploadTarge
   };
 }
 
-/** A short-lived link to a CV, opened by the person in a new tab. */
-export async function signedCvUrl(supabase: SupabaseClient, path: string, expiresIn = 300): Promise<string> {
-  const { data, error } = await supabase.storage.from(CV_BUCKET).createSignedUrl(path, expiresIn);
+/** A short-lived link to a CV, opened by the person in a new tab or shown in the viewer; with `download`, a link the browser saves under that file name. */
+export async function signedCvUrl(
+  supabase: SupabaseClient,
+  path: string,
+  expiresIn = 300,
+  download?: string,
+): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from(CV_BUCKET)
+    .createSignedUrl(path, expiresIn, download ? { download } : undefined);
   if (error) throw error;
   const url = data?.signedUrl;
   if (!url) throw new Error("Storage answered no signed URL");

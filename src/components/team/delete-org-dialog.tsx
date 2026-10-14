@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/lib/i18n";
@@ -32,22 +32,24 @@ export function DeleteOrgDialog({
   const matches = typed.trim() === orgName.trim();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>{t("settings.delete.title", { org: orgName })}</DialogTitle>
           <DialogDescription>{t("settings.danger.text")}</DialogDescription>
         </DialogHeader>
-        <div className="space-y-2">
-          <Label htmlFor="delete-org-name">{t("settings.delete.text")}</Label>
-          <Input
-            id="delete-org-name"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            placeholder={orgName}
-            autoComplete="off"
-            disabled={busy}
-          />
-        </div>
+        <DialogBody>
+          <div className="space-y-2">
+            <Label htmlFor="delete-org-name">{t("settings.delete.text")}</Label>
+            <Input
+              id="delete-org-name"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={orgName}
+              autoComplete="off"
+              disabled={busy}
+            />
+          </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             {t("common.cancel")}

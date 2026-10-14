@@ -253,3 +253,29 @@ export function canSend(state: DialogState): boolean {
 export function stepIndex(step: Step): number {
   return STEPS.indexOf(step);
 }
+
+export type StepStatus = "done" | "current" | "todo";
+
+/** Where a step stands against the current one, for the stepper's marks. */
+export function stepStatus(step: Step, current: Step): StepStatus {
+  const index = stepIndex(step);
+  const now = stepIndex(current);
+  if (index === now) return "current";
+  return index < now ? "done" : "todo";
+}
+
+/** The most characters a folded sheet shows of its synthesis. */
+export const PREVIEW_MAX = 160;
+
+/**
+ * The synthesis as a folded sheet previews it: one line, whitespace
+ * collapsed, clipped on a word with an ellipsis past `max`. Empty when
+ * there is nothing to preview (the caller says so in words).
+ */
+export function previewOf(text: string, max: number = PREVIEW_MAX): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat;
+  const cut = flat.slice(0, Math.max(1, max));
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}

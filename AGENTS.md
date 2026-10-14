@@ -19,10 +19,14 @@ stack and nothing else.
   a person retains or dismisses, and `shortlist_items.decided_by` says who. The UI never hides
   this. A criterion the CV says nothing about is `not_stated`, never a
   mismatch; a field the model did not read is absent, never invented.
-- No sensitive inference: age, date of birth, gender, origin, photo,
-  family, health, religion, union, politics are never extracted, stored or
-  used as criteria; a career break, a gap or a period without a position
-  is never read, scored or mentioned either (such sentences are withheld).
+- No sensitive inference: age, date of birth, gender, origin, family,
+  health, religion, union, politics are never extracted, stored or used
+  as criteria. The photo read from a CV's first page is stored and shown
+  for identification only (`candidates.photo_path`, the private `photos`
+  bucket, off for an organisation with `organizations.show_photos`) and
+  never reaches the model or any criterion. A career break, a gap or a
+  period without a position is never read, scored or mentioned either
+  (such sentences are withheld).
 - Access is decided by `memberships.role` through RLS
   (`supabase/migrations`) and, in server functions, by `requireMember()`
   reading the access token the browser sends: never by anything else. The
@@ -36,15 +40,21 @@ stack and nothing else.
   Resend, each one a row in `email_sends`; nothing marketing, nothing to a
   candidate.
 - GDPR: each organisation sets `retention_months` (24 at most); the
-  processor purges expired candidates and their files every hour; a
-  candidate can be exported and erased on demand from their page; every
-  action is in `activities`.
+  processor purges expired candidates and their files (CVs and photo)
+  every hour; a candidate can be exported and erased on demand from
+  their page; every action is in `activities`.
 - The interface speaks French and English (`src/lib/i18n`); every sentence
   shown is a dictionary key with both languages; `en` must carry every key
   of `fr` (tested).
 - The pages never pretend: a document that failed says why in one
   sentence, a search without a model says it ran on text only, a share
   says when it expires.
+- Every screen follows the design charter, v2 (`docs/DESIGN.md`): the
+  tokens of `src/styles.css` (never a hard-coded colour, radius or
+  duration), the primitives of `src/components/ui` and
+  `src/components/app-shell`, one icon per control, motion that explains
+  and stops under `prefers-reduced-motion`; a list row shows what tells
+  rows apart, never every field.
 
 ## Validation
 

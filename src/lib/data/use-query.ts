@@ -41,6 +41,8 @@ export function useQuery<T>(key: string, read: () => Promise<T>, enabled = true)
   }, [enabled]);
 
   useEffect(() => {
+    // An error belongs to the key that raised it: a new key starts clean.
+    setError(null);
     if (!enabled) {
       setLoading(false);
       return;

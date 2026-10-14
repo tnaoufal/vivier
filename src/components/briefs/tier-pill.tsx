@@ -1,8 +1,8 @@
 /**
- * The tier the comparative pass gave a result, as a pill with a leading
- * icon shown before the decision: to present (A), to dig into (B), not
- * presented (C). The model ranks the group; the team retains, and the
- * pill never says more than that.
+ * The tier the comparative pass gave a result, as a pill with its one
+ * leading icon shown before the decision: to present (A), to dig into
+ * (B), behind the others (C). The model ranks the group; the team
+ * retains, and the pill never says more than that.
  */
 import { CircleMinus, Eye, Star } from "lucide-react";
 
@@ -21,8 +21,7 @@ export function TierPill({ tier }: { tier: AssessmentTier }) {
   const { tone, icon: Icon } = TIERS[tier];
   const label = t(`briefs.tier.${tier}`);
   return (
-    <Pill tone={tone} title={t("briefs.tier.label", { tier: label })}>
-      <Icon aria-hidden="true" />
+    <Pill tone={tone} icon={<Icon />} title={t("briefs.tier.label", { tier: label })}>
       {label}
     </Pill>
   );

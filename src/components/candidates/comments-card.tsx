@@ -6,7 +6,7 @@
  * primary action.
  */
 import { useState, type FormEvent } from "react";
-import { MessageSquare, Trash2 } from "lucide-react";
+import { MessageSquare, Send, Trash2 } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
@@ -90,38 +90,38 @@ export function CommentsCard({
     <section className="sheet p-6">
       <h2 className="mb-4 text-base font-semibold text-ink">{t("candidates.comments.title")}</h2>
       {comments.length ? (
-        <ul className="space-y-4">
+        <ul className="stagger space-y-4">
           {comments.map((comment) => {
             const author = memberName(members.get(comment.author_id), t("common.someone"));
             const mine = user?.id === comment.author_id;
             return (
-              <li key={comment.id} className="flex gap-3">
+              <li key={comment.id} className="flex gap-3 rise-in">
                 <Avatar name={author} size="sm" className="mt-1" />
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-x-2 text-[13px] leading-5 text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-x-2 text-meta text-muted-foreground">
                     <span className="font-medium text-ink">{author}</span>
                     <span>{formatRelative(locale, comment.created_at)}</span>
                     {mine || can("admin") ? (
-                      <button
+                      <Button
                         type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        icon={<Trash2 />}
                         onClick={() => setDeleting(comment)}
                         disabled={busy}
                         aria-label={t("common.delete")}
-                        title={t("common.delete")}
-                        className="ml-auto rounded-full p-1 hover:bg-accent disabled:opacity-50 [&_svg]:size-3.5"
-                      >
-                        <Trash2 />
-                      </button>
+                        className="-my-1.5 ml-auto text-muted-foreground hover:text-negative"
+                      />
                     ) : null}
                   </div>
-                  <p className="whitespace-pre-line text-[15px] leading-6 text-ink">{comment.body}</p>
+                  <p className="whitespace-pre-line text-body text-ink">{comment.body}</p>
                 </div>
               </li>
             );
           })}
         </ul>
       ) : (
-        <EmptyState icon={<MessageSquare />} title={t("candidates.comments.empty")} className="py-6" />
+        <EmptyState compact icon={<MessageSquare />} title={t("candidates.comments.empty")} />
       )}
       {canComment ? (
         <form onSubmit={(event) => void submit(event)} className="mt-4 space-y-2">
@@ -135,7 +135,7 @@ export function CommentsCard({
             aria-label={t("candidates.comments.title")}
           />
           <div className="flex justify-end">
-            <Button type="submit" size="sm" variant="outline" disabled={busy || !body.trim()}>
+            <Button type="submit" size="sm" variant="outline" icon={<Send />} disabled={busy || !body.trim()}>
               {t("common.send")}
             </Button>
           </div>

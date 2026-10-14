@@ -15,7 +15,8 @@ function one<T>(value: unknown): T | null {
   return value && typeof value === "object" ? (value as T) : null;
 }
 
-export type ShareableCandidate = Pick<CandidateRow, "id" | "full_name" | "headline">;
+/** The photo path is for the dialog's avatars only: the dossier a link opens carries no photo. */
+export type ShareableCandidate = Pick<CandidateRow, "id" | "full_name" | "headline" | "photo_path">;
 
 export interface ShareableItem extends Pick<ShortlistItemRow, "id" | "candidate_id" | "status" | "position"> {
   /** Null when the candidate was erased from the pool. */
@@ -29,7 +30,7 @@ export async function listShareableItems(
 ): Promise<ShareableItem[]> {
   const { data, error } = await supabase
     .from("shortlist_items")
-    .select("id, candidate_id, status, position, candidates(id, full_name, headline)")
+    .select("id, candidate_id, status, position, candidates(id, full_name, headline, photo_path)")
     .eq("org_id", orgId)
     .eq("shortlist_id", shortlistId)
     .order("position", { ascending: true })

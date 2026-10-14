@@ -1,15 +1,18 @@
 /**
- * The thread under a shortlist item: each comment with its author,
- * when it was written, its body with the mentions set apart; an edit
- * and a delete for the author (a delete for an admin too); a composer
- * with @ completion over the team. Members comment; viewers read.
+ * The thread under a shortlist item: each comment with its author's
+ * initials, the name, when it was written, its body with the mentions
+ * set apart; an edit and a delete for the author (a delete for an admin
+ * too); a composer with @ completion over the team. Members comment;
+ * viewers read. Its buttons stay outline: the drawer's footer already
+ * carries the one filled action, the decision.
  */
 import { useState } from "react";
-import { MessageSquare, Pencil, Trash2 } from "lucide-react";
+import { MessageSquare, Pencil, Send, Trash2 } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import type { CommentRow } from "@/lib/db/types";
@@ -100,58 +103,63 @@ export function CommentsThread({
   }
 
   const count = comments.length;
-  const countLabel = count === 1 ? t("shortlists.comments.count.one") : t("shortlists.comments.count.many", { count });
+  const countLabel =
+    count === 1 ? t("shortlists.comments.count.one") : t("shortlists.comments.count.many", { count });
 
   return (
-    <section className="space-y-3">
-      <h3 className="text-base font-semibold leading-6 text-ink">
+    <section className="space-y-4">
+      <h3 className="text-base font-semibold text-ink">
         {t("shortlists.comments.title")}
-        {count ? <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">{countLabel}</span> : null}
+        {count ? (
+          <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">{countLabel}</span>
+        ) : null}
       </h3>
       {comments.length ? (
-        <ul className="space-y-4">
+        <ul className="stagger space-y-5">
           {comments.map((comment) => {
             const author = nameOf(comment.author_id);
             const mine = user?.id === comment.author_id;
             const edited = Date.parse(comment.updated_at) - Date.parse(comment.created_at) > EDITED_AFTER_MS;
             return (
-              <li key={comment.id} className="flex gap-3">
+              <li key={comment.id} className="rise-in flex gap-3">
                 <Avatar name={author} size="sm" className="mt-0.5" />
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-5 text-muted-foreground">
+                  <div className="flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 text-meta text-muted-foreground">
                     <span className="font-medium text-ink">{author}</span>
                     <time dateTime={comment.created_at} title={formatDateTime(locale, comment.created_at)}>
                       {formatRelative(locale, comment.created_at)}
                     </time>
                     {edited ? <span>({t("shortlists.comments.edited")})</span> : null}
-                    {mine && canComment ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setEditing({ id: comment.id, draft: comment.body })}
-                        disabled={busy}
-                        aria-label={t("common.edit")}
-                        title={t("common.edit")}
-                        className="-my-2 ml-auto text-muted-foreground"
-                      >
-                        <Pencil />
-                      </Button>
-                    ) : null}
-                    {mine || can("admin") ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setDeleting(comment)}
-                        disabled={busy}
-                        aria-label={t("common.delete")}
-                        title={t("common.delete")}
-                        className={`${mine && canComment ? "" : "ml-auto "}-my-2 text-muted-foreground hover:text-negative`}
-                      >
-                        <Trash2 />
-                      </Button>
-                    ) : null}
+                    <span className="ml-auto flex items-center">
+                      {mine && canComment ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setEditing({ id: comment.id, draft: comment.body })}
+                          disabled={busy}
+                          aria-label={t("common.edit")}
+                          title={t("common.edit")}
+                          className="text-muted-foreground"
+                        >
+                          <Pencil />
+                        </Button>
+                      ) : null}
+                      {mine || can("admin") ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setDeleting(comment)}
+                          disabled={busy}
+                          aria-label={t("common.delete")}
+                          title={t("common.delete")}
+                          className="text-muted-foreground hover:text-negative"
+                        >
+                          <Trash2 />
+                        </Button>
+                      ) : null}
+                    </span>
                   </div>
                   {editing?.id === comment.id ? (
                     <div className="mt-2 space-y-2">
@@ -168,23 +176,34 @@ export function CommentsThread({
                         <Button type="button" size="sm" variant="outline" onClick={() => setEditing(null)} disabled={busy}>
                           {t("common.cancel")}
                         </Button>
-                        <Button type="button" size="sm" onClick={() => void saveEdit()} disabled={busy || !editing.draft.trim()}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void saveEdit()}
+                          disabled={busy || !editing.draft.trim()}
+                        >
                           {t("common.save")}
                         </Button>
                       </div>
                     </div>
                   ) : (
-                    <MentionText body={comment.body} members={members} className="mt-1" />
+                    <MentionText body={comment.body} members={members} className="mt-0.5" />
                   )}
                 </div>
               </li>
             );
           })}
         </ul>
+      ) : loading ? (
+        <>
+          <p className="sr-only">{t("common.loading")}</p>
+          <SkeletonRows rows={2} className="[&>li]:px-0" />
+        </>
       ) : (
-        <div className="flex items-center gap-3 rounded-2xl border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
+        <div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
           <MessageSquare className="size-4 shrink-0" aria-hidden="true" />
-          {loading ? t("common.loading") : t("shortlists.comments.empty")}
+          {t("shortlists.comments.empty")}
         </div>
       )}
 
@@ -200,8 +219,15 @@ export function CommentsThread({
             onSubmit={() => void submit()}
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-[13px] leading-5 text-muted-foreground">{t("shortlists.comments.help")}</p>
-            <Button type="button" size="sm" onClick={() => void submit()} disabled={busy || !body.trim()}>
+            <p className="text-meta text-muted-foreground">{t("shortlists.comments.help")}</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              icon={<Send />}
+              onClick={() => void submit()}
+              disabled={busy || !body.trim()}
+            >
               {t("shortlists.comments.send")}
             </Button>
           </div>

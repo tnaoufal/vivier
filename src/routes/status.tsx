@@ -1,10 +1,20 @@
-/** The live setup of this deployment and the processor's health; no secret is ever shown. */
-import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, CircleDashed, XCircle } from "lucide-react";
+/**
+ * The live setup of this deployment and the processor's health, as two
+ * cards of rows under the public frame: each row a name, an optional
+ * public note (a model's name, a version) and a pill that says
+ * operational, missing or not checked in words and an icon, never a
+ * colour alone. One line sums it up; no secret is ever shown.
+ */
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { Check, CircleDashed, RefreshCw, X } from "lucide-react";
 
-import { BrandMark } from "@/components/brand-mark";
+import { PageHeader } from "@/components/app-shell/page-header";
+import { Pill } from "@/components/app-shell/pill";
+import { Section } from "@/components/app-shell/section";
+import { PublicFrame } from "@/components/public-frame";
+import { Button } from "@/components/ui/button";
+import { formatDateTime, useI18n, type TranslationKey } from "@/lib/i18n";
 import { getStatus } from "@/lib/platform/status.functions";
-import { useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/status")({
   loader: () => getStatus(),
@@ -12,60 +22,106 @@ export const Route = createFileRoute("/status")({
   component: StatusPage,
 });
 
-function Row({ label, ok, note }: { label: string; ok: boolean | null; note?: string | null }) {
-  const Icon = ok === null ? CircleDashed : ok ? CheckCircle2 : XCircle;
-  const tone = ok === null ? "text-muted-foreground" : ok ? "text-positive" : "text-negative";
+interface Probe {
+  label: TranslationKey;
+  ok: boolean | null;
+  note?: string | null | undefined;
+}
+
+function StatePill({ ok }: { ok: boolean | null }) {
+  const { t } = useI18n();
+  if (ok === null) {
+    return (
+      <Pill tone="neutral" icon={<CircleDashed />}>
+        {t("status.unknown")}
+      </Pill>
+    );
+  }
+  return ok ? (
+    <Pill tone="positive" icon={<Check />}>
+      {t("status.ok")}
+    </Pill>
+  ) : (
+    <Pill tone="negative" icon={<X />}>
+      {t("status.missing")}
+    </Pill>
+  );
+}
+
+function Rows({ checks }: { checks: Probe[] }) {
+  const { t } = useI18n();
   return (
-    <li className="flex items-center justify-between gap-4 py-4">
-      <span className="min-w-0 truncate text-[15px] leading-6 text-ink">{label}</span>
-      <span className={`flex shrink-0 items-center gap-3 text-sm ${tone}`}>
-        {note ? <span className="max-w-48 truncate font-mono text-xs text-muted-foreground">{note}</span> : null}
-        <Icon className="size-4" aria-hidden="true" />
-      </span>
-    </li>
+    <ul className="sheet stagger overflow-hidden">
+      {checks.map((check) => (
+        <li key={check.label} className="sheet-row rise-in">
+          <span className="min-w-0 flex-1 truncate text-sm text-ink">{t(check.label)}</span>
+          {check.note ? <span className="hidden max-w-48 truncate font-mono text-xs text-muted-foreground sm:block">{check.note}</span> : null}
+          <StatePill ok={check.ok} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
 function StatusPage() {
   const report = Route.useLoaderData();
-  const { locale } = useI18n();
-  const fr = locale === "fr";
+  const router = useRouter();
+  const { locale, t } = useI18n();
   const { setup, processor } = report;
+
+  const setupChecks: Probe[] = [
+    { label: "status.row.site", ok: setup.site },
+    { label: "status.row.accounts", ok: setup.accounts },
+    { label: "status.row.serviceKey", ok: setup.serviceKey },
+    { label: "status.row.model", ok: setup.model.configured, note: setup.model.model },
+    { label: "status.row.embeddings", ok: setup.model.configured, note: setup.model.embeddingModel },
+    { label: "status.row.email", ok: setup.email },
+    { label: "status.row.rateLimit", ok: setup.rateLimit },
+  ];
+  const processorChecks: Probe[] = [
+    { label: "status.row.processor", ok: setup.processor },
+    { label: "status.row.reachable", ok: processor.reachable, note: processor.version },
+    { label: "status.row.healthy", ok: processor.reachable ? processor.ok : null },
+    { label: "status.row.database", ok: processor.supabase },
+    { label: "status.row.model", ok: processor.model },
+    { label: "status.row.ocr", ok: processor.ocr },
+    { label: "status.row.polling", ok: processor.polling },
+  ];
+  const issues = [...setupChecks, ...processorChecks].filter((check) => check.ok === false).length;
+  const summary =
+    issues === 0 ? t("status.summary.ok") : issues === 1 ? t("status.summary.issues.one") : t("status.summary.issues.many", { count: issues });
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
-        <BrandMark size="md" className="mb-10" />
-        <h1 className="font-display text-2xl text-ink sm:text-3xl">{fr ? "État du service" : "Service status"}</h1>
-        <p className="mt-2 text-[15px] leading-6 text-muted-foreground">
-          {fr ? "Ce que ce déploiement a de configuré. Aucune valeur n'est affichée." : "What this deployment has set up. No value is shown."}
-        </p>
-        <section className="sheet mt-8 px-6">
-          <ul className="divide-y divide-border">
-            <Row label={fr ? "Site (SITE_URL)" : "Site (SITE_URL)"} ok={setup.site} />
-            <Row label={fr ? "Comptes (Supabase)" : "Accounts (Supabase)"} ok={setup.accounts} />
-            <Row label={fr ? "Clé de service" : "Service key"} ok={setup.serviceKey} />
-            <Row label={fr ? "Modèle" : "Model"} ok={setup.model.configured} note={setup.model.model} />
-            <Row label={fr ? "Embeddings" : "Embeddings"} ok={setup.model.configured} note={setup.model.embeddingModel} />
-            <Row label={fr ? "Email (Resend)" : "Email (Resend)"} ok={setup.email} />
-            <Row label={fr ? "Limitation de débit" : "Rate limiting"} ok={setup.rateLimit} />
-          </ul>
-        </section>
-        <h2 className="mt-10 font-display text-xl text-ink">{fr ? "Traitement des CV" : "CV processing"}</h2>
-        <section className="sheet mt-4 px-6">
-          <ul className="divide-y divide-border">
-            <Row label={fr ? "Service configuré" : "Service configured"} ok={setup.processor} />
-            <Row label={fr ? "Joignable" : "Reachable"} ok={processor.reachable} note={processor.version} />
-            <Row label={fr ? "En bonne santé" : "Healthy"} ok={processor.reachable ? processor.ok : null} />
-            <Row label={fr ? "Base de données" : "Database"} ok={processor.supabase} />
-            <Row label={fr ? "Modèle" : "Model"} ok={processor.model} />
-            <Row label="OCR" ok={processor.ocr} />
-            <Row label={fr ? "File d'attente lue" : "Queue polled"} ok={processor.polling} />
-          </ul>
-        </section>
-        <p className="mt-8 text-[13px] leading-5 text-muted-foreground">
-          {fr ? "Vérifié le" : "Checked at"} {new Date(report.checkedAt).toLocaleString(fr ? "fr-FR" : "en-GB")}
-        </p>
+    <PublicFrame width="md">
+      <div className="rise-in">
+        <PageHeader
+          title={t("status.title")}
+          description={t("status.subtitle")}
+          meta={
+            <>
+              <Pill tone={issues === 0 ? "positive" : "negative"} icon={issues === 0 ? <Check /> : <X />}>
+                {summary}
+              </Pill>
+              <span className="text-meta text-muted-foreground tabular-nums">
+                {t("status.checkedAt", { date: formatDateTime(locale, report.checkedAt) })}
+              </span>
+            </>
+          }
+          actions={
+            <Button variant="outline" icon={<RefreshCw />} onClick={() => void router.invalidate()}>
+              {t("status.refresh")}
+            </Button>
+          }
+        />
+        <div className="space-y-8">
+          <Section title={t("status.setup")}>
+            <Rows checks={setupChecks} />
+          </Section>
+          <Section title={t("status.processing")}>
+            <Rows checks={processorChecks} />
+          </Section>
+        </div>
       </div>
-    </div>
+    </PublicFrame>
   );
 }

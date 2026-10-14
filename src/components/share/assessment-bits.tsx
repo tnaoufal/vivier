@@ -43,20 +43,18 @@ export function metLabel(t: Translate, met: RequirementMet): string {
   return t(MET_KEYS[met]);
 }
 
-/** The decision as a pill with an icon, so colour is never the only signal; "not analysed" when null. */
+/** The decision as a pill with one leading icon, so colour is never the only signal; "not analysed" when null. */
 export function DecisionPill({ decision, t }: { decision: AssessmentDecision | null; t: Translate }) {
   if (!decision) {
     return (
-      <Pill tone="neutral">
-        <CircleDashed aria-hidden="true" />
+      <Pill tone="neutral" icon={<CircleDashed />}>
         {t("shares.decision.none")}
       </Pill>
     );
   }
   const { tone, icon: Icon } = DECISION_TONES[decision];
   return (
-    <Pill tone={tone}>
-      <Icon aria-hidden="true" />
+    <Pill tone={tone} icon={<Icon />}>
       {t(DECISION_KEYS[decision])}
     </Pill>
   );
@@ -68,9 +66,20 @@ const SCORE_TEXT = {
   negative: "text-negative",
 } as const;
 
-/** The score as a tabular number in the ring's tone, or an em dash in muted text. */
-export function ScoreText({ score }: { score: number | null }) {
-  if (score === null) return <span className="tabular-nums text-muted-foreground">—</span>;
+/**
+ * The score as a tabular number in the ring's tone; without one, a muted
+ * dash (as the ring draws it) whose reason is its text for assistive
+ * technologies and its hover, never a bare dash read as "none".
+ */
+export function ScoreText({ score, t }: { score: number | null; t: Translate }) {
+  if (score === null) {
+    return (
+      <span className="tabular-nums text-muted-foreground" title={t("shares.score.none")}>
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">{t("shares.score.none")}</span>
+      </span>
+    );
+  }
   return <span className={`font-semibold tabular-nums ${SCORE_TEXT[ringTone(score)]}`}>{score}</span>;
 }
 

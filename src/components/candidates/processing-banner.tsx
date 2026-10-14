@@ -16,10 +16,11 @@
  */
 import { useEffect, useState } from "react";
 import {
+  ChevronDown,
+  CircleDashed,
   ExternalLink,
   FileX,
   Hourglass,
-  LoaderCircle,
   RefreshCw,
   TriangleAlert,
 } from "lucide-react";
@@ -167,6 +168,21 @@ export function ProcessingBanner({
                     remaining: count(room),
                   });
 
+  // What the banner says aloud: the end of a wave and the set-aside figures, never the pending
+  // count (it moves with every CV read) nor the unfolded lists. One span per figure, so only the
+  // one that changed is read again, and one that goes (the end of the wave) is not.
+  const announcement: { key: string; text: string }[] = [
+    finished
+      ? {
+          key: "done",
+          text: t("candidates.processing.progress.done", { total: count(finished.total) }),
+        }
+      : null,
+    counts.failed > 0 ? { key: "failed", text: failedText } : null,
+    counts.rejected > 0 ? { key: "rejected", text: rejectedText } : null,
+    counts.quota > 0 ? { key: "quota", text: quotaText } : null,
+  ].filter((part): part is { key: string; text: string } => part !== null);
+
   /**
    * A set-aside file is the service's reading and a quota refusal its
    * state, both said in the person's language; a failure keeps the
@@ -231,37 +247,35 @@ export function ProcessingBanner({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="min-w-0 truncate font-medium text-ink">{document.file_name}</span>
-            <Pill tone={atQuota ? "caution" : documentTone(document.status)}>
+            <Pill size="sm" dot tone={atQuota ? "caution" : documentTone(document.status)}>
               {atQuota
                 ? t("candidates.documents.status.quota")
                 : t(documentStatusKey(document.status))}
             </Pill>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-meta text-muted-foreground tabular-nums">
               {formatBytes(document.byte_size, locale)}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground">{sentence(document)}</p>
+          <p className="text-meta text-muted-foreground">{sentence(document)}</p>
         </div>
         <div className="flex flex-wrap gap-1">
           <Button
             variant="ghost"
             size="sm"
+            icon={<ExternalLink />}
             onClick={() => void actions.view(document)}
             disabled={actions.busyId !== null}
-            className="gap-1.5"
           >
-            <ExternalLink />
             {t("candidates.documents.view")}
           </Button>
           {canEdit && retryAllowed && canRetry(document.status) ? (
             <Button
               variant="outline"
               size="sm"
+              icon={<RefreshCw />}
               onClick={() => void actions.retry(document)}
               disabled={actions.busyId !== null || requeuing}
-              className="gap-1.5"
             >
-              <RefreshCw />
               {t("candidates.documents.retry")}
             </Button>
           ) : null}
@@ -274,22 +288,25 @@ export function ProcessingBanner({
   const more = (total: number, rows: DocumentRow[] | null) => {
     const hidden = rows ? total - rows.length : 0;
     return hidden > 0 ? (
-      <li className="py-3 text-xs text-muted-foreground tabular-nums">
+      <li className="py-3 text-meta text-muted-foreground tabular-nums">
         {t("candidates.processing.more", { count: count(hidden) })}
       </li>
     ) : null;
   };
 
   return (
-    <section className="sheet mb-4 px-5 py-4 text-sm" aria-live="polite">
+    <section className="sheet fade-in mb-6 px-5 py-4 text-sm sm:px-6">
+      <p className="sr-only" role="status">
+        {announcement.map((part) => (
+          <span key={part.key}>{part.text} </span>
+        ))}
+      </p>
       <ProcessingProgress wave={wave} finishedTotal={finished?.total ?? null} className="mb-4" />
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         {pending > 0 ? (
           <span className="inline-flex min-w-0 items-center gap-2 text-ink">
-            <LoaderCircle
-              className="size-4 shrink-0 animate-spin text-primary"
-              aria-hidden="true"
-            />
+            {/* The running bar above carries the motion; this mark stays still. */}
+            <CircleDashed className="size-4 shrink-0 text-primary" aria-hidden="true" />
             <span className="truncate tabular-nums">{pendingText}</span>
           </span>
         ) : null}
@@ -317,31 +334,36 @@ export function ProcessingBanner({
               <Button
                 variant="outline"
                 size="sm"
+                icon={<RefreshCw />}
                 onClick={() => void requeue()}
                 disabled={requeuing || actions.busyId !== null}
-                className="gap-1.5"
               >
-                {requeuing ? (
-                  <LoaderCircle className="animate-spin" aria-hidden="true" />
-                ) : (
-                  <RefreshCw />
-                )}
                 {t("candidates.processing.quota.requeue", { count: count(requeueable) })}
               </Button>
             ) : null}
-            <Button variant="ghost" size="sm" onClick={() => setOpen((value) => !value)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={
+                <ChevronDown
+                  className={cn("transition-transform duration-base ease-out-soft", open && "rotate-180")}
+                />
+              }
+              onClick={() => setOpen((value) => !value)}
+              aria-expanded={open}
+            >
               {open ? t("candidates.processing.hide") : t("candidates.processing.show")}
             </Button>
           </div>
         ) : null}
       </div>
-      <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+      <p className="mt-1 text-meta text-muted-foreground">
         {t("candidates.processing.help")}
       </p>
       {quotaSentence ? (
         <p
           className={cn(
-            "mt-1 text-[13px] leading-5 tabular-nums",
+            "mt-1 text-meta tabular-nums",
             room === 0 ? "text-caution-foreground dark:text-caution" : "text-muted-foreground",
           )}
         >
@@ -349,7 +371,7 @@ export function ProcessingBanner({
         </p>
       ) : null}
       {open && unfoldable ? (
-        <div className="mt-3 space-y-4 border-t border-border pt-3">
+        <div className="fade-in mt-3 space-y-4 border-t border-border pt-3">
           {setAside > 0 ? (
             <section>
               <h3 className="label-caps">{t("candidates.processing.group.other")}</h3>

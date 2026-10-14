@@ -2,8 +2,9 @@
  * The team area's reads and writes from the browser, under RLS: members
  * with their joining date, pending invitations (never the token hash,
  * which is not granted), seat and quota counters, role changes, removals,
- * organisation settings and the person's profile. Every call throws the
- * supabase-js error; the pages turn known codes into sentences.
+ * organisation settings (the photos switch apart), and the person's
+ * profile. Every call throws the supabase-js error; the pages turn known
+ * codes into sentences.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -96,6 +97,17 @@ export interface OrganizationSettings {
 
 export async function updateOrganization(supabase: SupabaseClient, orgId: string, patch: OrganizationSettings): Promise<void> {
   const { error } = await supabase.from("organizations").update(patch).eq("id", orgId);
+  if (error) throw error;
+}
+
+/**
+ * Whether candidates' photos are shown in the interface
+ * (organizations.show_photos; the column alone is granted to the
+ * browser, RLS keeps the write to administrators). Written on its own
+ * so the toggle saves at once, apart from the settings form.
+ */
+export async function updateShowPhotos(supabase: SupabaseClient, orgId: string, showPhotos: boolean): Promise<void> {
+  const { error } = await supabase.from("organizations").update({ show_photos: showPhotos }).eq("id", orgId);
   if (error) throw error;
 }
 

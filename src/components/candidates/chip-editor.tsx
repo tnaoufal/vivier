@@ -1,10 +1,14 @@
 /**
- * Skills and tags as chips a member adds to and removes from in place;
- * each change is saved at once by the parent (one column). Typing
- * "a, b" adds two chips.
+ * Skills and tags as chips. `Chip` is the quiet chip the sheet reads
+ * (no remove mark); `ChipEditor` adds the remove mark on each and a line
+ * to type more, each change saved at once by the parent (one column).
+ * Typing "a, b" adds two chips. Two tones: `neutral` for what the CV
+ * states, `primary` for the team's own labels. One height (28px) in both
+ * modes, so a skill does not grow when the sheet enters edit mode: the
+ * editable chip only trades its right padding for the remove mark.
  */
-import { useState, type FormEvent } from "react";
-import { X } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,18 +16,44 @@ import { addChips, removeChip } from "@/lib/candidates/draft";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
+export type ChipTone = "primary" | "neutral";
+
+const CHIP_TONES: Record<ChipTone, string> = {
+  neutral: "bg-muted text-ink",
+  primary: "bg-primary/10 text-primary",
+};
+
+/** The one content chip: 28px, 13px text, read on the sheet and in the editor alike. */
+const CHIP_BASE = "inline-flex h-7 max-w-full items-center rounded-full text-meta font-medium";
+
+export function Chip({
+  tone = "neutral",
+  children,
+  className,
+}: {
+  tone?: ChipTone;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={cn(CHIP_BASE, "px-2.5", CHIP_TONES[tone], className)}>
+      <span className="min-w-0 truncate">{children}</span>
+    </span>
+  );
+}
+
 export function ChipEditor({
   values,
   canEdit,
   placeholder,
-  tone = "primary",
+  tone = "neutral",
   emptyKey = "common.none",
   onChange,
 }: {
   values: string[];
   canEdit: boolean;
   placeholder: string;
-  tone?: "primary" | "neutral";
+  tone?: ChipTone;
   /** What an empty list says: "none" for the team's own tags, "not stated" for what a CV did not say. */
   emptyKey?: "common.none" | "common.unknown";
   onChange: (values: string[]) => Promise<void>;
@@ -53,18 +83,16 @@ export function ChipEditor({
     setTyped("");
   }
 
-  const chipClass = tone === "primary" ? "bg-primary/12 text-primary" : "bg-muted text-muted-foreground";
-
   return (
     <div className="space-y-3">
       {values.length ? (
-        <ul className="flex flex-wrap gap-2">
+        <ul className="flex flex-wrap gap-1.5">
           {values.map((value) => (
             <li
               key={value}
-              className={cn("inline-flex h-8 max-w-full items-center gap-1 rounded-full pl-3 text-[13px] font-medium", canEdit ? "pr-1.5" : "pr-3", chipClass)}
+              className={cn(CHIP_BASE, "gap-0.5 pl-2.5", canEdit ? "pr-1" : "pr-2.5", CHIP_TONES[tone])}
             >
-              <span className="truncate">{value}</span>
+              <span className="min-w-0 truncate">{value}</span>
               {canEdit ? (
                 <button
                   type="button"
@@ -72,7 +100,7 @@ export function ChipEditor({
                   disabled={busy}
                   aria-label={t("candidates.chips.remove", { value })}
                   title={t("candidates.chips.remove", { value })}
-                  className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors duration-150 hover:bg-card/70 disabled:opacity-50"
+                  className="press inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                 >
                   <X className="size-3.5" aria-hidden="true" />
                 </button>
@@ -91,9 +119,10 @@ export function ChipEditor({
             placeholder={placeholder}
             maxLength={200}
             disabled={busy}
+            aria-label={placeholder}
             className="min-w-0 flex-1 basis-48"
           />
-          <Button type="submit" variant="outline" disabled={busy || !typed.trim()}>
+          <Button type="submit" variant="outline" icon={<Plus />} disabled={busy || !typed.trim()}>
             {t("common.add")}
           </Button>
         </form>

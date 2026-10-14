@@ -1,63 +1,208 @@
 /**
- * The profile as read: one card per section, "not stated" in muted text
- * for every empty field (never a dash that could read as "none"), a
- * confidence hint where the structuring was unsure. Skills and tags are
- * chips a member edits in place; the rest is edited through the form
- * (profile-form.tsx). Spacing and type follow docs/DESIGN.md.
+ * The profile as a recruiter reads a CV: one sheet, its sections divided
+ * by hairlines. The summary on three lines with "see more"; the career
+ * as a timeline with the period and its duration computed, the company,
+ * the title and the description folded to two lines; the education in
+ * compact rows; the skills as quiet chips, the first eight grouped as
+ * domains, tools and methods (skills.ts decides, for the layout only)
+ * with "+ N others"; the contact details and the links. "Not stated" in
+ * muted text for every empty field (never a dash that could read as
+ * "none"), a confidence hint where the structuring was unsure. A member
+ * edits the skills in place behind a pencil; the rest is edited through
+ * the form (profile-form.tsx).
  */
-import type { ReactNode } from "react";
-import { Mail, Phone } from "lucide-react";
+import { Fragment, useState, type ReactNode } from "react";
+import { Check, ExternalLink, Link2, Mail, Pencil, Phone } from "lucide-react";
 
-import { formatDateRange, yearsLabel } from "@/lib/candidates/format";
+import { Timeline, TimelineItem } from "@/components/app-shell/timeline";
+import { Button } from "@/components/ui/button";
+import { formatDateRange, formatDuration } from "@/lib/candidates/format";
+import { SKILLS_SHOWN, SKILL_GROUPS, groupSkills, visibleSkills } from "@/lib/candidates/skills";
 import type { CandidateRow, ConfidenceMap } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
-import { ChipEditor } from "./chip-editor";
+import { Chip, ChipEditor } from "./chip-editor";
+import { ClampedText } from "./clamped-text";
 import { ConfidenceHint } from "./confidence-pill";
 
-export function Section({
+/** One section of the sheet: a title with an optional count, the hint, an action on the right, then the content. */
+function Block({
   title,
   hint,
+  count,
+  action,
   children,
 }: {
   title: ReactNode;
   hint?: number | null | undefined;
+  count?: number | undefined;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section className="sheet p-6">
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <h2 className="text-base font-semibold text-ink">{title}</h2>
+    <section className="p-6 sm:p-8">
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="text-base font-semibold text-ink">
+          {title}
+          {typeof count === "number" && count > 0 ? (
+            <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">
+              {count}
+            </span>
+          ) : null}
+        </h2>
         <ConfidenceHint value={hint} />
+        {action ? <div className="ml-auto">{action}</div> : null}
       </div>
       {children}
     </section>
   );
 }
 
-/** A value the CV stated, in body type; "not stated" in muted text when it said nothing. */
-function Value({ text, className = "" }: { text: string | null | undefined; className?: string }) {
+/** What the CV did not state. */
+function Unknown() {
   const { t } = useI18n();
-  const clean = text?.trim();
-  if (!clean) return <p className="text-sm text-muted-foreground">{t("common.unknown")}</p>;
-  return <p className={`whitespace-pre-line text-[15px] leading-6 text-ink ${className}`}>{clean}</p>;
+  return <p className="text-sm text-muted-foreground">{t("common.unknown")}</p>;
 }
 
-/** Links a value may carry: mailto / tel, opened by the person. */
-function ContactLine({ icon, href, text }: { icon: ReactNode; href: string | null; text: string | null }) {
+/** A contact detail or a link: one icon, the value as a link the person opens, "not stated" when none. */
+function ContactRow({
+  icon,
+  href,
+  text,
+  detail,
+  external = false,
+  hint,
+}: {
+  icon: ReactNode;
+  href: string | null;
+  text: string | null | undefined;
+  /** What stands next to the value in muted text (a link's host). */
+  detail?: string | undefined;
+  external?: boolean;
+  hint?: number | null | undefined;
+}) {
   const { t } = useI18n();
   const clean = text?.trim();
   return (
-    <div className="flex min-w-0 items-center gap-2 text-[15px] leading-6">
-      <span className="shrink-0 text-muted-foreground [&_svg]:size-4">{icon}</span>
+    <li className="flex min-w-0 items-center gap-3 text-body">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground [&_svg]:size-4">
+        {icon}
+      </span>
       {clean && href ? (
-        <a href={href} className="truncate text-primary hover:underline">
+        <a
+          href={href}
+          className="min-w-0 truncate rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+        >
           {clean}
+          {external ? <span className="sr-only"> {t("candidates.link.newTab")}</span> : null}
         </a>
       ) : (
         <span className="text-sm text-muted-foreground">{t("common.unknown")}</span>
       )}
-    </div>
+      {detail ? (
+        <span className="min-w-0 truncate text-meta text-muted-foreground">{detail}</span>
+      ) : null}
+      <ConfidenceHint value={hint} />
+    </li>
+  );
+}
+
+/** The host of a URL, for the line next to a link; "" when the URL does not parse. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+/** The skills: quiet chips grouped for reading, or the editor in place for a member. */
+function SkillsBlock({
+  skills,
+  hint,
+  canEdit,
+  onChange,
+}: {
+  skills: string[];
+  hint: number | null | undefined;
+  canEdit: boolean;
+  onChange: (values: string[]) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const { shown, hidden } = visibleSkills(skills, expanded);
+  const groups = groupSkills(shown);
+  // One heading per group only when the chips fall into more than one: a single group needs no label.
+  const filled = SKILL_GROUPS.filter((group) => groups[group].length > 0);
+  const labelled = filled.length > 1;
+
+  return (
+    <Block
+      title={t("candidates.field.skills")}
+      hint={hint}
+      count={skills.length}
+      action={
+        canEdit ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={editing ? "outline" : "ghost"}
+            icon={editing ? <Check /> : <Pencil />}
+            onClick={() => setEditing((value) => !value)}
+            className={cn(!editing && "text-muted-foreground hover:text-ink")}
+          >
+            {editing ? t("candidates.skills.done") : t("candidates.skills.edit")}
+          </Button>
+        ) : null
+      }
+    >
+      {editing ? (
+        <ChipEditor
+          values={skills}
+          canEdit
+          emptyKey="common.unknown"
+          placeholder={t("candidates.skills.placeholder")}
+          tone="neutral"
+          onChange={onChange}
+        />
+      ) : !skills.length ? (
+        <Unknown />
+      ) : (
+        <div className="space-y-4">
+          {filled.map((group) => (
+            <div key={group}>
+              {labelled ? (
+                <h3 className="label-caps mb-2">{t(`candidates.skills.group.${group}`)}</h3>
+              ) : null}
+              <ul className="flex flex-wrap gap-1.5">
+                {groups[group].map((skill) => (
+                  <li key={skill} className="min-w-0">
+                    <Chip>{skill}</Chip>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {hidden > 0 || skills.length > SKILLS_SHOWN ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((value) => !value)}
+              aria-expanded={expanded}
+              className="cursor-pointer rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {hidden === 1
+                ? t("candidates.skills.more.one")
+                : hidden > 0
+                  ? t("candidates.skills.more", { count: hidden })
+                  : t("candidates.showLess")}
+            </button>
+          ) : null}
+        </div>
+      )}
+    </Block>
   );
 }
 
@@ -65,138 +210,147 @@ export function ProfileSections({
   candidate,
   canEdit,
   onChips,
+  now = new Date(),
 }: {
   candidate: CandidateRow;
   canEdit: boolean;
   onChips: (column: "skills" | "tags", values: string[]) => Promise<void>;
+  /** The clock the durations of ongoing positions are counted to; injectable for tests. */
+  now?: Date;
 }) {
   const { t, locale } = useI18n();
   const confidence: ConfidenceMap = candidate.confidence ?? {};
-  const years = yearsLabel(locale, candidate.years_experience);
+  const summary = candidate.summary?.trim() ?? "";
+  const experiences = candidate.experiences ?? [];
+  const education = candidate.education ?? [];
+  const links = candidate.links ?? [];
 
   return (
-    <div className="space-y-8">
-      <Section title={t("candidates.field.summary")} hint={confidence.summary}>
-        <Value text={candidate.summary} />
-      </Section>
+    <div className="sheet divide-y divide-border">
+      <Block title={t("candidates.field.summary")} hint={confidence.summary}>
+        {summary ? <ClampedText text={summary} lines={3} /> : <Unknown />}
+      </Block>
 
-      <Section title={t("candidates.field.skills")} hint={confidence.skills}>
-        <ChipEditor
-          values={candidate.skills ?? []}
-          canEdit={canEdit}
-          emptyKey="common.unknown"
-          placeholder={t("candidates.skills.placeholder")}
-          onChange={(values) => onChips("skills", values)}
-        />
-      </Section>
-
-      <div className="grid gap-6 sm:grid-cols-2">
-        <Section title={t("candidates.field.languages")} hint={confidence.languages}>
-          {candidate.languages?.length ? (
-            <ul className="space-y-1 text-[15px] leading-6 text-ink">
-              {candidate.languages.map((language, index) => (
-                <li key={`${language.name}-${index}`}>
-                  {language.name}
-                  {language.level?.trim() ? <span className="text-muted-foreground"> · {language.level}</span> : null}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Value text={null} />
-          )}
-        </Section>
-        <Section title={t("candidates.field.years")} hint={confidence.years_experience}>
-          <Value text={years} className="tabular-nums" />
-        </Section>
-      </div>
-
-      <Section title={t("candidates.field.experiences")} hint={confidence.experiences}>
-        {candidate.experiences?.length ? (
-          <ol className="space-y-6">
-            {candidate.experiences.map((experience, index) => {
-              const dates = formatDateRange(locale, experience.start, experience.end);
+      <Block
+        title={t("candidates.field.career")}
+        hint={confidence.experiences}
+        count={experiences.length}
+      >
+        {experiences.length ? (
+          <Timeline>
+            {experiences.map((experience, index) => {
+              const range = formatDateRange(locale, experience.start, experience.end);
+              const duration = formatDuration(locale, experience.start, experience.end, now);
+              const current = Boolean(experience.start?.trim()) && !experience.end?.trim();
+              const description = experience.description?.trim() ?? "";
               return (
-                <li key={`${experience.title}-${index}`} className="border-l-2 border-border pl-4">
-                  <p className="text-[15px] font-medium leading-6 text-ink">{experience.title}</p>
-                  <p className="text-[13px] leading-5 text-muted-foreground">
-                    {[experience.company, dates].filter((part) => part && part.trim()).join(" · ") || t("common.unknown")}
-                  </p>
-                  {experience.description?.trim() ? (
-                    <p className="mt-2 whitespace-pre-line text-[15px] leading-6 text-ink">{experience.description.trim()}</p>
-                  ) : null}
-                </li>
+                <Fragment key={`${experience.title}-${index}`}>
+                  <TimelineItem
+                    when={
+                      <span className="flex flex-col">
+                        <span>{range || t("common.unknown")}</span>
+                        {duration ? (
+                          <span className="text-muted-foreground">{duration}</span>
+                        ) : null}
+                      </span>
+                    }
+                    title={
+                      <>
+                        {experience.title?.trim() || t("common.unknown")}
+                        {current ? (
+                          <span className="sr-only"> ({t("candidates.experience.current")})</span>
+                        ) : null}
+                      </>
+                    }
+                    subtitle={experience.company?.trim() || t("common.unknown")}
+                    current={current}
+                  >
+                    {description ? (
+                      <ClampedText
+                        text={description}
+                        lines={2}
+                        className="text-sm leading-6 text-ink"
+                      />
+                    ) : null}
+                  </TimelineItem>
+                </Fragment>
               );
             })}
-          </ol>
+          </Timeline>
         ) : (
-          <Value text={null} />
+          <Unknown />
         )}
-      </Section>
+      </Block>
 
-      <Section title={t("candidates.field.education")} hint={confidence.education}>
-        {candidate.education?.length ? (
-          <ul className="space-y-4">
-            {candidate.education.map((entry, index) => (
-              <li key={`${entry.degree}-${index}`}>
-                <p className="text-[15px] font-medium leading-6 text-ink">{entry.degree}</p>
-                <p className="text-[13px] leading-5 text-muted-foreground">
-                  {[entry.school, entry.year].filter((part) => part && part.trim()).join(" · ") || t("common.unknown")}
-                </p>
+      <Block
+        title={t("candidates.field.education")}
+        hint={confidence.education}
+        count={education.length}
+      >
+        {education.length ? (
+          <ul className="stagger divide-y divide-border/70">
+            {education.map((entry, index) => (
+              <li
+                key={`${entry.degree}-${index}`}
+                className="rise-in flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-3 first:pt-0 last:pb-0"
+              >
+                <div className="min-w-0 flex-1 basis-64">
+                  <p className="text-body font-medium text-ink break-words">
+                    {entry.degree?.trim() || t("common.unknown")}
+                  </p>
+                  <p className="text-sm text-muted-foreground break-words">
+                    {entry.school?.trim() || t("common.unknown")}
+                  </p>
+                </div>
+                <span className="text-meta text-muted-foreground tabular-nums">
+                  {entry.year?.trim() || t("common.unknown")}
+                </span>
               </li>
             ))}
           </ul>
         ) : (
-          <Value text={null} />
+          <Unknown />
         )}
-      </Section>
+      </Block>
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        <Section title={t("candidates.field.contact")}>
-          <div className="space-y-3">
-            <ContactLine
-              icon={<Mail />}
-              href={candidate.email?.trim() ? `mailto:${candidate.email.trim()}` : null}
-              text={candidate.email}
-            />
-            <ConfidenceHint value={confidence.email} />
-            <ContactLine
-              icon={<Phone />}
-              href={candidate.phone?.trim() ? `tel:${candidate.phone.replace(/[^+\d]/g, "")}` : null}
-              text={candidate.phone}
-            />
-            <ConfidenceHint value={confidence.phone} />
-          </div>
-        </Section>
-        <Section title={t("candidates.field.availability")} hint={confidence.availability}>
-          <Value text={candidate.availability} />
-        </Section>
-      </div>
+      <SkillsBlock
+        skills={candidate.skills ?? []}
+        hint={confidence.skills}
+        canEdit={canEdit}
+        onChange={(values) => onChips("skills", values)}
+      />
 
-      <Section title={t("candidates.field.links")}>
-        {candidate.links?.length ? (
-          <ul className="space-y-1 text-[15px] leading-6">
-            {candidate.links.map((link, index) => (
-              <li key={`${link.url}-${index}`} className="truncate">
-                <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                  {link.label?.trim() || link.url}
-                </a>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Value text={null} />
-        )}
-      </Section>
-
-      <Section title={t("candidates.field.tags")}>
-        <ChipEditor
-          values={candidate.tags ?? []}
-          canEdit={canEdit}
-          placeholder={t("candidates.tags.placeholder")}
-          tone="neutral"
-          onChange={(values) => onChips("tags", values)}
-        />
-      </Section>
+      <Block title={t("candidates.field.contactLinks")}>
+        <ul className="space-y-2.5">
+          <ContactRow
+            icon={<Mail />}
+            href={candidate.email?.trim() ? `mailto:${candidate.email.trim()}` : null}
+            text={candidate.email}
+            hint={confidence.email}
+          />
+          <ContactRow
+            icon={<Phone />}
+            href={candidate.phone?.trim() ? `tel:${candidate.phone.replace(/[^+\d]/g, "")}` : null}
+            text={candidate.phone}
+            hint={confidence.phone}
+          />
+          {links.length ? (
+            links.map((link, index) => (
+              <Fragment key={`${link.url}-${index}`}>
+                <ContactRow
+                  icon={<ExternalLink />}
+                  href={link.url}
+                  text={link.label?.trim() || link.url}
+                  detail={link.label?.trim() ? hostOf(link.url) : undefined}
+                  external
+                />
+              </Fragment>
+            ))
+          ) : (
+            <ContactRow icon={<Link2 />} href={null} text={null} />
+          )}
+        </ul>
+      </Block>
     </div>
   );
 }

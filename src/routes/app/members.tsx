@@ -1,11 +1,13 @@
 /**
- * The team page, for administrators and owners: seats, the invite form,
- * the members with their roles, the pending invitations. A member or a
- * viewer sees one sentence instead. Every removal is confirmed; the
- * database keeps the last owner.
+ * The team page, for administrators and owners: the members with their
+ * roles and the pending invitations on the left, the invite form (the
+ * page's one primary action) and the plan card with its meters on the
+ * right. A member or a viewer sees one sentence instead. Every removal
+ * is confirmed; the database keeps the last owner.
  */
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { UserPlus } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { PageHeader } from "@/components/app-shell/page-header";
@@ -15,17 +17,20 @@ import { InviteForm } from "@/components/team/invite-form";
 import { InvitationsList } from "@/components/team/invitations-list";
 import { MembersTable } from "@/components/team/members-table";
 import { NotAllowed } from "@/components/team/not-allowed";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PlanCard } from "@/components/team/plan-card";
+import { Button } from "@/components/ui/button";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { useQuery } from "@/lib/data/use-query";
 import type { InvitationRow, OrgRole } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
 import { memberName, useCurrentOrg, useOrg } from "@/lib/org/org-context";
-import { seatsAvailable } from "@/lib/team/seats";
+import { seatsAvailable, seatsLeft } from "@/lib/team/seats";
 import {
   changeMemberRole,
   errorSays,
+  readCvsProcessedThisMonth,
   readMembers,
   readPendingInvitations,
   readSeatsUsed,
@@ -39,18 +44,12 @@ export const Route = createFileRoute("/app/members")({
   component: MembersPage,
 });
 
-function TableSkeleton() {
+const INVITE_ANCHOR = "invite";
+
+function ListSkeleton() {
   return (
-    <div className="sheet overflow-hidden" aria-busy="true">
-      {[0, 1, 2].map((index) => (
-        <div key={index} className="sheet-row">
-          <Skeleton className="size-9 rounded-full" />
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-4 w-1/3" />
-            <Skeleton className="h-3 w-1/2" />
-          </div>
-        </div>
-      ))}
+    <div className="sheet overflow-hidden">
+      <SkeletonRows rows={3} />
     </div>
   );
 }
@@ -68,15 +67,17 @@ function MembersPage() {
     `members:${org.id}`,
     async () => {
       const supabase = await requireSupabase();
-      const [members, invitations, seatsUsed] = await Promise.all([
+      const unread = (caught: unknown) => {
+        console.error(caught);
+        return null;
+      };
+      const [members, invitations, seatsUsed, cvsProcessed] = await Promise.all([
         readMembers(supabase, org.id),
         readPendingInvitations(supabase, org.id),
-        readSeatsUsed(supabase, org.id).catch((error: unknown) => {
-          console.error(error);
-          return null;
-        }),
+        readSeatsUsed(supabase, org.id).catch(unread),
+        readCvsProcessedThisMonth(supabase, org.id).catch(unread),
       ]);
-      return { members, invitations, seatsUsed };
+      return { members, invitations, seatsUsed, cvsProcessed };
     },
     allowed,
   );
@@ -97,6 +98,7 @@ function MembersPage() {
 
   const seatsUsed = data?.seatsUsed ?? null;
   const seatsFull = seatsUsed !== null && !seatsAvailable(seatsUsed, org.seat_limit);
+  const free = seatsUsed === null ? null : seatsLeft(seatsUsed, org.seat_limit);
 
   async function handleRoleChange(member: TeamMember, next: OrgRole) {
     if (next === member.role || busyUserId) return;
@@ -107,9 +109,9 @@ function MembersPage() {
       toast.success(t("members.roleChanged"));
       await refresh();
       if (member.userId === userId) await refreshOrg();
-    } catch (error) {
-      console.error(error);
-      toast.error(errorSays(error, "ORG:last_owner") ? t("members.lastOwner") : t("common.error"));
+    } catch (caught) {
+      console.error(caught);
+      toast.error(errorSays(caught, "ORG:last_owner") ? t("members.lastOwner") : t("common.error"));
     } finally {
       setBusyUserId(null);
     }
@@ -132,9 +134,9 @@ function MembersPage() {
         toast.success(t("members.removed"));
         await refresh();
       }
-    } catch (error) {
-      console.error(error);
-      toast.error(errorSays(error, "ORG:last_owner") ? t("members.lastOwner") : t("common.error"));
+    } catch (caught) {
+      console.error(caught);
+      toast.error(errorSays(caught, "ORG:last_owner") ? t("members.lastOwner") : t("common.error"));
     } finally {
       setBusyUserId(null);
     }
@@ -150,8 +152,8 @@ function MembersPage() {
       setRevoking(null);
       toast.success(t("members.invitations.revoked"));
       await refresh();
-    } catch (error) {
-      console.error(error);
+    } catch (caught) {
+      console.error(caught);
       toast.error(t("common.error"));
     } finally {
       setBusyInvitationId(null);
@@ -164,6 +166,9 @@ function MembersPage() {
   const removingSelf = removing?.userId === userId;
   const members = data?.members ?? [];
   const invitations = data?.invitations ?? [];
+  const ready = !(loading && !data);
+  const seatsText =
+    free === null ? null : free === 0 ? t("members.seatsLeft.none") : free === 1 ? t("members.seatsLeft.one") : t("members.seatsLeft.many", { count: free });
 
   return (
     <>
@@ -171,40 +176,46 @@ function MembersPage() {
         eyebrow={org.name}
         title={t("nav.members")}
         description={t("members.subtitle", { org: org.name })}
-        actions={
-          seatsUsed !== null ? (
-            <Pill tone={seatsFull ? "caution" : "neutral"} dot>
+        meta={
+          ready && seatsUsed !== null ? (
+            <Pill tone={seatsFull ? "caution" : "neutral"} dot {...(seatsText ? { title: seatsText } : {})}>
               {t("shell.org.seats", { used: seatsUsed, limit: org.seat_limit })}
             </Pill>
           ) : null
         }
+        actions={
+          <Button asChild variant="outline" icon={<UserPlus />} className="lg:hidden">
+            <a href={`#${INVITE_ANCHOR}`}>{t("members.invite.jump")}</a>
+          </Button>
+        }
       />
 
-      <div className="space-y-8">
-        <InviteForm orgId={org.id} disabled={seatsFull} onInvited={() => void refresh()} />
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
+        <div className="space-y-8">
+          <Section title={t("nav.members")} count={ready ? members.length : undefined}>
+            {!ready ? (
+              <ListSkeleton />
+            ) : (
+              <MembersTable
+                members={members}
+                currentUserId={userId}
+                actorRole={role}
+                busyUserId={busyUserId}
+                onRoleChange={(member, next) => void handleRoleChange(member, next)}
+                onRemove={setRemoving}
+              />
+            )}
+          </Section>
 
-        <Section title={t("nav.members")} count={loading && !data ? undefined : members.length}>
-          {loading && !data ? (
-            <TableSkeleton />
-          ) : (
-            <MembersTable
-              members={members}
-              currentUserId={userId}
-              actorRole={role}
-              busyUserId={busyUserId}
-              onRoleChange={(member, next) => void handleRoleChange(member, next)}
-              onRemove={setRemoving}
-            />
-          )}
-        </Section>
+          <Section title={t("members.invitations")} count={ready ? invitations.length : undefined}>
+            {!ready ? <ListSkeleton /> : <InvitationsList invitations={invitations} busyId={busyInvitationId} onRevoke={setRevoking} />}
+          </Section>
+        </div>
 
-        <Section title={t("members.invitations")} count={loading && !data ? undefined : invitations.length}>
-          {loading && !data ? (
-            <TableSkeleton />
-          ) : (
-            <InvitationsList invitations={invitations} busyId={busyInvitationId} onRevoke={setRevoking} />
-          )}
-        </Section>
+        <aside className="space-y-6 lg:sticky lg:top-8">
+          <InviteForm id={INVITE_ANCHOR} orgId={org.id} disabled={seatsFull} onInvited={() => void refresh()} />
+          <PlanCard org={org} seatsUsed={seatsUsed} cvsProcessed={data?.cvsProcessed ?? null} loading={!ready} />
+        </aside>
       </div>
 
       <ConfirmDialog

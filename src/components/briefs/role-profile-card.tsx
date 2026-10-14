@@ -1,21 +1,22 @@
 /**
  * The role profile of a brief: the understanding of the job a senior
  * recruiter writes before reading a CV, as one card between the brief
- * and its criteria. Read mode shows each field as a labelled block
- * (first what the brief does not state and the model assumed, for the
- * team to confirm before a CV is read; then the domain, the level and
- * the years, the missions, the equivalent titles,
- * the adjacent profiles, the context in four short values, the
- * must-haves, the nice-to-haves, the success factors, the interview
- * points) and who wrote it; "Modifier" turns the blocks into fields
- * (one item per line for the lists) saved as one update under RLS;
- * "Régénérer" asks the model to write it again from the brief, after a
- * confirmation since the team's edits go with it. A brief without a
- * profile says so, and that the first analysis writes it. Nothing here
- * decides anything: the profile is what every screening reads.
+ * and its criteria that reads like a document. Read mode shows each
+ * field as a labelled block (first what the brief does not state and
+ * the model assumed, for the team to confirm before a CV is read; then
+ * the domain, the level and the years as three facts, the missions, the
+ * equivalent titles, the adjacent profiles, the context in four short
+ * values, the must-haves, the nice-to-haves, the success factors, the
+ * interview points) and who wrote it; "Modifier" turns the blocks into
+ * fields in place (one item per line for the lists) saved as one update
+ * under RLS; "Régénérer" asks the model to write it again from the
+ * brief, after a confirmation since the team's edits go with it. A brief
+ * without a profile says so, and that the first analysis writes it.
+ * Nothing here decides anything: the profile is what every screening
+ * reads.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Pencil, Sparkles } from "lucide-react";
+import { CircleHelp, Pencil, Sparkles } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ import type { BriefRow, RoleProfile, RoleSeniority } from "@/lib/db/types";
 import { formatDate, useI18n, useT } from "@/lib/i18n";
 import { errorMessage, withToken } from "@/lib/platform/call";
 import { toast } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 import type { ModelAvailability } from "./criteria-proposals";
 
@@ -82,16 +84,6 @@ type ListField =
   | "questions";
 type ContextField = "sector" | "product" | "clients" | "scope";
 
-const LIST_FIELDS: readonly ListField[] = [
-  "assumptions",
-  "missions",
-  "equivalentTitles",
-  "adjacentProfiles",
-  "mustHaves",
-  "niceToHaves",
-  "successFactors",
-  "questions",
-];
 const CONTEXT_FIELDS: readonly ContextField[] = ["sector", "product", "clients", "scope"];
 
 function draftOf(profile: RoleProfile): Draft {
@@ -159,10 +151,18 @@ function profileOf(draft: Draft, base: RoleProfile): RoleProfile {
   );
 }
 
-/** One labelled block of the read view. */
-function Block({ label, children }: { label: string; children: ReactNode }) {
+/** One labelled block of the document. */
+function Block({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", className)}>
       <span className="label-caps">{label}</span>
       <div className="mt-1">{children}</div>
     </div>
@@ -173,23 +173,23 @@ function Block({ label, children }: { label: string; children: ReactNode }) {
 function Text({ value }: { value: string | null }) {
   const t = useT();
   return value ? (
-    <p className="text-[15px] leading-6 text-ink">{value}</p>
+    <p className="text-body text-ink break-words">{value}</p>
   ) : (
-    <p className="text-[15px] leading-6 text-muted-foreground">{t("common.unknown")}</p>
+    <p className="text-body text-muted-foreground">{t("common.unknown")}</p>
   );
 }
 
 function List({ items }: { items: readonly string[] }) {
   if (!items.length) return <Text value={null} />;
   return (
-    <ul className="space-y-1 text-[15px] leading-6 text-ink">
+    <ul className="space-y-1 text-body text-ink">
       {items.map((item) => (
-        <li key={item} className="flex gap-2">
+        <li key={item} className="flex gap-2.5">
           <span
             aria-hidden="true"
             className="mt-[11px] size-1.5 shrink-0 rounded-full bg-muted-foreground/60"
           />
-          <span className="min-w-0">{item}</span>
+          <span className="min-w-0 break-words">{item}</span>
         </li>
       ))}
     </ul>
@@ -281,13 +281,12 @@ export function RoleProfileCard({
     canEdit && modelAvailable === true ? (
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         size="sm"
+        icon={<Sparkles />}
         onClick={() => (profile ? setConfirmOpen(true) : void regenerate())}
         disabled={locked || editing}
-        className="gap-1.5"
       >
-        <Sparkles />
         {regenerating
           ? t("briefs.profile.regenerate.busy")
           : profile
@@ -306,29 +305,45 @@ export function RoleProfileCard({
 
   function readView(current: RoleProfile) {
     return (
-      <div className="space-y-6">
+      <div className="fade-in space-y-6">
         {current.assumptions.length ? (
-          <Block label={t("briefs.profile.assumptions")}>
-            <p className="mb-2 text-[13px] text-muted-foreground">
+          <div className="border-l-2 border-caution/60 pl-4">
+            <p className="label-caps flex items-center gap-1.5">
+              <CircleHelp aria-hidden="true" className="size-3.5 shrink-0" />
+              {t("briefs.profile.assumptions")}
+            </p>
+            <p className="mt-0.5 text-meta text-muted-foreground">
               {t("briefs.profile.assumptions.help")}
             </p>
-            <List items={current.assumptions} />
-          </Block>
+            <div className="mt-2">
+              <List items={current.assumptions} />
+            </div>
+          </div>
         ) : null}
-        <div className="grid gap-6 sm:grid-cols-2">
-          <Block label={t("briefs.profile.domain")}>
-            <Text value={current.domain || null} />
-          </Block>
-          <Block label={t("briefs.profile.seniority")}>
-            <Text
-              value={`${t(seniorityKey(current.seniority))}${yearsText(current) ? ` · ${yearsText(current)}` : ""}`}
-            />
-          </Block>
-        </div>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+          <div className="min-w-0">
+            <dt className="label-caps">{t("briefs.profile.domain")}</dt>
+            <dd className="mt-1">
+              <Text value={current.domain || null} />
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="label-caps">{t("briefs.profile.seniority")}</dt>
+            <dd className="mt-1">
+              <Text value={t(seniorityKey(current.seniority))} />
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="label-caps">{t("briefs.profile.years")}</dt>
+            <dd className="mt-1">
+              <Text value={yearsText(current)} />
+            </dd>
+          </div>
+        </dl>
         <Block label={t("briefs.profile.missions")}>
           <List items={current.missions} />
         </Block>
-        <div className="grid gap-6 sm:grid-cols-2">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
           <Block label={t("briefs.profile.equivalentTitles")}>
             <List items={current.equivalentTitles} />
           </Block>
@@ -337,14 +352,17 @@ export function RoleProfileCard({
           </Block>
         </div>
         <Block label={t("briefs.profile.context")}>
-          <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+          <dl className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-1">
             {CONTEXT_FIELDS.map((field) => (
-              <div key={field} className="flex min-w-0 gap-2 text-[15px] leading-6">
-                <dt className="shrink-0 text-muted-foreground">
+              <div key={field} className="flex min-w-0 gap-2 text-body">
+                <dt className="w-24 shrink-0 text-muted-foreground">
                   {t(`briefs.profile.context.${field}`)}
                 </dt>
                 <dd
-                  className={current.context[field] ? "min-w-0 text-ink" : "text-muted-foreground"}
+                  className={cn(
+                    "min-w-0 break-words",
+                    current.context[field] ? "text-ink" : "text-muted-foreground",
+                  )}
                 >
                   {current.context[field] ?? t("common.unknown")}
                 </dd>
@@ -352,7 +370,7 @@ export function RoleProfileCard({
             ))}
           </dl>
         </Block>
-        <div className="grid gap-6 sm:grid-cols-2">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
           <Block label={t("briefs.profile.mustHaves")}>
             <List items={current.mustHaves} />
           </Block>
@@ -366,7 +384,7 @@ export function RoleProfileCard({
         <Block label={t("briefs.profile.questions")}>
           <List items={current.questions} />
         </Block>
-        <p className="text-[13px] text-muted-foreground">
+        <p className="text-meta text-muted-foreground">
           {current.model
             ? t("briefs.profile.by.model", { date: formatDate(locale, current.createdAt) })
             : t("briefs.profile.by.team")}
@@ -394,8 +412,8 @@ export function RoleProfileCard({
 
   function editView(current: Draft) {
     return (
-      <div className="space-y-6">
-        <p className="text-[13px] text-muted-foreground">{t("briefs.profile.list.help")}</p>
+      <div className="fade-in space-y-5">
+        <p className="text-meta text-muted-foreground">{t("briefs.profile.list.help")}</p>
         {listField("assumptions", current)}
         <div className="space-y-2">
           <Label htmlFor="role-profile-domain">{t("briefs.profile.domain")}</Label>
@@ -407,7 +425,7 @@ export function RoleProfileCard({
             disabled={locked}
           />
         </div>
-        <div className="grid gap-6 sm:grid-cols-2">
+        <div className="grid gap-5 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="role-profile-seniority">{t("briefs.profile.seniority")}</Label>
             <Select
@@ -459,10 +477,8 @@ export function RoleProfileCard({
           </div>
         </div>
         {listField("missions", current)}
-        <div className="grid gap-6 sm:grid-cols-2">
-          {listField("equivalentTitles", current)}
-          {listField("adjacentProfiles", current)}
-        </div>
+        {listField("equivalentTitles", current)}
+        {listField("adjacentProfiles", current)}
         <div className="space-y-2">
           <span className="label-caps">{t("briefs.profile.context")}</span>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -478,12 +494,10 @@ export function RoleProfileCard({
               />
             ))}
           </div>
-          <p className="text-[13px] text-muted-foreground">{t("briefs.profile.context.help")}</p>
+          <p className="text-meta text-muted-foreground">{t("briefs.profile.context.help")}</p>
         </div>
-        <div className="grid gap-6 sm:grid-cols-2">
-          {listField("mustHaves", current)}
-          {listField("niceToHaves", current)}
-        </div>
+        {listField("mustHaves", current)}
+        {listField("niceToHaves", current)}
         {listField("successFactors", current)}
         {listField("questions", current)}
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -499,11 +513,11 @@ export function RoleProfileCard({
   }
 
   return (
-    <section className="sheet space-y-6 p-6">
+    <section className="sheet space-y-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="font-display text-xl text-ink">{t("briefs.profile.title")}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t("briefs.profile.help")}</p>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold text-ink">{t("briefs.profile.title")}</h2>
+          <p className="mt-1 text-meta text-muted-foreground">{t("briefs.profile.help")}</p>
         </div>
         {canEdit && !editing ? (
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -511,11 +525,10 @@ export function RoleProfileCard({
               type="button"
               variant="outline"
               size="sm"
+              icon={<Pencil />}
               onClick={startEditing}
               disabled={locked}
-              className="gap-1.5"
             >
-              <Pencil />
               {t("common.edit")}
             </Button>
             {regenerateButton}
@@ -527,9 +540,9 @@ export function RoleProfileCard({
       ) : profile ? (
         readView(profile)
       ) : (
-        <div className="rounded-2xl border border-dashed border-border px-6 py-8 text-center">
-          <p className="text-[15px] leading-6 text-muted-foreground">{t("briefs.profile.none")}</p>
-          <p className="mt-1 text-sm text-muted-foreground">
+        <div className="space-y-1">
+          <p className="text-body text-muted-foreground">{t("briefs.profile.none")}</p>
+          <p className="text-meta text-muted-foreground">
             {modelAvailable === false
               ? t("briefs.profile.none.noModel")
               : t("briefs.profile.none.text")}

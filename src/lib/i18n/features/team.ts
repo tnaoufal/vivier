@@ -1,13 +1,41 @@
 /**
- * Words of the team area: dashboard extras, the activity feed and its
- * sentences, members and invitations, organisation settings, the
- * person's account. Role names, auth and invitation acceptance live in
- * messages.ts (role.*, auth.*, invite.*) and are reused, not repeated.
+ * Words of the team area: the dashboard's briefs and tiles, the activity
+ * feed and its sentences, members and invitations, organisation
+ * settings (photos included), the person's account, the public status
+ * page and the legal pages' chrome. Role names, auth and invitation
+ * acceptance live in messages.ts (role.*, auth.*, invite.*) and are
+ * reused, not repeated.
  */
 const fr = {
   // dashboard
   "dashboard.viewAll": "Toute l'activité",
   "dashboard.statsUnread": "Les compteurs n'ont pas pu être lus.",
+
+  // dashboard: the open briefs, the tiles' hints, the empty feed
+  "dashboard.briefs.title": "Briefs en cours",
+  "dashboard.briefs.all": "Tous les briefs",
+  "dashboard.briefs.empty": "Aucun brief ouvert.",
+  "dashboard.briefs.empty.text": "Décrivez un poste : l'analyse lit le vivier et propose, l'équipe retient.",
+  "dashboard.briefs.noAnalysis": "Pas encore d'analyse",
+  "dashboard.briefs.lastAnalysis": "Analyse {when}",
+  "dashboard.briefs.read.one": "1 profil lu",
+  "dashboard.briefs.read.many": "{count} profils lus",
+  "dashboard.briefs.present.none": "0 à présenter",
+  "dashboard.briefs.present.one": "1 à présenter",
+  "dashboard.briefs.present.many": "{count} à présenter",
+  "dashboard.briefs.present.help": "Lecture du modèle ; l'équipe décide.",
+  "dashboard.briefs.retained.none": "0 retenu",
+  "dashboard.briefs.retained.one": "1 retenu",
+  "dashboard.briefs.retained.many": "{count} retenus",
+  "dashboard.briefs.retained.help": "Retenus par l'équipe.",
+  "dashboard.briefs.shortlist": "Shortlist",
+  "dashboard.briefs.noShortlist": "Shortlist vide",
+  "dashboard.tile.candidates.hint": "Fiches actives du vivier",
+  "dashboard.tile.processing.idle": "Rien en attente",
+  "dashboard.tile.processing.busy": "Le service lit les CV",
+  "dashboard.tile.briefs.hint": "Postes en cours de recrutement",
+  "dashboard.tile.retained.hint": "Décisions de l'équipe ce mois",
+  "dashboard.activity.empty.text": "Les actions de l'équipe apparaîtront ici.",
 
   // activity feed
   "activity.subtitle": "Tout ce que l'équipe a fait, le plus récent d'abord.",
@@ -30,6 +58,10 @@ const fr = {
   "activity.someone": "quelqu'un",
   "activity.openBrief": "Voir le brief",
   "activity.openCandidate": "Voir le candidat",
+  "activity.group.today": "Aujourd'hui",
+  "activity.group.yesterday": "Hier",
+  "activity.loading": "Chargement de l'activité…",
+  "activity.filter.label": "Catégorie",
 
   // one sentence per kind; {actor} is a person's name, "Système" or "Un ancien membre"
   "activity.kind.shortlist.added": "{actor} a ajouté {candidate} à la shortlist du brief {brief}.",
@@ -95,6 +127,15 @@ const fr = {
   "members.invitations.revoke.title": "Révoquer l'invitation de {email} ?",
   "members.invitations.revoke.text": "Le lien envoyé ne fonctionnera plus.",
   "members.invitations.revoked": "Invitation révoquée.",
+  "members.seatsLeft.none": "Aucun siège libre",
+  "members.seatsLeft.one": "1 siège libre",
+  "members.seatsLeft.many": "{count} sièges libres",
+  "members.invite.jump": "Inviter un collègue",
+  "members.plan.seats.full": "Tous les sièges sont pris.",
+  "members.plan.cvs.left.none": "Quota du mois atteint",
+  "members.plan.cvs.left.one": "1 CV restant ce mois",
+  "members.plan.cvs.left.many": "{count} CV restants ce mois",
+  "members.plan.manage": "Voir la formule",
 
   // invite form
   "team.invite.title": "Inviter un collègue",
@@ -120,6 +161,13 @@ const fr = {
   "settings.subtitle": "L'organisation, sa langue de travail et la conservation des données.",
   "settings.notAllowed": "Votre rôle ne permet pas de modifier les réglages. Demandez à un administrateur.",
   "settings.org": "Organisation",
+  "settings.org.help": "Le nom apparaît dans les invitations et les dossiers partagés.",
+  "settings.photos": "Photos des candidats",
+  "settings.photos.toggle": "Afficher les photos des candidats",
+  "settings.photos.help":
+    "La photo lue sur le CV identifie une personne dans l'interface ; elle n'est jamais transmise au modèle. Une équipe qui pratique le CV anonyme peut la masquer : les fiches montrent alors des initiales.",
+  "settings.photos.on": "Photos affichées",
+  "settings.photos.off": "Photos masquées",
   "settings.retention": "Conservation des candidats (mois)",
   "settings.retention.help":
     "Un candidat est supprimé {months} mois après le dernier contact (ou l'import), avec ses fichiers. La CNIL recommande deux ans au plus : 24 est le maximum.",
@@ -140,6 +188,12 @@ const fr = {
 
   // account
   "account.subtitle": "Votre nom, votre langue et votre mot de passe.",
+  "account.profile": "Profil",
+  "account.preferences": "Préférences",
+  "account.theme": "Apparence",
+  "account.theme.help": "Le thème est mémorisé dans ce navigateur.",
+  "account.session": "Session",
+  "account.session.help": "Vous êtes connecté avec {email}.",
   "account.email": "Adresse de connexion",
   "account.displayName": "Nom affiché",
   "account.displayName.help": "Ce nom apparaît à côté de vos commentaires et de vos décisions.",
@@ -155,11 +209,67 @@ const fr = {
   "account.delete.title": "Supprimer votre compte ?",
   "account.delete.text": "Cette action est définitive.",
   "account.deleted": "Compte supprimé.",
+
+  // the public status page
+  "status.title": "État du service",
+  "status.subtitle": "Ce que ce déploiement a de configuré. Aucune valeur n'est affichée.",
+  "status.setup": "Configuration",
+  "status.processing": "Traitement des CV",
+  "status.row.site": "Site (SITE_URL)",
+  "status.row.accounts": "Comptes (Supabase)",
+  "status.row.serviceKey": "Clé de service",
+  "status.row.model": "Modèle",
+  "status.row.embeddings": "Embeddings",
+  "status.row.email": "Email (Resend)",
+  "status.row.rateLimit": "Limitation de débit",
+  "status.row.processor": "Service configuré",
+  "status.row.reachable": "Joignable",
+  "status.row.healthy": "En bonne santé",
+  "status.row.database": "Base de données",
+  "status.row.ocr": "Reconnaissance de texte (OCR)",
+  "status.row.polling": "File d'attente lue",
+  "status.ok": "Opérationnel",
+  "status.missing": "Manquant",
+  "status.unknown": "Non vérifié",
+  "status.summary.ok": "Tout est en place.",
+  "status.summary.issues.one": "1 point à régler.",
+  "status.summary.issues.many": "{count} points à régler.",
+  "status.checkedAt": "Vérifié le {date}",
+  "status.refresh": "Vérifier à nouveau",
+
+  // the legal pages
+  "legal.contents": "Sommaire",
+  "legal.home": "Retour à l'accueil",
 } as const;
 
 const en = {
   "dashboard.viewAll": "All activity",
   "dashboard.statsUnread": "The counters could not be read.",
+
+  "dashboard.briefs.title": "Open briefs",
+  "dashboard.briefs.all": "All briefs",
+  "dashboard.briefs.empty": "No open brief.",
+  "dashboard.briefs.empty.text": "Describe a role: the analysis reads the pool and proposes, the team retains.",
+  "dashboard.briefs.noAnalysis": "No analysis yet",
+  "dashboard.briefs.lastAnalysis": "Analysis {when}",
+  "dashboard.briefs.read.one": "1 profile read",
+  "dashboard.briefs.read.many": "{count} profiles read",
+  "dashboard.briefs.present.none": "0 to present",
+  "dashboard.briefs.present.one": "1 to present",
+  "dashboard.briefs.present.many": "{count} to present",
+  "dashboard.briefs.present.help": "The model's reading; the team decides.",
+  "dashboard.briefs.retained.none": "0 retained",
+  "dashboard.briefs.retained.one": "1 retained",
+  "dashboard.briefs.retained.many": "{count} retained",
+  "dashboard.briefs.retained.help": "Retained by the team.",
+  "dashboard.briefs.shortlist": "Shortlist",
+  "dashboard.briefs.noShortlist": "Empty shortlist",
+  "dashboard.tile.candidates.hint": "Active profiles in the pool",
+  "dashboard.tile.processing.idle": "Nothing waiting",
+  "dashboard.tile.processing.busy": "The service is reading the CVs",
+  "dashboard.tile.briefs.hint": "Roles being recruited",
+  "dashboard.tile.retained.hint": "The team's decisions this month",
+  "dashboard.activity.empty.text": "The team's actions will show here.",
 
   "activity.subtitle": "Everything the team did, newest first.",
   "activity.empty": "No activity yet.",
@@ -181,6 +291,10 @@ const en = {
   "activity.someone": "someone",
   "activity.openBrief": "Open the brief",
   "activity.openCandidate": "Open the candidate",
+  "activity.group.today": "Today",
+  "activity.group.yesterday": "Yesterday",
+  "activity.loading": "Loading the activity…",
+  "activity.filter.label": "Category",
 
   "activity.kind.shortlist.added": "{actor} added {candidate} to the shortlist of brief {brief}.",
   "activity.kind.shortlist.removed": "{actor} removed {candidate} from the shortlist of brief {brief}.",
@@ -244,6 +358,15 @@ const en = {
   "members.invitations.revoke.title": "Revoke the invitation of {email}?",
   "members.invitations.revoke.text": "The link that was sent stops working.",
   "members.invitations.revoked": "Invitation revoked.",
+  "members.seatsLeft.none": "No seat left",
+  "members.seatsLeft.one": "1 seat left",
+  "members.seatsLeft.many": "{count} seats left",
+  "members.invite.jump": "Invite a colleague",
+  "members.plan.seats.full": "Every seat is taken.",
+  "members.plan.cvs.left.none": "Monthly quota reached",
+  "members.plan.cvs.left.one": "1 CV left this month",
+  "members.plan.cvs.left.many": "{count} CVs left this month",
+  "members.plan.manage": "See the plan",
 
   "team.invite.title": "Invite a colleague",
   "team.invite.text": "The invitation is valid for seven days and tied to this email address.",
@@ -266,6 +389,13 @@ const en = {
   "settings.subtitle": "The organisation, its working language and data retention.",
   "settings.notAllowed": "Your role does not allow changing the settings. Ask an administrator.",
   "settings.org": "Organisation",
+  "settings.org.help": "The name appears in invitations and shared dossiers.",
+  "settings.photos": "Candidates' photos",
+  "settings.photos.toggle": "Show candidates' photos",
+  "settings.photos.help":
+    "The photo read from the CV identifies a person in the interface; it never reaches the model. A team that practises anonymous CVs can hide it: profiles then show initials.",
+  "settings.photos.on": "Photos shown",
+  "settings.photos.off": "Photos hidden",
   "settings.retention": "Candidate retention (months)",
   "settings.retention.help":
     "A candidate is deleted {months} months after the last contact (or the upload), with their files. The CNIL recommends two years at most: 24 is the maximum.",
@@ -285,6 +415,12 @@ const en = {
   "settings.deleted": "Organisation deleted.",
 
   "account.subtitle": "Your name, your language and your password.",
+  "account.profile": "Profile",
+  "account.preferences": "Preferences",
+  "account.theme": "Appearance",
+  "account.theme.help": "The theme is remembered in this browser.",
+  "account.session": "Session",
+  "account.session.help": "You are signed in as {email}.",
   "account.email": "Sign-in address",
   "account.displayName": "Display name",
   "account.displayName.help": "This name appears next to your comments and your decisions.",
@@ -300,6 +436,35 @@ const en = {
   "account.delete.title": "Delete your account?",
   "account.delete.text": "This action is permanent.",
   "account.deleted": "Account deleted.",
+
+  "status.title": "Service status",
+  "status.subtitle": "What this deployment has set up. No value is shown.",
+  "status.setup": "Setup",
+  "status.processing": "CV processing",
+  "status.row.site": "Site (SITE_URL)",
+  "status.row.accounts": "Accounts (Supabase)",
+  "status.row.serviceKey": "Service key",
+  "status.row.model": "Model",
+  "status.row.embeddings": "Embeddings",
+  "status.row.email": "Email (Resend)",
+  "status.row.rateLimit": "Rate limiting",
+  "status.row.processor": "Service configured",
+  "status.row.reachable": "Reachable",
+  "status.row.healthy": "Healthy",
+  "status.row.database": "Database",
+  "status.row.ocr": "Text recognition (OCR)",
+  "status.row.polling": "Queue polled",
+  "status.ok": "Operational",
+  "status.missing": "Missing",
+  "status.unknown": "Not checked",
+  "status.summary.ok": "Everything is in place.",
+  "status.summary.issues.one": "1 item to fix.",
+  "status.summary.issues.many": "{count} items to fix.",
+  "status.checkedAt": "Checked on {date}",
+  "status.refresh": "Check again",
+
+  "legal.contents": "Contents",
+  "legal.home": "Back to home",
 } as const satisfies Record<keyof typeof fr, string>;
 
 export const team = { fr, en };

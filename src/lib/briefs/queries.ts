@@ -1,8 +1,9 @@
 /**
  * The typed reads and writes of briefs through supabase-js under RLS:
  * the list, one brief, its searches (summaries, then one search with its
- * stored results), the candidates a result list shows, and the
- * shortlist of a brief (created on first use, items added one by one).
+ * stored results; the newest of each brief for the list's cards), the
+ * candidates a result list shows, and the shortlist of a brief (created
+ * on first use, items added one by one).
  * Each call filters by the organisation and casts rows at the boundary.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -18,7 +19,9 @@ import type {
 } from "@/lib/db/types";
 
 import { parseCriteria } from "./criteria";
+import { digestResults, latestPerBrief, type LatestAnalysis } from "./presentation";
 import { parseRoleProfile } from "./role-profile";
+import { batchesOf } from "./stages";
 
 /** Every column of BriefRow, named so the embedding vector never travels to the browser. */
 export const BRIEF_COLUMNS =
@@ -151,6 +154,63 @@ export async function listSearches(
   return (data ?? []) as unknown as SearchSummary[];
 }
 
+/** The most searches the list reads to find the newest of each brief, and the ids one query names. */
+const LATEST_SEARCH_SCAN = 400;
+const LATEST_LOT = 50;
+
+/**
+ * The newest analysis of each of the briefs given, with what it
+ * counted (its results, the ones the model read, the ones to present):
+ * the summaries of the briefs' searches first, newest first, then the
+ * results of the newest one per brief, in lots so no URL names more
+ * than fifty ids. A brief without an analysis is absent from the map.
+ * Known limit: the counts are made here, so this read carries the whole
+ * results of each newest analysis; a digest computed in the database
+ * (a migration) would spare it. The list reads it once, then keeps it
+ * current from the realtime rows (`analysisOfRow`, `withAnalysis`).
+ */
+export async function readLatestAnalyses(
+  supabase: SupabaseClient,
+  orgId: string,
+  briefIds: readonly string[],
+): Promise<Map<string, LatestAnalysis>> {
+  const out = new Map<string, LatestAnalysis>();
+  if (!briefIds.length) return out;
+  const summaries: SearchSummary[] = [];
+  for (const lot of batchesOf(briefIds, LATEST_LOT)) {
+    const { data, error } = await supabase
+      .from("searches")
+      .select(SEARCH_SUMMARY_COLUMNS)
+      .eq("org_id", orgId)
+      .in("brief_id", lot)
+      .order("created_at", { ascending: false })
+      .limit(LATEST_SEARCH_SCAN);
+    if (error) throw error;
+    summaries.push(...((data ?? []) as unknown as SearchSummary[]));
+  }
+  const latest = latestPerBrief(summaries);
+  const searchIds = [...latest.values()].map((summary) => summary.id);
+  const resultsById = new Map<string, MatchResult[]>();
+  for (const lot of batchesOf(searchIds, LATEST_LOT)) {
+    const { data, error } = await supabase
+      .from("searches")
+      .select("id, results")
+      .eq("org_id", orgId)
+      .in("id", lot);
+    if (error) throw error;
+    for (const row of (data ?? []) as unknown as { id: string; results: unknown }[])
+      resultsById.set(row.id, Array.isArray(row.results) ? (row.results as MatchResult[]) : []);
+  }
+  for (const [briefId, summary] of latest) {
+    out.set(briefId, {
+      searchId: summary.id,
+      createdAt: summary.created_at,
+      ...digestResults(resultsById.get(summary.id) ?? []),
+    });
+  }
+  return out;
+}
+
 /** One search with its stored results and the criteria of the time. */
 export async function readSearch(
   supabase: SupabaseClient,
@@ -177,14 +237,22 @@ export async function readSearch(
 // the candidates a result list shows
 // ---------------------------------------------------------------------
 
+/**
+ * What a result card needs of a candidate: the name, the position held
+ * today (the experiences, the headline), where, whether still in the
+ * pool, and the photo's path (signed in the browser when the
+ * organisation shows photos; it identifies a person on screen only and
+ * never reaches a model).
+ */
 export type ResultCandidate = Pick<
   CandidateRow,
-  "id" | "full_name" | "headline" | "location" | "status"
+  "id" | "full_name" | "headline" | "location" | "status" | "photo_path" | "experiences"
 >;
 
-const RESULT_CANDIDATE_COLUMNS = "id, full_name, headline, location, status";
+const RESULT_CANDIDATE_COLUMNS =
+  "id, full_name, headline, location, status, photo_path, experiences";
 
-/** The name, headline and location of the candidates in a result list; an erased one is absent. */
+/** The candidates of a result list, as the cards show them; an erased one is absent. */
 export async function readResultCandidates(
   supabase: SupabaseClient,
   orgId: string,

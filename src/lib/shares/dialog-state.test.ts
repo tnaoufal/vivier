@@ -10,7 +10,9 @@ import {
   initialState,
   isEmail,
   parseRecipients,
+  previewOf,
   stepIndex,
+  stepStatus,
   type DialogState,
 } from "./dialog-state";
 
@@ -195,5 +197,32 @@ describe("stepIndex", () => {
     expect(stepIndex("content")).toBe(0);
     expect(stepIndex("review")).toBe(1);
     expect(stepIndex("send")).toBe(2);
+  });
+});
+
+describe("stepStatus", () => {
+  it("marks the steps before the current one done and those after to do", () => {
+    expect(stepStatus("content", "review")).toBe("done");
+    expect(stepStatus("review", "review")).toBe("current");
+    expect(stepStatus("send", "review")).toBe("todo");
+    expect(stepStatus("content", "content")).toBe("current");
+    expect(stepStatus("send", "send")).toBe("current");
+  });
+});
+
+describe("previewOf", () => {
+  it("flattens whitespace and leaves a short text whole", () => {
+    expect(previewOf("  Deux   phrases.\n\nUne troisième.  ")).toBe("Deux phrases. Une troisième.");
+    expect(previewOf("")).toBe("");
+  });
+
+  it("clips on a word with an ellipsis past the limit", () => {
+    const text = "Un profil solide sur React et Node, huit ans en agence puis en scale-up.";
+    expect(previewOf(text, 30)).toBe("Un profil solide sur React et…");
+    expect(previewOf(text, 30).length).toBeLessThanOrEqual(31);
+  });
+
+  it("clips a single long word without looking for a space", () => {
+    expect(previewOf("x".repeat(50), 10)).toBe(`${"x".repeat(10)}…`);
   });
 });

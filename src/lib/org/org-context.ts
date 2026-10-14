@@ -30,6 +30,8 @@ export interface OrgContextValue {
   refresh: () => Promise<void>;
   /** True when the person's role is at least `min`. */
   can: (min: OrgRole) => boolean;
+  /** Whether candidates' photos are shown in this organisation (organizations.show_photos, on by default). */
+  showPhotos: boolean;
 }
 
 export const OrgContext = createContext<OrgContextValue | null>(null);
@@ -67,6 +69,18 @@ export function rememberOrgId(orgId: string): void {
 export function pickOrg(memberships: OrgMembership[], remembered: string | null): OrgMembership | null {
   if (!memberships.length) return null;
   return memberships.find((m) => m.org.id === remembered) ?? memberships[0] ?? null;
+}
+
+/**
+ * Whether the interface shows candidates' photos: the organisation's
+ * choice (organizations.show_photos), on unless it was turned off. No
+ * organisation, or a row read before the column existed, reads as on.
+ * The photo identifies a person in the interface only; it never reaches
+ * a model, whatever this says.
+ */
+export function readShowPhotos(org: Pick<OrganizationRow, "show_photos"> | null | undefined): boolean {
+  if (!org) return true;
+  return org.show_photos !== false;
 }
 
 /** The display name of a member, falling back to the email, then a placeholder. */

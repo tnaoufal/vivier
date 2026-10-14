@@ -17,6 +17,10 @@ kept.
   `fr`, tested).
 - **Fonts**: Geist, Geist Mono and Poppins 600, self-hosted from
   `public/fonts/` under the SIL Open Font License. No third-party stylesheet.
+- **Design**: `docs/DESIGN.md` is the charter every screen follows (v2:
+  the principles, the tokens of `src/styles.css`, the primitives of
+  `src/components/ui` and `src/components/app-shell`, what moves and why,
+  the icons, the content rules, the page templates).
 - **Where it lives**: its own repository, `tnaoufal/vivier`, apart from
   Namearly; the two share a stack and nothing else.
 
@@ -40,11 +44,15 @@ pages, not only promised:
   (`enforceAssessment()`). A field the structuring did not read is absent
   (and shown as "not stated"), never invented.
 - **No sensitive inference.** Age, date of birth, gender, nationality or
-  origin, photo, family situation, health, religion, union membership and
+  origin, family situation, health, religion, union membership and
   political opinions are never extracted, stored or used as criteria. The
   structuring prompt forbids them, the criteria extraction drops any such
   request and says so (`protectedCriterion()`), the explanation prompt may
-  not mention them.
+  not mention them. The photo on a CV's first page is kept as a small
+  file for identification only (`candidates.photo_path`, the private
+  `photos` bucket): never a field, never a criterion, never sent to a
+  model, never on a dossier, off for the whole organisation with
+  `organizations.show_photos`.
 - **Honest pages.** A document that failed or was set aside says why in one
   sentence (`documents.error`, written by the processor only), an analysis
   run without a model says it ran on text alone (`searches.method = 'text'`),
@@ -59,8 +67,8 @@ pages, not only promised:
 | --------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontend  | `src/`                                      | TanStack Start (React 19, file-based routes in `src/routes`), Tailwind v4, shadcn/ui primitives in `src/components/ui`. Server functions in `src/lib/<feature>/<feature>.functions.ts`; server-only modules end in `.server.ts` and live in `src/lib/platform`.           |
 | Hosting   | Cloudflare Workers (`wrangler.jsonc`)       | Nitro `cloudflare-module` preset. Every push to `main` deploys through Cloudflare's Git integration (root directory `vivier`); CI never deploys. `keep_vars` protects the dashboard's variables; the `VIVIER_RATE_LIMITER` binding throttles the costly server functions. |
-| Data      | Supabase (`supabase/migrations`)            | Postgres 17 with Row Level Security on every table, Auth (email + Google), Storage (the private bucket `cvs`, PDF only, 25 MB), Realtime on the collaborative tables, pgvector (HNSW, cosine) for hybrid search. EU region.                                               |
-| Processor | `services/processor`                        | Node 22 + Fastify 5 on Railway with the service role key: reads queued PDFs, sets aside what is not a CV, structures the rest (model or heuristics), finds the person already in the pool (email, phone, fingerprint), computes embeddings, and runs the hourly maintenance (stale reset, retention purge, re-embed). Documented in `services/processor/README.md`. |
+| Data      | Supabase (`supabase/migrations`)            | Postgres 17 with Row Level Security on every table, Auth (email + Google), Storage (the private buckets `cvs`, PDF only, 25 MB, and `photos`, PNG or JPEG, 2 MB), Realtime on the collaborative tables, pgvector (HNSW, cosine) for hybrid search. EU region.                                               |
+| Processor | `services/processor`                        | Node 22 + Fastify 5 on Railway with the service role key: reads queued PDFs, sets aside what is not a CV, structures the rest (model or heuristics), finds the person already in the pool (email, phone, fingerprint), reads the candidate's photo off the first page, computes embeddings, and runs the hourly maintenance (stale reset, retention purge, re-embed). Documented in `services/processor/README.md`. |
 | Email     | `src/lib/email/email.server.ts`             | Resend, transactional only (invitations, dossiers). Every send is a row in `email_sends`.                                                                                                                                                                                 |
 | Billing   | `src/lib/db/types.ts` (`Plan`), `plan-card` | Paddle, later: the plan grid and `sync_plan_from_billing()` exist, the checkout and the webhook do not (see "Not built yet").                                                                                                                                             |
 
@@ -84,7 +92,10 @@ or the SQL editor): `20261013090000_vivier_init.sql` creates the schema,
 the policies, the `cvs` bucket, the functions and the realtime
 publication; the `20261013180000`, `…190000` and `…200000` files are
 evolution 2 (rejected documents and similar profiles, the dossier's brief
-snapshot and the dedup columns, the pool size of an analysis). Then enable
+snapshot and the dedup columns, the pool size of an analysis),
+`20261014090000` evolution 3 (`briefs.role_profile`) and `20261014130000`
+evolution 4 (`candidates.photo_path`, `organizations.show_photos`, the
+`photos` bucket). Then enable
 Email and Google in Auth and add `http://localhost:5173/**` to the
 redirect allow list. Nothing is set up by hand in the dashboard beyond
 Auth and the secrets.
@@ -187,7 +198,7 @@ may do:
 | Add to a shortlist, retain or dismiss, assign, vote, comment (edit own comments), share and send |        |   x    |   x   |   x   |
 | Delete candidates, documents and briefs, erase a candidate with their files, delete any comment  |        |        |   x   |   x   |
 | Invite, revoke invitations, change roles below owner, remove members                             |        |        |   x   |   x   |
-| Organisation settings (name, working language, retention), read model usage                     |        |        |   x   |   x   |
+| Organisation settings (name, working language, retention, candidates' photos shown), read model usage |        |        |   x   |   x   |
 | Name or demote owners, delete the organisation                                                   |        |        |       |   x   |
 
 Anyone may leave an organisation; the database keeps the last owner
@@ -237,8 +248,9 @@ How a CV becomes a profile:
    `cv_quota_month`), downloads the file, writes its SHA-256, reads the text
    layer, structures it with the model, which says in the same call whether
    the text is one person's CV (`document_kind`: `cv` or `other`), finds the
-   person already in the pool, writes or merges the candidate, then marks
-   the document `processed` with `page_count`, `text_chars`,
+   person already in the pool, writes or merges the candidate, reads the
+   photo off the first page when the candidate has none (below), then
+   marks the document `processed` with `page_count`, `text_chars`,
    `extracted_text`, `extraction_method` (`pdf-text`, `ocr`, `none`),
    `structuring_method` (`model`, `heuristic`) and `document_kind`.
 3. **Outcomes**: `processed`; `rejected` (the model read the file and did
@@ -284,6 +296,17 @@ field it read (`candidates.confidence`). The profile page shows "to check"
 or "uncertain" next to a field accordingly, never a verdict on the person;
 a missing key means the field was not read and is shown as "not stated".
 
+Skills are curated, not exhaustive: the structuring prompt asks for the
+8 to 20 skills that define the profile, the most central first, as a
+recruiter would list them (domains, tools, methods, certifications;
+never document names, never generic words unless the CV insists), and
+the processor keeps 24 at most (`MAX_SKILLS`). The list row shows the
+first three (`keySkills()`), the profile the first eight grouped as
+domains, tools and methods by word lists (`src/lib/candidates/skills.ts`:
+a layout, never stored, scored or shown as a judgement) with the rest
+behind "+ N others". A profile read before this rule keeps its long
+list: the merge unions skills and never trims them.
+
 No-model mode: without `LLM_API_KEY` the processor still runs: an email
 and a phone by regex, a name from the first lines or the file name, low
 confidence on each, every other field empty, no embedding, no document set
@@ -296,12 +319,64 @@ scanned. With `MISTRAL_OCR_API_KEY` it goes through Mistral's OCR API
 `needs_ocr` and a sentence telling the person to enable OCR or type the
 profile in.
 
-The profile page (`/app/candidates/:id`) shows what was read, with a form
-to correct it (the browser may update the human-readable columns;
-`fingerprint`, `search_text`, `embedding` and `confidence` are the
-processor's), the CVs behind it (opened through a five-minute signed link),
-the team's comments, consent and retention, archive, export and erasure,
-and a **Similar profiles** button (every role): a drawer listing the ten
+Photo: once the candidate row is written, outside the lock and never
+fatal, the processor looks at the CV's first page for a portrait
+(`services/processor/src/photo.ts`): the images drawn on page 1 (unpdf
+`extractImages`, 0.12.2 at least) or, for a scanned PDF, the images the
+OCR cut out (`include_image_base64`, stripped from the text). The largest
+with the shape of a portrait is kept (both sides 80 to 1200 px, width
+over height 0.6 to 1.1, not drawn wider than half the page, so a logo, a
+banner or a scan of the page is never taken for a face), downscaled to
+256 px and encoded as a PNG by the processor's own encoder (the OCR's
+JPEG or PNG kept as it is), written to the private `photos` bucket at
+`<org_id>/<candidate_id>.png` and its key to `candidates.photo_path`
+(migration `20261014130000`). A candidate with a photo keeps it: a second
+CV's images are not read. The photo identifies a person on screen and
+nothing else: it never enters a prompt, is never read for anything, and
+no column of the profile comes from it. Members see it through signed
+links of ten minutes, cached per session (`src/lib/candidates/photos.ts`);
+the `Avatar` keeps the initials until it loads and when it fails. An
+administrator turns the display off for the organisation on the settings
+page (`organizations.show_photos`, for a team that practises anonymous
+CVs); the dossier never shows it. The purge and the erasure remove it
+with the CVs; the export carries a link to it valid one hour.
+
+The list (`/app/candidates`) shows what tells rows apart, not every
+field: the photo or the initials, the name with its pills (to check,
+typed by hand, consent withdrawn), the position held today
+(`currentPosition()`: the first experience without an end, else the
+headline; the one line that reads "not stated" when the CV says nothing),
+where, the years and the availability (`metaLine()`), the three skills
+the CV put first, the languages with their level, the last update. The
+toolbar sorts by recent, name or experience (a second key on every sort,
+so a row never shows on two pages) and folds quick filters behind a chip
+(the location contains, the years at least, one skill as the profiles
+write it, the page's skills suggested); tag chips come from the loaded
+page. A row reads `experiences` whole and `photo_path`, never
+`search_text` or `fingerprint` (`CANDIDATE_LIST_COLUMNS`).
+
+The profile page (`/app/candidates/:id`) is laid out like a CV a
+recruiter reads: a sticky header with the status pills and the actions
+(read the CV, similar profiles, edit, a menu for export, archive and
+erasure), the head of the CV (the photo, the name editable in place, the
+position held today, the meta line, the languages), then the summary on
+three lines, the career as a timeline with each period and its duration
+computed (`formatDuration()`: nothing estimated when a date is not one),
+the education, the skills, the contact details and the links; in the
+aside the team's tags, the documents, consent and retention, the
+comments. Every field the structuring read, with a confidence hint where
+it was unsure and "not stated" where it read nothing; a form corrects it
+(the browser may update the human-readable columns; `fingerprint`,
+`search_text`, `embedding`, `confidence` and `photo_path` are the
+processor's). **The CV is read in place**: "Read the CV" opens the newest
+processed document (else the newest, `primaryDocument()`) in a full-size
+drawer, the PDF in a frame from a signed link of fifteen minutes with a
+toolbar (the file, its size, pages and date; a PDF / Text switch; open in
+a new tab; download under the file name), and the text the service
+extracted as paragraphs, read on demand (`readDocumentText()`), which is
+the view a browser that displays no PDF opens on (`canDisplayPdf()`);
+each document in the Documents card has its own "Read" button. The
+**Similar profiles** button (every role) opens a drawer listing the ten
 profiles nearest this one as the database ranks them
 (`similar_candidates()`, SECURITY INVOKER so RLS applies: cosine distance
 between vectors when both profiles carry one, else the words of the
@@ -321,7 +396,12 @@ pass fills the gap) or `unavailable`.
 
 ## Briefs and search
 
-A brief (`/app/briefs/new`) is a title and free text. Its **criteria** are
+A brief (`/app/briefs/new`) is a title and free text. The list of briefs
+shows each one with its status, the domain of its role profile (else the
+first line of the need), its criteria count and what its newest analysis
+found (`readLatestAnalyses()`: profiles ranked, to present), behind a
+status filter with counts; the dashboard shows the open briefs the same
+way, with what the team retained. Its **criteria** are
 rows of `briefs.criteria`: a kind (`role`, `skill`, `experience`,
 `language`, `location`, `education`, `availability`, `other`), a label
 (what the chip says), a value (what is looked for; up to 600 characters),
@@ -694,7 +774,9 @@ card shows the fit score as a ring, the drawer the requirement table with
 its evidence and the model's reading. The board
 (`/app/shortlists/:id`) has three sections: **to review**, **retained**,
 **dismissed** (`shortlist_items.status`), stacked on a phone, side by side
-from `sm:`.
+from `sm:`. The list of shortlists shows each one with its brief's title
+and status, the three counts as pills, the people assigned and when it
+last moved; a filter on the brief's state appears once a brief is closed.
 
 - **Decisions**: a member retains, dismisses or reviews again. The database
   stamps `decided_by` and `decided_at` from the session; the card shows
@@ -734,7 +816,9 @@ looked for, an overview of the profiles, then one sheet per candidate.
   part, not met, or not stated, with the evidence quoted from the CV), the
   fit **score** and **decision** when a model assessed the profile, a
   synthesis, strengths, points of attention, and the latest processed CV.
-  The table, the score and the decision come from the match the shortlist
+  No photo is reproduced: a profile is identified by its name (the
+  dialog's avatars are the team's view, never sent). The table, the score
+  and the decision come from the match the shortlist
   holds (`src/lib/shares/draft.ts`, read the way the board reads it) and
   are read-only in the dialog's three steps (content, review, send); the
   prose is editable. With a model, the synthesis and the points are
@@ -848,7 +932,8 @@ processor for candidate data. What the product does:
   (`retention_due_at()`, computed in the database).
 - **Hourly purge** by the processor: `expired_candidates()` lists the
   candidates past their retention or whose consent is withdrawn; the files
-  of their documents are removed from the bucket first, then the row (the
+  of their documents and their photo are removed from the buckets first,
+  then the row (the
   cascade takes documents, shortlist items and comments; the trigger logs
   `candidate.deleted`). A candidate whose files could not be removed waits
   for the next pass: a row never outlives its files.
@@ -857,15 +942,22 @@ processor for candidate data. What the product does:
   deletes the profile within the hour.
 - **Export**: the profile page builds one JSON file in the browser from the
   rows the person can read (the profile and its documents with the text
-  extracted from each CV; never `fingerprint` or `search_text`).
+  extracted from each CV and, when the profile carries a photo, a signed
+  link to it valid one hour; never `fingerprint` or `search_text`).
 - **Erasure**: an administrator types the candidate's name; the server
-  (`eraseCandidate`) removes the files, deletes the row and logs who did it.
+  (`eraseCandidate`) removes the CV files and the photo, deletes the row
+  and logs who did it.
 - **Audit log**: `activities`, written by triggers and server functions,
   read by every member at `/app/activity` and on each item's history.
 - **Never extracted**: age, date of birth, gender, nationality or origin,
-  photo, family situation, health, religion, union membership, political
+  family situation, health, religion, union membership, political
   opinions. Not as fields, not as criteria, not in assessments or dossiers;
   the assessment payload carries no name, e-mail or phone either.
+- **The photo**: the one thing kept that a CV carries beyond its text, as
+  a file for identification in the interface only (`photos` bucket,
+  `candidates.photo_path`): never sent to the model, never on a dossier,
+  off for an organisation with `show_photos`, erased with the candidate,
+  linked from the export.
 - **Accounts**: a person deletes their own account from `/app/account`.
 
 The register of processing, the candidate information notice (FR and EN)
@@ -924,7 +1016,8 @@ process started, the documents set aside among them.
 
 Supabase's Point-in-Time Recovery is the primary line; a nightly workflow
 (`.github/workflows/backup.yml`, `scripts/backup.sh`) adds a logical
-dump of the database and a copy of the `cvs` bucket to an R2 bucket, kept
+dump of the database and a copy of the `cvs` bucket (not of `photos`: a
+restored profile whose photo is gone shows initials) to an R2 bucket, kept
 thirty days, with a restore drill to run before go-live and every quarter.
 Doctrine, setup and the drill: `docs/BACKUPS.md`.
 
@@ -948,11 +1041,18 @@ Said plainly so no page or document pretends otherwise:
   only. `/status` does not read the processor's `embedding` state either.
 - **Processor lockfile**: `services/processor/package-lock.json` is
   generated and committed by the first person with network access; until
-  then CI and the Dockerfile install from the ranges in `package.json`.
+  then CI and the Dockerfile install from the ranges in `package.json`
+  (unpdf 0.12.2 at least, the floor the photo needs).
+- **Photos**: nothing replaces or removes a candidate's photo short of
+  erasing the candidate; a wrong one (a logo the rules took for a
+  portrait) stays until then, and a candidate typed by hand or read
+  before evolution 4 gets one from the next CV with a portrait. The
+  `photos` bucket is not in the nightly backup.
 
 ## Contributing
 
 Rules of the road live in `AGENTS.md`; how a feature is laid out and the
-helpers every feature uses in `docs/CONVENTIONS.md`. One branch and one
+helpers every feature uses in `docs/CONVENTIONS.md`; how a screen looks
+and moves in `docs/DESIGN.md`. One branch and one
 pull request per evolution, never a push to `main`, CI green before a
 merge, no new dependency without the owner.

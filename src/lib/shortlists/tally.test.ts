@@ -9,7 +9,9 @@ import {
   countByShortlist,
   countByStatus,
   coveragePercent,
+  filterUseful,
   groupByStatus,
+  matchesFilter,
   scorePercent,
   tallyVotes,
   totalOf,
@@ -156,5 +158,29 @@ describe("list page helpers", () => {
     const assignees = assigneesByShortlist(rows);
     expect(assignees.get("s1")).toEqual(["u1"]);
     expect(assignees.get("s2")).toEqual(["u2", "u3"]);
+  });
+});
+
+describe("shortlist filter", () => {
+  it("keeps every row under all, splits the rest on the brief being closed", () => {
+    expect(matchesFilter("open", "all")).toBe(true);
+    expect(matchesFilter("closed", "all")).toBe(true);
+    expect(matchesFilter("open", "active")).toBe(true);
+    expect(matchesFilter("draft", "active")).toBe(true);
+    expect(matchesFilter("closed", "active")).toBe(false);
+    expect(matchesFilter("closed", "closed")).toBe(true);
+    expect(matchesFilter("open", "closed")).toBe(false);
+  });
+
+  it("reads a deleted brief as active so its shortlist stays in view", () => {
+    expect(matchesFilter(null, "active")).toBe(true);
+    expect(matchesFilter(undefined, "active")).toBe(true);
+    expect(matchesFilter(null, "closed")).toBe(false);
+  });
+
+  it("offers the filter only once a brief is closed", () => {
+    expect(filterUseful([])).toBe(false);
+    expect(filterUseful(["open", "draft", null])).toBe(false);
+    expect(filterUseful(["open", "closed"])).toBe(true);
   });
 });

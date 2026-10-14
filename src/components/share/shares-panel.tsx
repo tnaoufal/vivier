@@ -1,9 +1,9 @@
 /**
- * The shares of one shortlist under its board: each with its title,
- * who created it and when, its expiry, its state (active, expired,
- * revoked), how often it was opened, the emails sent for it with their
- * status, and for members a revocation behind a confirmation. No link
- * is shown here: the token is not stored. Refreshed on the share
+ * The shares of one shortlist under its board: each a row with its
+ * title and state (active, expired, revoked), who created it and when,
+ * its expiry, how often it was opened, the emails sent for it with
+ * their status, and for members a revocation behind a confirmation. No
+ * link is shown here: the token is not stored. Refreshed on the share
  * activities of the organisation (realtime) and on demand.
  */
 import { useCallback, useEffect, useState } from "react";
@@ -12,7 +12,9 @@ import { Eye, RefreshCw, Share2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { Pill, type PillTone } from "@/components/app-shell/pill";
+import { Section } from "@/components/app-shell/section";
 import { Button } from "@/components/ui/button";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
@@ -44,7 +46,11 @@ export function SharesPanel({ shortlistId }: { shortlistId: string }) {
   const query = useQuery<PanelData>(`shares:${org.id}:${shortlistId}`, async () => {
     const supabase = await requireSupabase();
     const shares = await listShares(supabase, org.id, shortlistId);
-    const sends = await listShareSends(supabase, org.id, shares.map((share) => share.id));
+    const sends = await listShareSends(
+      supabase,
+      org.id,
+      shares.map((share) => share.id),
+    );
     return { shares, sends: sendsByShare(sends) };
   });
 
@@ -90,27 +96,28 @@ export function SharesPanel({ shortlistId }: { shortlistId: string }) {
   const shares = query.data?.shares ?? [];
 
   return (
-    <section>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="font-display text-lg text-ink">{t("shares.panel.title")}</h2>
-          <p className="text-sm text-muted-foreground">{t("shares.panel.text")}</p>
-        </div>
+    <Section
+      title={t("shares.panel.title")}
+      count={query.data ? shares.length : undefined}
+      description={t("shares.panel.text")}
+      action={
         <Button
           type="button"
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={() => void query.refresh()}
           disabled={query.loading}
           aria-label={t("shares.panel.refresh")}
           title={t("shares.panel.refresh")}
+          className="text-muted-foreground"
         >
           <RefreshCw />
         </Button>
-      </div>
-
+      }
+    >
       {query.error ? (
         <EmptyState
+          compact
           title={t("shares.panel.error")}
           action={
             <Button type="button" variant="outline" onClick={() => void query.refresh()}>
@@ -119,14 +126,13 @@ export function SharesPanel({ shortlistId }: { shortlistId: string }) {
           }
         />
       ) : query.loading && !query.data ? (
-        <div className="sheet space-y-3 p-4" aria-busy="true">
-          <div className="skeleton h-4 w-1/3 rounded" />
-          <div className="skeleton h-4 w-2/3 rounded" />
+        <div className="sheet overflow-hidden">
+          <SkeletonRows rows={2} avatar={false} />
         </div>
       ) : !shares.length ? (
-        <EmptyState icon={<Share2 />} title={t("shares.panel.empty.title")} text={t("shares.panel.empty.text")} />
+        <EmptyState compact icon={<Share2 />} title={t("shares.panel.empty.title")} text={t("shares.panel.empty.text")} />
       ) : (
-        <ul className="sheet divide-y divide-border">
+        <ul className="sheet stagger divide-y divide-border overflow-hidden">
           {shares.map((share) => {
             const state = shareState(share);
             const sends = query.data?.sends.get(share.id) ?? [];
@@ -144,41 +150,53 @@ export function SharesPanel({ shortlistId }: { shortlistId: string }) {
                   ? t("shares.panel.views.one")
                   : t("shares.panel.views.many", { count: share.view_count });
             return (
-              <li key={share.id} className="space-y-2 p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{share.title}</span>
-                  <Pill tone={STATE_TONE[state]}>{t(`shares.state.${state}`)}</Pill>
-                  {canAct && state === "active" ? (
-                    <Button type="button" variant="outline" size="sm" onClick={() => setPending(share)} disabled={busy}>
-                      {t("shares.panel.revoke")}
-                    </Button>
-                  ) : null}
+              <li key={share.id} className="sheet-row rise-in flex-wrap gap-y-3 sm:flex-nowrap sm:items-start">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 truncate text-base font-semibold text-ink">{share.title}</span>
+                    <Pill tone={STATE_TONE[state]} dot size="sm">
+                      {t(`shares.state.${state}`)}
+                    </Pill>
+                  </div>
+                  <p className="text-meta text-muted-foreground">
+                    {t("shares.panel.createdBy", {
+                      name: nameOf(share.created_by),
+                      date: formatDateTime(locale, share.created_at),
+                    })}
+                    {" · "}
+                    {dateLine}
+                    {" · "}
+                    {items === 1 ? t("shares.panel.items.one") : t("shares.panel.items.many", { count: items })}
+                    {share.include_cvs ? ` · ${t("shares.panel.cvs")}` : ""}
+                  </p>
+                  <p className="flex items-center gap-1.5 text-meta text-muted-foreground">
+                    <Eye className="size-3.5 shrink-0" aria-hidden="true" />
+                    <span>
+                      {views}
+                      {share.last_viewed_at
+                        ? ` · ${t("shares.panel.lastViewed", { when: formatRelative(locale, share.last_viewed_at) })}`
+                        : ""}
+                    </span>
+                  </p>
+                  {sends.length ? (
+                    <ul className="flex flex-wrap gap-1.5 pt-1">
+                      {sends.map((send) => (
+                        <li key={send.id} title={send.error ?? undefined}>
+                          <Pill tone={SEND_TONE[send.status]} dot size="sm" className="max-w-full">
+                            {send.to_email} · {t(`shares.send.status.${send.status}`)}
+                          </Pill>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-meta text-muted-foreground">{t("shares.panel.noSends")}</p>
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {t("shares.panel.createdBy", { name: nameOf(share.created_by), date: formatDateTime(locale, share.created_at) })}
-                  {" · "}
-                  {dateLine}
-                  {" · "}
-                  {items === 1 ? t("shares.panel.items.one") : t("shares.panel.items.many", { count: items })}
-                  {share.include_cvs ? ` · ${t("shares.panel.cvs")}` : ""}
-                </p>
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Eye className="size-3.5" />
-                  {views}
-                  {share.last_viewed_at ? ` · ${t("shares.panel.lastViewed", { when: formatRelative(locale, share.last_viewed_at) })}` : ""}
-                </p>
-                {sends.length ? (
-                  <ul className="flex flex-wrap gap-1.5">
-                    {sends.map((send) => (
-                      <li key={send.id} className="inline-flex items-center gap-1.5 text-xs text-ink" title={send.error ?? undefined}>
-                        <span>{send.to_email}</span>
-                        <Pill tone={SEND_TONE[send.status]}>{t(`shares.send.status.${send.status}`)}</Pill>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">{t("shares.panel.noSends")}</p>
-                )}
+                {canAct && state === "active" ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setPending(share)} disabled={busy}>
+                    {t("shares.panel.revoke")}
+                  </Button>
+                ) : null}
               </li>
             );
           })}
@@ -197,6 +215,6 @@ export function SharesPanel({ shortlistId }: { shortlistId: string }) {
         busy={busy}
         onConfirm={() => void revoke()}
       />
-    </section>
+    </Section>
   );
 }

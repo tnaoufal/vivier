@@ -9,6 +9,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -110,13 +111,13 @@ export function ManualCandidateDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       {/* A column, not the primitive's grid: the fields scroll inside on a short screen so the buttons stay reachable. */}
-      <DialogContent className="flex max-w-2xl flex-col">
+      <DialogContent size="lg" className="flex flex-col">
         <form onSubmit={(event) => void submit(event)} className="flex min-h-0 min-w-0 flex-col gap-6">
           <DialogHeader>
             <DialogTitle>{t("candidates.manual.title")}</DialogTitle>
             <DialogDescription>{t("candidates.manual.text")}</DialogDescription>
           </DialogHeader>
-          <div className="-m-1 grid min-h-0 min-w-0 gap-6 overflow-y-auto p-1 sm:grid-cols-2">
+          <DialogBody className="grid gap-5 py-1 sm:grid-cols-2">
             <div className="min-w-0 space-y-2 sm:col-span-2">
               <Label htmlFor="manual-name">{t("candidates.field.full_name")}</Label>
               <Input id="manual-name" value={fields.full_name} onChange={(e) => set("full_name", e.target.value)} maxLength={200} autoFocus />
@@ -137,7 +138,7 @@ export function ManualCandidateDialog({
               <Label htmlFor="manual-location">{t("candidates.field.location")}</Label>
               <Input id="manual-location" value={fields.location} onChange={(e) => set("location", e.target.value)} maxLength={200} />
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={busy}>
               {t("common.cancel")}

@@ -1,9 +1,10 @@
 /**
  * The typed reads of the talent pool, through supabase-js under RLS:
- * the list page (search, status, tag, 50 per page), one profile, its
- * documents and comments, the set-aside counts of the organisation and
- * the wave the service is reading, the retention due date. Each read
- * filters by the organisation and casts rows at the boundary, as
+ * the list page (search, status, tag, a sort, the quick filters, 50 per
+ * page), one profile, its documents and comments, a document's
+ * extracted text on demand, the set-aside counts of the organisation
+ * and the wave the service is reading, the retention due date. Each
+ * read filters by the organisation and casts rows at the boundary, as
  * CONVENTIONS.md says.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -12,17 +13,22 @@ import type { CandidateRow, CandidateStatus, CommentRow, DocumentRow } from "@/l
 
 import { THROUGHPUT_WINDOW_MINUTES, earliestOf, waveOf, type ProcessingWave } from "./progress";
 import { QUOTA_ERROR_PATTERN } from "./quota";
-import { searchOrFilter } from "./search";
+import { arrayElement, cleanSearch, searchOrFilter } from "./search";
 
 export const PAGE_SIZE = 50;
 
 /** Every column of CandidateRow, named so the embedding vector never travels to the browser. */
 export const CANDIDATE_COLUMNS =
-  "id, org_id, full_name, email, phone, headline, location, years_experience, availability, summary, skills, languages, experiences, education, links, tags, confidence, source, consent_status, consent_at, last_contact_at, status, fingerprint, search_text, created_by, created_at, updated_at";
+  "id, org_id, full_name, email, phone, headline, location, years_experience, availability, summary, skills, languages, experiences, education, links, tags, confidence, source, consent_status, consent_at, last_contact_at, status, fingerprint, search_text, photo_path, created_by, created_at, updated_at";
 
-/** What a list row needs; search_text and fingerprint stay on the server. */
+/**
+ * What a list row needs; search_text and fingerprint stay on the server.
+ * `experiences` is the JSON column whole (a row reads only the title,
+ * the company and the end of the first ongoing one); `photo_path` is
+ * signed in the browser when the organisation shows photos.
+ */
 export const CANDIDATE_LIST_COLUMNS =
-  "id, org_id, full_name, headline, location, skills, languages, tags, confidence, source, consent_status, status, created_at, updated_at";
+  "id, org_id, full_name, headline, location, years_experience, availability, skills, languages, experiences, tags, confidence, source, consent_status, status, photo_path, created_at, updated_at";
 
 export type CandidateListRow = Pick<
   CandidateRow,
@@ -31,16 +37,50 @@ export type CandidateListRow = Pick<
   | "full_name"
   | "headline"
   | "location"
+  | "years_experience"
+  | "availability"
   | "skills"
   | "languages"
+  | "experiences"
   | "tags"
   | "confidence"
   | "source"
   | "consent_status"
   | "status"
+  | "photo_path"
   | "created_at"
   | "updated_at"
 >;
+
+/** recent: last updated first; name: A to Z, nameless last; experience: the most years first, unstated last. */
+export type CandidateSort = "recent" | "name" | "experience";
+
+export const CANDIDATE_SORTS: readonly CandidateSort[] = ["recent", "name", "experience"];
+
+export function isCandidateSort(value: unknown): value is CandidateSort {
+  return typeof value === "string" && (CANDIDATE_SORTS as readonly string[]).includes(value);
+}
+
+/** The quick filters of the toolbar; each one empty when not set. */
+export interface CandidateListFilters {
+  /** A part of the location, matched without case. */
+  location: string;
+  /** At least this many years of experience; a profile without a stated figure is left out. */
+  yearsMin: number | null;
+  /** One skill, exactly as the profile writes it (the toolbar suggests the page's). */
+  skill: string;
+}
+
+export const EMPTY_FILTERS: CandidateListFilters = { location: "", yearsMin: null, skill: "" };
+
+/** How many of the quick filters are set. */
+export function activeFilterCount(filters: CandidateListFilters): number {
+  let count = 0;
+  if (filters.location.trim()) count += 1;
+  if (typeof filters.yearsMin === "number" && Number.isFinite(filters.yearsMin) && filters.yearsMin > 0) count += 1;
+  if (filters.skill.trim()) count += 1;
+  return count;
+}
 
 export interface CandidateListQuery {
   orgId: string;
@@ -50,6 +90,8 @@ export interface CandidateListQuery {
   tag: string | null;
   /** Zero-based. */
   page: number;
+  sort?: CandidateSort | undefined;
+  filters?: Partial<CandidateListFilters> | undefined;
 }
 
 export interface CandidatePage {
@@ -69,10 +111,27 @@ export async function listCandidates(supabase: SupabaseClient, query: CandidateL
     .eq("status", query.status);
   const filter = searchOrFilter(query.text);
   if (filter) request = request.or(filter);
-  if (query.tag) request = request.contains("tags", [query.tag]);
-  const { data, error, count } = await request
-    .order("updated_at", { ascending: false })
-    .range(from, from + PAGE_SIZE - 1);
+  // A stored tag or skill may hold a comma or a quote: quoted, it stays one element of the literal.
+  if (query.tag) request = request.contains("tags", [arrayElement(query.tag)]);
+  const location = cleanSearch(query.filters?.location ?? "");
+  if (location) request = request.ilike("location", `%${location}%`);
+  const yearsMin = query.filters?.yearsMin;
+  if (typeof yearsMin === "number" && Number.isFinite(yearsMin) && yearsMin > 0) {
+    request = request.gte("years_experience", yearsMin);
+  }
+  const skill = (query.filters?.skill ?? "").trim();
+  if (skill) request = request.contains("skills", [arrayElement(skill)]);
+  const sort = query.sort ?? "recent";
+  // A second key on every sort, so a page never shows a row twice across two pages.
+  const ordered =
+    sort === "name"
+      ? request.order("full_name", { ascending: true, nullsFirst: false }).order("updated_at", { ascending: false })
+      : sort === "experience"
+        ? request
+            .order("years_experience", { ascending: false, nullsFirst: false })
+            .order("updated_at", { ascending: false })
+        : request.order("updated_at", { ascending: false }).order("id", { ascending: true });
+  const { data, error, count } = await ordered.range(from, from + PAGE_SIZE - 1);
   if (error) throw error;
   const total = count ?? 0;
   return {
@@ -104,6 +163,19 @@ export async function listCandidateDocuments(supabase: SupabaseClient, orgId: st
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as unknown as DocumentRow[];
+}
+
+/** The text the service extracted from one document, read when the viewer needs it (it can weigh a few hundred kilobytes); null when none was kept. */
+export async function readDocumentText(supabase: SupabaseClient, orgId: string, documentId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("documents")
+    .select("extracted_text")
+    .eq("org_id", orgId)
+    .eq("id", documentId)
+    .maybeSingle();
+  if (error) throw error;
+  const text = (data as { extracted_text?: unknown } | null)?.extracted_text;
+  return typeof text === "string" && text.trim() ? text : null;
 }
 
 export async function listCandidateComments(supabase: SupabaseClient, orgId: string, candidateId: string): Promise<CommentRow[]> {

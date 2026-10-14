@@ -8,8 +8,10 @@ import {
   type Db,
   type DocumentPatch,
   type ExpiredCandidate,
+  type StorageBucket,
 } from "../src/db.js";
 import { embeddingStatus, resetEmbeddingStatus } from "../src/embedding.js";
+import type { LogFields } from "../src/log.js";
 import {
   REEMBED_BATCH,
   REEMBED_MAX_PAGES,
@@ -19,6 +21,9 @@ import {
 import { FAILURE_MESSAGES } from "../src/messages.js";
 import { readMetrics, resetMetrics } from "../src/metrics.js";
 import { ModelError, type Embedding } from "../src/model.js";
+import type { OcrImage, OcrResult } from "../src/ocr.js";
+import type { PageImage, PageImages } from "../src/pdf.js";
+import { PNG_SIGNATURE } from "../src/png.js";
 import { processDocument, type PipelineDeps } from "../src/pipeline.js";
 import {
   emptyProfile,
@@ -80,8 +85,13 @@ class FakeDb implements Db {
   readonly candidates = new Map<string, CandidateRow>();
   readonly embeddings = new Map<string, string | null>();
   readonly objects = new Map<string, Buffer>();
+  /** What was written to the `photos` bucket, by key. */
+  readonly photos = new Map<string, { bytes: Uint8Array; contentType: string }>();
   readonly usage: Array<{ orgId: string; kind: AiUsageKind; model: string | null; tokensIn: number; tokensOut: number }> = [];
+  /** Keys removed from the `cvs` bucket. */
   readonly removed: string[] = [];
+  /** Keys removed from the `photos` bucket. */
+  readonly removedPhotos: string[] = [];
   organization: OrganizationLimits = { id: ORG, plan: "trial", cv_quota_month: 200, retention_months: 24 };
   processedThisMonth = 0;
   expired: ExpiredCandidate[] = [];
@@ -225,6 +235,7 @@ class FakeDb implements Db {
       fingerprint: values.fingerprint ?? null,
       search_text: values.search_text ?? null,
       phone_digits: phoneDigits(values.phone),
+      photo_path: values.photo_path ?? null,
       created_by: values.created_by,
       created_at: NOW,
       updated_at: NOW,
@@ -278,10 +289,47 @@ class FakeDb implements Db {
     return bytes;
   }
 
-  async removeObjects(paths: string[]): Promise<void> {
+  async uploadObject(bucket: StorageBucket, path: string, bytes: Uint8Array, contentType: string): Promise<void> {
+    if (bucket !== "photos") throw new Error(`unexpected upload to ${bucket}`);
+    this.photos.set(path, { bytes, contentType });
+  }
+
+  async removeObjects(paths: string[], bucket: StorageBucket = "cvs"): Promise<void> {
+    if (bucket === "photos") {
+      this.removedPhotos.push(...paths);
+      for (const path of paths) this.photos.delete(path);
+      return;
+    }
     this.removed.push(...paths);
     for (const path of paths) this.objects.delete(path);
   }
+}
+
+/** A flat image of one colour, `channels` samples a pixel. */
+function image(width: number, height: number, channels: 1 | 3 | 4 = 3, value = 128, key = "img"): PageImage {
+  return { key, width, height, channels, data: new Uint8Array(width * height * channels).fill(value) };
+}
+
+/** `image` as the page draws it, `drawnWidth` points wide. */
+function drawnAt(image: PageImage, drawnWidth: number): PageImage {
+  return { ...image, drawnWidth };
+}
+
+/** An A4 page's images, the page's width in points like their drawn width. */
+function pageImages(...images: PageImage[]): PageImages {
+  return { pageWidth: 595, images };
+}
+
+/** A JPEG-looking file: the OCR answers bytes, the processor stores them as they are. */
+const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0xff, 0xd9]);
+
+/** An image the OCR cut out: its box on the page, which is also its drawn width. */
+function ocrImage(width: number, height: number, bytes: Buffer = JPEG_BYTES): OcrImage {
+  return { bytes, contentType: "image/jpeg", width, height, drawnWidth: width };
+}
+
+function ocrAnswer(firstPage: OcrResult["firstPage"] = null, text = SAMPLE_CV): OcrResult {
+  return { text, pagesProcessed: 3, model: "mistral-ocr-latest", firstPage };
 }
 
 function depsFor(db: FakeDb, overrides: Partial<PipelineDeps> = {}): PipelineDeps {
@@ -289,6 +337,7 @@ function depsFor(db: FakeDb, overrides: Partial<PipelineDeps> = {}): PipelineDep
     db,
     config: loadConfig({ PROCESSOR_SHARED_SECRET: "x".repeat(32) }),
     extractPdf: async () => ({ pageCount: 2, text: SAMPLE_CV }),
+    pageImages: async () => pageImages(),
     ocr: null,
     structure: null,
     embed: null,
@@ -373,6 +422,8 @@ describe("processDocument", () => {
     expect(candidate?.created_by).toBe(USER);
     expect(candidate?.search_text).toContain("Marie Dupont");
     expect(db.embeddings.get(candidate?.id ?? "")).toBeNull();
+    expect(candidate?.photo_path).toBeNull();
+    expect(db.photos.size).toBe(0);
     expect(db.usage).toEqual([]);
   });
 
@@ -429,7 +480,7 @@ describe("processDocument", () => {
       doc.id,
       depsFor(db, {
         extractPdf: async () => ({ pageCount: 3, text: "" }),
-        ocr: async () => ({ text: SAMPLE_CV, pagesProcessed: 3, model: "mistral-ocr-latest" }),
+        ocr: async () => ocrAnswer(),
       }),
     );
     expect(outcome).toBe("processed");
@@ -812,6 +863,166 @@ describe("processDocument", () => {
     expect(db.documents.get(missing.id)?.error).toBe(FAILURE_MESSAGES.generic);
   });
 
+  it("writes the portrait of the first page as a PNG to the photos bucket and its key on the row", async () => {
+    const db = new FakeDb();
+    const doc = db.addDocument({}, Buffer.from("pdf-one"));
+    const images = vi.fn(async (_buffer: Buffer, _context: LogFields) =>
+      pageImages(
+        image(32, 32, 4, 10, "icon"),
+        image(600, 120, 3, 20, "banner"),
+        drawnAt(image(300, 400, 3, 200, "portrait"), 100),
+        image(160, 200, 3, 90, "smaller portrait"),
+        // Larger, but drawn across the page: a background, never a face.
+        drawnAt(image(595, 842, 3, 250, "page background"), 595),
+      ),
+    );
+    const outcome = await processDocument(doc.id, depsFor(db, { pageImages: images }));
+    expect(outcome).toBe("processed");
+    expect(images).toHaveBeenCalledTimes(1);
+    // The log line of an unreadable answer names the document.
+    expect(images.mock.calls[0]?.[1]).toEqual({ documentId: doc.id, orgId: ORG });
+
+    const candidateId = db.documents.get(doc.id)?.candidate_id ?? "";
+    const path = `${ORG}/${candidateId}.png`;
+    expect(db.candidates.get(candidateId)?.photo_path).toBe(path);
+    const stored = db.photos.get(path);
+    expect(stored?.contentType).toBe("image/png");
+    expect(Array.from(stored?.bytes.subarray(0, 8) ?? [])).toEqual(Array.from(PNG_SIGNATURE));
+    // IHDR follows the signature and the chunk header: the largest portrait, downscaled to 256 on its long side.
+    const ihdr = Buffer.from(stored?.bytes ?? new Uint8Array(0)).subarray(16, 24);
+    expect([ihdr.readUInt32BE(0), ihdr.readUInt32BE(4)]).toEqual([192, 256]);
+    expect(db.documents.get(doc.id)?.status).toBe("processed");
+  });
+
+  it("keeps a merged candidate's photo, gives one to a candidate without, and never fails the document over it", async () => {
+    const db = new FakeDb();
+    const first = db.addDocument({}, Buffer.from("export-one"));
+    const portrait = async () => pageImages(image(300, 400));
+    await processDocument(first.id, depsFor(db, { structure: async () => modelAnswer(), pageImages: portrait }));
+    const candidateId = db.documents.get(first.id)?.candidate_id ?? "";
+    const path = `${ORG}/${candidateId}.png`;
+    const original = db.photos.get(path);
+    expect(db.candidates.get(candidateId)?.photo_path).toBe(path);
+
+    // A second CV of the same person: the photo stays the first one's, and
+    // the images of the new file are not even read.
+    const second = db.addDocument({}, Buffer.from("export-two"));
+    const images = vi.fn(async () => pageImages(image(400, 400, 3, 1)));
+    await processDocument(second.id, depsFor(db, { structure: async () => modelAnswer(), pageImages: images }));
+    expect(db.documents.get(second.id)?.candidate_id).toBe(candidateId);
+    expect(images).not.toHaveBeenCalled();
+    expect(db.photos.get(path)).toBe(original);
+
+    // A candidate read before the photos, or whose first CV had none, gets
+    // the next CV's portrait.
+    const without = await db.insertCandidate({
+      org_id: ORG,
+      created_by: USER,
+      source: "upload",
+      full_name: "Jean Martin",
+      email: "jean.martin@example.com",
+      fingerprint: "jean.martin@example.com",
+    });
+    const third = db.addDocument({}, Buffer.from("jean"));
+    await processDocument(
+      third.id,
+      depsFor(db, {
+        extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
+        structure: async () => modelAnswer({ full_name: "Jean Martin", email: "jean.martin@example.com" }),
+        pageImages: portrait,
+      }),
+    );
+    expect(db.documents.get(third.id)?.candidate_id).toBe(without);
+    expect(db.candidates.get(without)?.photo_path).toBe(`${ORG}/${without}.png`);
+
+    // Images that cannot be read, or a bucket that refuses the file: a
+    // processed document without a photo.
+    const unreadable = db.addDocument({}, Buffer.from("unreadable-images"));
+    const broken = depsFor(db, {
+      extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
+      structure: async () => modelAnswer({ full_name: "Paul Durand", email: "paul.durand@example.com" }),
+      pageImages: async () => {
+        throw new Error("JPX images are not supported");
+      },
+    });
+    expect(await processDocument(unreadable.id, broken)).toBe("processed");
+    const paulId = db.documents.get(unreadable.id)?.candidate_id ?? "";
+    expect(db.candidates.get(paulId)?.photo_path).toBeNull();
+
+    db.uploadObject = async () => {
+      throw new Error("bucket down");
+    };
+    const refused = db.addDocument({}, Buffer.from("bucket-down"));
+    expect(
+      await processDocument(
+        refused.id,
+        depsFor(db, {
+          extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
+          structure: async () => modelAnswer({ full_name: "Anne Petit", email: "anne.petit@example.com" }),
+          pageImages: portrait,
+        }),
+      ),
+    ).toBe("processed");
+    const anneId = db.documents.get(refused.id)?.candidate_id ?? "";
+    expect(db.candidates.get(anneId)?.photo_path).toBeNull();
+    expect(db.documents.get(refused.id)?.status).toBe("processed");
+  });
+
+  it("takes the largest image of the OCR's first page that fits, stored as the OCR answered it", async () => {
+    const db = new FakeDb();
+    const doc = db.addDocument({}, Buffer.from("scan"));
+    const images = vi.fn(async () => pageImages(image(300, 400)));
+    const portrait = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x43, 0x00, 0xff, 0xd9]);
+    const outcome = await processDocument(
+      doc.id,
+      depsFor(db, {
+        extractPdf: async () => ({ pageCount: 3, text: "" }),
+        pageImages: images,
+        ocr: async () =>
+          ocrAnswer({
+            pageWidth: 1654,
+            images: [ocrImage(1600, 200), ocrImage(300, 400), ocrImage(400, 500, portrait)],
+          }),
+      }),
+    );
+    expect(outcome).toBe("processed");
+    const candidateId = db.documents.get(doc.id)?.candidate_id ?? "";
+    const path = `${ORG}/${candidateId}.jpg`;
+    expect(db.candidates.get(candidateId)?.photo_path).toBe(path);
+    expect(db.photos.get(path)?.contentType).toBe("image/jpeg");
+    expect(Buffer.from(db.photos.get(path)?.bytes ?? new Uint8Array(0)).equals(portrait)).toBe(true);
+    // The PDF's own images are not read for a scanned file.
+    expect(images).not.toHaveBeenCalled();
+
+    const none = db.addDocument({}, Buffer.from("scan-two"));
+    await processDocument(
+      none.id,
+      depsFor(db, {
+        extractPdf: async () => ({ pageCount: 1, text: "" }),
+        ocr: async () =>
+          ocrAnswer({ pageWidth: 1654, images: [ocrImage(1200, 1100)] }, BARE_CV),
+        structure: async () => modelAnswer({ full_name: "Jean Martin", email: "jean.martin@example.com" }),
+      }),
+    );
+    const jeanId = db.documents.get(none.id)?.candidate_id ?? "";
+    expect(db.candidates.get(jeanId)?.photo_path).toBeNull();
+  });
+
+  it("reads no image for a document that is set aside", async () => {
+    const db = new FakeDb();
+    const doc = db.addDocument({ file_name: "lettre.pdf" }, Buffer.from("letter"));
+    const images = vi.fn(async () => pageImages(image(300, 400)));
+    await processDocument(
+      doc.id,
+      depsFor(db, {
+        structure: async () => modelAnswer({}, { kind: "other", reason: "A cover letter." }),
+        pageImages: images,
+      }),
+    );
+    expect(images).not.toHaveBeenCalled();
+    expect(db.photos.size).toBe(0);
+  });
+
   it("skips a document that is not queued", async () => {
     const db = new FakeDb();
     const doc = db.addDocument({ status: "processing", attempts: 1 }, Buffer.from("pdf"));
@@ -838,8 +1049,29 @@ describe("runMaintenance", () => {
       ranAt: NOW,
     });
     expect(db.removed).toEqual([doc.storage_path]);
+    // No photo on the row: the keys a photo of this person could have go all the same.
+    expect(db.removedPhotos).toEqual([`${ORG}/${candidateId}.png`, `${ORG}/${candidateId}.jpg`]);
     expect(db.candidates.size).toBe(0);
     expect(db.documents.size).toBe(0);
+  });
+
+  it("removes the photo with the files when the candidate has one", async () => {
+    const db = new FakeDb();
+    const doc = db.addDocument({}, Buffer.from("pdf-one"));
+    await processDocument(doc.id, depsFor(db, { pageImages: async () => pageImages(image(300, 400)) }));
+    const candidateId = db.documents.get(doc.id)?.candidate_id ?? "";
+    const path = `${ORG}/${candidateId}.png`;
+    expect(db.photos.has(path)).toBe(true);
+    // A JPEG no row names (a scan of the same person read at the same time) goes too.
+    const orphan = `${ORG}/${candidateId}.jpg`;
+    db.photos.set(orphan, { bytes: JPEG_BYTES, contentType: "image/jpeg" });
+    db.expired = [{ candidate_id: candidateId, org_id: ORG, reason: "retention" }];
+    const report = await runMaintenance(maintenanceDeps(db));
+    expect(report).toMatchObject({ purged: 1, filesRemoved: 2, failed: 0 });
+    expect(db.removed).toEqual([doc.storage_path]);
+    expect(db.removedPhotos).toEqual([path, orphan]);
+    expect(db.photos.size).toBe(0);
+    expect(db.candidates.size).toBe(0);
   });
 
   it("leaves a candidate whose files could not be removed for the next pass", async () => {

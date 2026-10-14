@@ -1,9 +1,10 @@
 /**
  * Third step of the share dialog: the link, shown this once with a copy
- * button; the recipients as chips, an optional message, and the send,
- * which is off with a sentence when this deployment has no email
- * sender. The outcome names what left and what did not. The buttons are
- * a component of their own that the dialog keeps below the scrolling box.
+ * button and the date it expires; the recipients as chips, an optional
+ * message, and the send, which is off with a sentence when this
+ * deployment has no email sender. The outcome names what left and what
+ * did not, and is announced to assistive technologies. The buttons are a
+ * component of their own that the dialog keeps below the scrolling box.
  */
 import { useState, type KeyboardEvent } from "react";
 import { Check, Copy, X } from "lucide-react";
@@ -18,8 +19,6 @@ import { formatDate, useI18n } from "@/lib/i18n";
 import { canSend, RECIPIENTS_MAX, type DialogAction, type DialogState } from "@/lib/shares/dialog-state";
 import { MESSAGE_MAX } from "@/lib/shares/email";
 import { toast } from "@/lib/toast";
-
-import { FIELD_LABEL } from "./field-label";
 
 export function SendStep({
   state,
@@ -63,28 +62,43 @@ export function SendStep({
         : outcome.sent === 1
           ? t("shares.send.sent.one")
           : t("shares.send.sent.many", { count: outcome.sent });
+  const failedSentence =
+    outcome && outcome.failed.length ? t("shares.send.failed", { list: outcome.failed.join(", ") }) : null;
 
   return (
     <div className="space-y-6">
+      {/* Mounted with the step (and out of the flow), so the outcome of a send is announced when it arrives. */}
+      <p className="sr-only" role="status">
+        {[sentSentence, failedSentence].filter(Boolean).join(" ")}
+      </p>
       <div className="space-y-2">
-        <Label htmlFor="share-link" className={FIELD_LABEL}>
-          {t("shares.send.link")}
-        </Label>
+        <Label htmlFor="share-link">{t("shares.send.link")}</Label>
         <div className="flex gap-2">
-          <Input id="share-link" value={share.url} readOnly onFocus={(event) => event.currentTarget.select()} className="font-mono text-xs" />
-          <Button type="button" variant="outline" onClick={() => void copy()} className="shrink-0 gap-1.5">
-            {copied ? <Check /> : <Copy />}
+          <Input
+            id="share-link"
+            value={share.url}
+            readOnly
+            onFocus={(event) => event.currentTarget.select()}
+            className="font-mono text-xs md:text-xs"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            icon={copied ? <Check /> : <Copy />}
+            onClick={() => void copy()}
+            className="shrink-0"
+          >
             {t("common.copy")}
           </Button>
         </div>
-        <p className="text-[13px] leading-5 text-muted-foreground">{t("shares.send.linkOnce")}</p>
-        <p className="text-[13px] leading-5 text-muted-foreground">{t("shares.send.expires", { date: formatDate(locale, share.expiresAt) })}</p>
+        <p className="text-meta text-muted-foreground">{t("shares.send.linkOnce")}</p>
+        <p className="text-meta text-muted-foreground">
+          {t("shares.send.expires", { date: formatDate(locale, share.expiresAt) })}
+        </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="share-recipient" className={FIELD_LABEL}>
-          {t("shares.send.recipients")}
-        </Label>
+        <Label htmlFor="share-recipient">{t("shares.send.recipients")}</Label>
         {state.recipients.length ? (
           <ul className="flex flex-wrap gap-1.5">
             {state.recipients.map((email) => (
@@ -93,12 +107,12 @@ export function SendStep({
                   {email}
                   <button
                     type="button"
-                    className="inline-flex size-4 items-center justify-center rounded-full hover:bg-primary/15"
+                    className="inline-flex size-5 cursor-pointer items-center justify-center rounded-full hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     disabled={busy}
                     onClick={() => dispatch({ type: "removeRecipient", email })}
                     aria-label={t("shares.send.removeRecipient", { email })}
                   >
-                    <X className="size-3" />
+                    <X className="size-3" aria-hidden="true" />
                   </button>
                 </Pill>
               </li>
@@ -117,12 +131,12 @@ export function SendStep({
           onKeyDown={onRecipientKey}
           onBlur={() => dispatch({ type: "commitRecipients" })}
         />
-        <p className="text-[13px] leading-5 text-muted-foreground">{t("shares.send.recipients.help", { max: RECIPIENTS_MAX })}</p>
+        <p className="text-meta text-muted-foreground">{t("shares.send.recipients.help", { max: RECIPIENTS_MAX })}</p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="share-message" className={FIELD_LABEL}>
-          {t("shares.send.message")}
+        <Label htmlFor="share-message">
+          {t("shares.send.message")} <span className="font-normal">({t("common.optional")})</span>
         </Label>
         <Textarea
           id="share-message"
@@ -135,15 +149,17 @@ export function SendStep({
         />
       </div>
 
-      {!emailReady ? <p className="text-sm text-caution-foreground dark:text-caution">{t("shares.send.emailOff")}</p> : null}
+      {!emailReady ? (
+        <p className="rounded-lg bg-caution/10 px-4 py-3 text-sm text-caution-foreground dark:text-caution">
+          {t("shares.send.emailOff")}
+        </p>
+      ) : null}
 
       {sentSentence ? (
-        <div className="rounded-xl bg-muted/50 px-4 py-3 text-sm text-ink">
-          <p>{sentSentence}</p>
-          {outcome && outcome.failed.length ? (
-            <p className="mt-1 text-negative">{t("shares.send.failed", { list: outcome.failed.join(", ") })}</p>
-          ) : null}
-          <p className="mt-1 text-[13px] text-muted-foreground">{t("shares.send.sentNote")}</p>
+        <div className="fade-in rounded-lg bg-muted/50 px-4 py-3 text-sm text-ink">
+          <p className="font-medium">{sentSentence}</p>
+          {failedSentence ? <p className="mt-1 text-negative">{failedSentence}</p> : null}
+          <p className="mt-1 text-meta text-muted-foreground">{t("shares.send.sentNote")}</p>
         </div>
       ) : null}
     </div>
@@ -165,7 +181,7 @@ export function SendFooter({
   const { t } = useI18n();
   if (!state.share) return null;
   return (
-    <DialogFooter className="gap-2">
+    <DialogFooter>
       <Button type="button" variant="outline" onClick={onClose} disabled={state.busy}>
         {t("common.close")}
       </Button>

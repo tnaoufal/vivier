@@ -1,24 +1,28 @@
 /**
- * The person's account: display name, preferred language, password
- * (the new-password form leads after a reset link), sign out, and the
+ * The person's account: the profile (display name next to the sign-in
+ * address), the preferences (language, appearance), the password (the
+ * new-password form leads after a reset link), the session, and the
  * deletion of the account behind a confirmation.
  */
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { KeyRound, LogOut } from "lucide-react";
+import { KeyRound, LogOut, Moon, Sun, Trash2 } from "lucide-react";
 
+import { Avatar } from "@/components/app-shell/avatar";
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { LocaleChips } from "@/components/app-shell/locale-chips";
 import { PageHeader } from "@/components/app-shell/page-header";
+import { useTheme } from "@/components/theme-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Segmented } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { useQuery } from "@/lib/data/use-query";
 import type { Locale } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
-import { useOrg } from "@/lib/org/org-context";
+import { memberName, useOrg } from "@/lib/org/org-context";
 import { readProfile, updateProfile } from "@/lib/team/team";
 import { toast } from "@/lib/toast";
 
@@ -32,8 +36,11 @@ function AccountPage() {
   const { t, locale, setLocale } = useI18n();
   const { user, passwordRecovery, clearPasswordRecovery, updatePassword, signOut } = useAuth();
   const { refresh } = useOrg();
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
+  const localeLabelId = useId();
   const userId = user?.id ?? "";
+  const email = user?.email ?? "";
 
   const profile = useQuery(`profile:${userId}`, async () => readProfile(await requireSupabase(), userId), Boolean(userId));
   const [displayName, setDisplayName] = useState("");
@@ -48,6 +55,7 @@ function AccountPage() {
   }, [profile.data]);
 
   const savedLocale: Locale = profile.data?.locale ?? locale;
+  const shownName = memberName(profile.data ?? undefined, email.split("@")[0] ?? "");
 
   async function saveName(event: FormEvent) {
     event.preventDefault();
@@ -58,8 +66,8 @@ function AccountPage() {
       await updateProfile(supabase, userId, { display_name: displayName.trim() || null });
       toast.success(t("common.saved"));
       await Promise.all([profile.refresh(), refresh()]);
-    } catch (error) {
-      console.error(error);
+    } catch (caught) {
+      console.error(caught);
       toast.error(t("common.error"));
     } finally {
       setSavingName(false);
@@ -74,8 +82,8 @@ function AccountPage() {
       await updateProfile(supabase, userId, { locale: next });
       setLocale(next);
       await profile.refresh();
-    } catch (error) {
-      console.error(error);
+    } catch (caught) {
+      console.error(caught);
       toast.error(t("common.error"));
     } finally {
       setSavingLocale(false);
@@ -104,13 +112,13 @@ function AccountPage() {
       toast.success(t("account.deleted"));
       try {
         await signOut();
-      } catch (error) {
+      } catch (caught) {
         // The account is gone: a refused sign-out changes nothing.
-        console.error(error);
+        console.error(caught);
       }
       void navigate({ to: "/" });
-    } catch (error) {
-      console.error(error);
+    } catch (caught) {
+      console.error(caught);
       toast.error(t("common.error"));
     } finally {
       setDeleting(false);
@@ -135,19 +143,22 @@ function AccountPage() {
 
   return (
     <>
-      <PageHeader eyebrow={user?.email ?? ""} title={t("nav.account")} description={t("account.subtitle")} />
+      <PageHeader eyebrow={email} title={t("nav.account")} description={t("account.subtitle")} />
 
       <div className="space-y-8">
         {passwordRecovery ? passwordForm : null}
 
-        <form onSubmit={saveName} className="sheet p-6 sm:p-8">
-          <h2 className="font-display text-xl text-ink">{t("account.displayName")}</h2>
-          <p className="mt-1 text-sm leading-5 text-muted-foreground">{t("account.displayName.help")}</p>
-          <div className="mt-6 grid gap-6 sm:grid-cols-2">
-            <div className="min-w-0 space-y-2">
-              <Label htmlFor="account-email">{t("account.email")}</Label>
-              <Input id="account-email" value={user?.email ?? ""} readOnly disabled />
+        <form onSubmit={saveName} className="sheet p-6 sm:p-8" aria-labelledby="account-profile-title">
+          <div className="flex items-center gap-4">
+            <Avatar name={shownName} size="lg" />
+            <div className="min-w-0">
+              <h2 id="account-profile-title" className="font-display text-xl text-ink">
+                {t("account.profile")}
+              </h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">{t("account.displayName.help")}</p>
             </div>
+          </div>
+          <div className="mt-6 grid gap-6 sm:grid-cols-2">
             <div className="min-w-0 space-y-2">
               <Label htmlFor="account-name">{t("account.displayName")}</Label>
               <Input
@@ -159,36 +170,70 @@ function AccountPage() {
                 disabled={savingName || profile.loading}
               />
             </div>
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="account-email">{t("account.email")}</Label>
+              <Input id="account-email" value={email} readOnly disabled />
+            </div>
           </div>
           <div className="mt-8">
-            <Button type="submit" disabled={savingName || profile.loading}>
+            <Button type="submit" variant={passwordRecovery ? "outline" : "primary"} disabled={savingName || profile.loading}>
               {t("common.save")}
             </Button>
           </div>
         </form>
 
-        <section className="sheet p-6 sm:p-8">
-          <h2 className="font-display text-xl text-ink">{t("account.locale")}</h2>
-          <p className="mt-1 text-sm leading-5 text-muted-foreground">{t("account.locale.help")}</p>
-          <div className="mt-6">
-            <LocaleChips value={savedLocale} onChange={(next) => void chooseLocale(next)} disabled={savingLocale || profile.loading} />
+        <section className="sheet p-6 sm:p-8" aria-labelledby="account-preferences-title">
+          <h2 id="account-preferences-title" className="font-display text-xl text-ink">
+            {t("account.preferences")}
+          </h2>
+          <div className="mt-6 grid gap-8 sm:grid-cols-2">
+            <div className="min-w-0 space-y-2">
+              <Label id={localeLabelId}>{t("account.locale")}</Label>
+              <div role="group" aria-labelledby={localeLabelId}>
+                <LocaleChips value={savedLocale} onChange={(next) => void chooseLocale(next)} disabled={savingLocale || profile.loading} />
+              </div>
+              <p className="text-meta text-muted-foreground">{t("account.locale.help")}</p>
+            </div>
+            <div className="min-w-0 space-y-2">
+              <Label>{t("account.theme")}</Label>
+              <Segmented
+                value={theme}
+                onChange={setTheme}
+                aria-label={t("account.theme")}
+                options={[
+                  { value: "light", label: t("common.theme.light"), icon: <Sun /> },
+                  { value: "dark", label: t("common.theme.dark"), icon: <Moon /> },
+                ]}
+              />
+              <p className="text-meta text-muted-foreground">{t("account.theme.help")}</p>
+            </div>
           </div>
         </section>
 
         {!passwordRecovery ? passwordForm : null}
 
-        <section className="sheet p-6 sm:p-8">
-          <h2 className="font-display text-xl text-ink">{t("common.signOut")}</h2>
-          <Button variant="outline" className="mt-6" onClick={() => void doSignOut()} disabled={signingOut}>
-            <LogOut />
+        <section className="sheet p-6 sm:p-8" aria-labelledby="account-session-title">
+          <h2 id="account-session-title" className="font-display text-xl text-ink">
+            {t("account.session")}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground break-words">{t("account.session.help", { email })}</p>
+          <Button variant="outline" className="mt-6" icon={<LogOut />} onClick={() => void doSignOut()} disabled={signingOut}>
             {t("common.signOut")}
           </Button>
         </section>
 
-        <section className="sheet border-negative/40 p-6 sm:p-8">
-          <h2 className="font-display text-xl text-negative">{t("account.danger")}</h2>
-          <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">{t("account.danger.text")}</p>
-          <Button variant="destructive" className="mt-6" onClick={() => setDeleteOpen(true)} disabled={deleting}>
+        <section className="sheet border-negative/40 p-6 sm:p-8" aria-labelledby="account-danger-title">
+          <h2 id="account-danger-title" className="font-display text-xl text-negative">
+            {t("account.danger")}
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t("account.danger.text")}</p>
+          <Button
+            variant="outline"
+            icon={<Trash2 />}
+            className="mt-6 border-negative/40 text-negative hover:bg-negative/10 hover:text-negative"
+            onClick={() => setDeleteOpen(true)}
+            disabled={deleting}
+          >
             {t("account.danger")}
           </Button>
         </section>
@@ -213,19 +258,21 @@ function PasswordForm({ lead, onSubmit }: { lead: boolean; onSubmit: (password: 
   const { t } = useI18n();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
     if (password.length < PASSWORD_MIN) {
-      toast.error(t("auth.password.help"));
+      setError(t("auth.password.help"));
       return;
     }
     if (password !== confirm) {
-      toast.error(t("account.password.mismatch"));
+      setError(t("account.password.mismatch"));
       return;
     }
+    setError(null);
     setBusy(true);
     try {
       const done = await onSubmit(password);
@@ -239,9 +286,11 @@ function PasswordForm({ lead, onSubmit }: { lead: boolean; onSubmit: (password: 
   }
 
   return (
-    <form onSubmit={submit} className={lead ? "sheet border-primary/40 p-6 sm:p-8" : "sheet p-6 sm:p-8"}>
-      <h2 className="font-display text-xl text-ink">{lead ? t("auth.newPassword") : t("account.password.change")}</h2>
-      {lead ? <p className="mt-1 text-sm leading-5 text-muted-foreground">{t("account.password.recovery")}</p> : null}
+    <form onSubmit={submit} className={lead ? "sheet border-primary/40 p-6 sm:p-8" : "sheet p-6 sm:p-8"} aria-labelledby="account-password-title">
+      <h2 id="account-password-title" className="font-display text-xl text-ink">
+        {lead ? t("auth.newPassword") : t("account.password.change")}
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">{lead ? t("account.password.recovery") : t("auth.password.help")}</p>
       <div className="mt-6 grid gap-6 sm:grid-cols-2">
         <div className="min-w-0 space-y-2">
           <Label htmlFor="new-password">{t("auth.newPassword")}</Label>
@@ -250,12 +299,16 @@ function PasswordForm({ lead, onSubmit }: { lead: boolean; onSubmit: (password: 
             type="password"
             autoComplete="new-password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (error) setError(null);
+            }}
             minLength={PASSWORD_MIN}
             required
             disabled={busy}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? "account-password-error" : undefined}
           />
-          <p className="text-[13px] leading-5 text-muted-foreground">{t("auth.password.help")}</p>
         </div>
         <div className="min-w-0 space-y-2">
           <Label htmlFor="confirm-password">{t("account.password.confirm")}</Label>
@@ -264,16 +317,24 @@ function PasswordForm({ lead, onSubmit }: { lead: boolean; onSubmit: (password: 
             type="password"
             autoComplete="new-password"
             value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
+            onChange={(e) => {
+              setConfirm(e.target.value);
+              if (error) setError(null);
+            }}
             minLength={PASSWORD_MIN}
             required
             disabled={busy}
+            aria-invalid={error ? true : undefined}
           />
         </div>
       </div>
+      {error ? (
+        <p id="account-password-error" role="alert" className="fade-in mt-3 text-meta text-negative">
+          {error}
+        </p>
+      ) : null}
       <div className="mt-8">
-        <Button type="submit" variant={lead ? "default" : "outline"} disabled={busy || !password || !confirm}>
-          <KeyRound />
+        <Button type="submit" variant={lead ? "primary" : "outline"} icon={<KeyRound />} disabled={busy || !password || !confirm}>
           {lead ? t("common.save") : t("account.password.change")}
         </Button>
       </div>

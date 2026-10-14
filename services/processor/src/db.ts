@@ -18,6 +18,10 @@
  * LIKE filters the organisation's rows the same way), the fingerprint
  * exactly through its index. Each one prefers an active candidate to an
  * archived one, so a fresh CV meets the person in the pool first.
+ *
+ * Storage: the CVs are read from the private `cvs` bucket, the photos
+ * written to (and removed from) the private `photos` bucket; the web app
+ * signs their URLs for the members.
  */
 import { createClient } from "@supabase/supabase-js";
 
@@ -31,7 +35,10 @@ import type {
   OrganizationLimits,
 } from "./types.js";
 
-export const STORAGE_BUCKET = "cvs";
+/** The private buckets the processor touches: the CVs it reads, the photos it writes. */
+export type StorageBucket = "cvs" | "photos";
+export const CV_BUCKET: StorageBucket = "cvs";
+export const PHOTO_BUCKET: StorageBucket = "photos";
 /** Claims before a stale document is left failed instead of re-queued. */
 export const MAX_ATTEMPTS = 3;
 /** A document in `processing` for longer than this lost its processor (crash, restart). */
@@ -95,6 +102,8 @@ export type CandidateFields = Pick<
 export type CandidateWrite = Partial<CandidateFields> & {
   fingerprint?: string | null;
   search_text?: string | null;
+  /** The photo's key in the `photos` bucket; written once, when the candidate had none. */
+  photo_path?: string | null;
   /** A pgvector literal ("[0.1,0.2,...]"); absent keeps the stored vector. */
   embedding?: string;
   /** Written only to put an archived candidate back in the pool when a fresh CV of theirs arrives. */
@@ -157,7 +166,10 @@ export interface Db {
   ): Promise<void>;
   /** The bytes of an object of the `cvs` bucket. */
   downloadObject(path: string): Promise<Buffer>;
-  removeObjects(paths: string[]): Promise<void>;
+  /** Writes (or replaces) one object of `bucket`. */
+  uploadObject(bucket: StorageBucket, path: string, bytes: Uint8Array, contentType: string): Promise<void>;
+  /** Removes objects of `bucket` (the `cvs` bucket when unsaid); nothing to remove is not an error. */
+  removeObjects(paths: string[], bucket?: StorageBucket): Promise<void>;
 }
 
 interface QueryFailure {
@@ -419,15 +431,20 @@ export function createDb(config: SupabaseConfig): Db {
     },
 
     downloadObject: async (path) => {
-      const { data, error } = await client.storage.from(STORAGE_BUCKET).download(path);
+      const { data, error } = await client.storage.from(CV_BUCKET).download(path);
       if (error) fail("downloadObject", { message: error.message });
       if (!data) throw new DbError("downloadObject", "no content answered");
       return Buffer.from(await data.arrayBuffer());
     },
 
-    removeObjects: async (paths) => {
+    uploadObject: async (bucket, path, bytes, contentType) => {
+      const { error } = await client.storage.from(bucket).upload(path, bytes, { contentType, upsert: true });
+      if (error) fail("uploadObject", { message: error.message });
+    },
+
+    removeObjects: async (paths, bucket = CV_BUCKET) => {
       if (paths.length === 0) return;
-      const { error } = await client.storage.from(STORAGE_BUCKET).remove(paths);
+      const { error } = await client.storage.from(bucket).remove(paths);
       if (error) fail("removeObjects", { message: error.message });
     },
   };

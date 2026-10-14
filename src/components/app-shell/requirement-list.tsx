@@ -20,17 +20,29 @@ export interface RequirementRow {
 
 const MARKS: Record<RequirementMet, { icon: typeof Check; className: string }> = {
   yes: { icon: Check, className: "bg-positive/12 text-positive" },
-  partial: { icon: Minus, className: "bg-caution/15 text-caution-foreground dark:text-caution" },
+  partial: { icon: Minus, className: "bg-caution/15 text-caution-foreground" },
   no: { icon: X, className: "bg-negative/12 text-negative" },
   unknown: { icon: CircleHelp, className: "bg-muted text-muted-foreground" },
 };
 
-export function RequirementMark({ met, label, className }: { met: RequirementMet; label: string; className?: string }) {
+export function RequirementMark({
+  met,
+  label,
+  className,
+}: {
+  met: RequirementMet;
+  label: string;
+  className?: string;
+}) {
   const mark = MARKS[met];
   const Icon = mark.icon;
   return (
     <span
-      className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-full [&_svg]:size-3.5", mark.className, className)}
+      className={cn(
+        "inline-flex size-6 shrink-0 items-center justify-center rounded-full [&_svg]:size-3.5",
+        mark.className,
+        className,
+      )}
       role="img"
       aria-label={label}
       title={label}
@@ -62,11 +74,15 @@ export function RequirementList({
         <li key={row.id} className={cn("flex items-start gap-3", compact ? "py-2" : "py-3")}>
           <RequirementMark met={row.met} label={markLabel(row.met)} className="mt-0.5" />
           <div className="min-w-0 flex-1">
-            <p className={cn("text-ink", compact ? "text-sm" : "text-[15px] leading-6")}>
+            <p className={cn("text-ink", compact ? "text-sm" : "text-body")}>
               {row.label}
-              {row.required ? <span className="ml-2 text-[13px] text-muted-foreground">{requiredLabel}</span> : null}
+              {row.required ? (
+                <span className="ml-2 text-meta text-muted-foreground">{requiredLabel}</span>
+              ) : null}
             </p>
-            {row.evidence ? <p className="mt-0.5 text-sm text-muted-foreground">{row.evidence}</p> : null}
+            {row.evidence ? (
+              <p className="mt-0.5 text-sm text-muted-foreground">{row.evidence}</p>
+            ) : null}
           </div>
         </li>
       ))}
