@@ -49,8 +49,9 @@ CREATE POLICY "search_triage: members read" ON public.search_triage
   FOR SELECT TO authenticated
   USING (public.is_org_member(org_id));
 
--- The pool snapshot: one row per active candidate, in one statement, so
--- the count stored with the search and the rows to read are the same set.
+-- The pool snapshot: one row per active candidate, in one statement, and
+-- the search's pool_size written from the same rows, so the count shown
+-- and the profiles to read are the same set.
 CREATE OR REPLACE FUNCTION public.start_triage(p_org UUID, p_search UUID)
 RETURNS INTEGER
 LANGUAGE plpgsql
@@ -69,11 +70,16 @@ BEGIN
   WHERE c.org_id = p_org AND c.status = 'active'
   ON CONFLICT (search_id, candidate_id) DO NOTHING;
   GET DIAGNOSTICS inserted = ROW_COUNT;
+  UPDATE public.searches
+  SET pool_size = (SELECT count(*) FROM public.search_triage WHERE search_id = p_search)
+  WHERE id = p_search AND org_id = p_org;
   RETURN inserted;
 END;
 $$;
 
 -- One batch of verdicts written in one statement: [{candidate_id, verdict, reason}].
+-- The first verdict wins: a batch sent again, or by a second session on
+-- the same search, never overwrites a profile already read.
 CREATE OR REPLACE FUNCTION public.record_triage(p_org UUID, p_search UUID, p_model TEXT, p_rows JSONB)
 RETURNS INTEGER
 LANGUAGE plpgsql
@@ -91,7 +97,8 @@ BEGIN
   FROM jsonb_to_recordset(p_rows) AS r(candidate_id UUID, verdict TEXT, reason TEXT)
   WHERE t.search_id = p_search
     AND t.org_id = p_org
-    AND t.candidate_id = r.candidate_id;
+    AND t.candidate_id = r.candidate_id
+    AND t.verdict IS NULL;
   GET DIAGNOSTICS updated = ROW_COUNT;
   RETURN updated;
 END;
