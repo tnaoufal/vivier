@@ -3,17 +3,19 @@
  * analysis itself (assessment.ts and its rules are the frozen part):
  * the muted line of a brief card, the status filter of the list, the
  * newest analysis of each brief, its method and what it counted (kept
- * current from the realtime rows themselves), and what the brief page's
- * "Correspondances" tab reads off an analysis: the state its band is in,
- * the figures of its funnel, the matches and the near profiles in their
- * order, the one line each row shows, the split by tier, the step a
- * running stage belongs to, the time left, the turn each row takes when
- * a list unfolds (a batch that lands rises in one row after the other, a
- * row already on screen never moves again), and whether the job a search
- * rests on is still the brief's. Tested in presentation.test.ts.
+ * current from the realtime rows themselves, the triage's counts read
+ * apart) and what its card says of it, and what the brief page's
+ * "Correspondances" tab reads off an analysis: the state its band is
+ * in, the figures of its funnel, the matches, the near profiles and the
+ * profiles set aside in their order, the one line each row shows (the
+ * reason a profile was set aside among them), the step a running stage
+ * belongs to, the time left, the turn each row takes when a list
+ * unfolds (a batch that lands rises in one row after the other, a row
+ * already on screen never moves again), the pages of a list read on
+ * demand, and whether the job (or the role alone) a search rests on is
+ * still the brief's. Tested in presentation.test.ts.
  */
 import type {
-  AssessmentTier,
   BriefCriterion,
   BriefRow,
   BriefStatus,
@@ -21,7 +23,7 @@ import type {
   SearchMethod,
 } from "@/lib/db/types";
 
-import { compareTiered, decisionOf, tierOf } from "./assessment";
+import { compareTiered, decisionOf, firstMissingRequirement } from "./assessment";
 import { protectedCriterion, roleCriterion, sameCriteria } from "./criteria";
 import { roleDefinitionOf } from "./role-profile";
 import type { AnalysisStep } from "./stages";
@@ -108,6 +110,14 @@ export interface LatestAnalysis extends AnalysisDigest {
   searchId: string;
   createdAt: string;
   method: SearchMethod;
+  /**
+   * For a whole-pool search, the profiles of its snapshot the triage has
+   * not read, and the ones it kept (yes, close, unknown): no row carries
+   * them, they are counted apart. Null when not read (another method, a
+   * realtime row, a count that failed).
+   */
+  triagePending: number | null;
+  kept: number | null;
 }
 
 /** The method a row names; a row without one (or with an unknown one) reads as the text path, the oldest. */
@@ -143,21 +153,34 @@ export function analysisOfRow(
   const total = countColumn(row["result_count"]);
   const assessed = countColumn(row["assessed_count"]);
   const present = countColumn(row["match_count"]);
+  // The triage's counts travel in no row: the caller keeps the last ones read, and reads them again.
+  const triage = { triagePending: null, kept: null };
   if (total !== null && assessed !== null && present !== null)
-    return { briefId, analysis: { searchId: id, createdAt, method, total, assessed, present } };
+    return {
+      briefId,
+      analysis: { searchId: id, createdAt, method, total, assessed, present, ...triage },
+    };
   const results: unknown = row["results"];
   if (!Array.isArray(results)) return null;
   return {
     briefId,
-    analysis: { searchId: id, createdAt, method, ...digestResults(results as MatchResult[]) },
+    analysis: {
+      searchId: id,
+      createdAt,
+      method,
+      ...digestResults(results as MatchResult[]),
+      ...triage,
+    },
   };
 }
 
 /**
  * The newest analyses once one search changed: the change takes its
  * brief's place when it is the same search or a newer one, so a late
- * patch of an older search never hides the newest. The map given is
- * left untouched; it is answered as is when nothing changes.
+ * patch of an older search never hides the newest; a patch of the same
+ * search that does not carry the triage's counts keeps the ones known.
+ * The map given is left untouched; it is answered as is when nothing
+ * changes.
  */
 export function withAnalysis(
   latest: ReadonlyMap<string, LatestAnalysis>,
@@ -171,9 +194,69 @@ export function withAnalysis(
     Date.parse(analysis.createdAt) <= Date.parse(kept.createdAt)
   )
     return latest;
+  const same = kept?.searchId === analysis.searchId ? kept : undefined;
   const next = new Map(latest);
-  next.set(briefId, analysis);
+  next.set(briefId, {
+    ...analysis,
+    triagePending: analysis.triagePending ?? same?.triagePending ?? null,
+    kept: analysis.kept ?? same?.kept ?? null,
+  });
   return next;
+}
+
+/**
+ * The newest analyses once the triage's counts of one search were read
+ * again: written into its brief's entry when that entry is still this
+ * search, else nothing changes (the map given is answered as is).
+ */
+export function withTriageProgress(
+  latest: ReadonlyMap<string, LatestAnalysis>,
+  briefId: string,
+  searchId: string,
+  progress: { pending: number; kept: number },
+): ReadonlyMap<string, LatestAnalysis> {
+  const entry = latest.get(briefId);
+  if (!entry || entry.searchId !== searchId) return latest;
+  const next = new Map(latest);
+  next.set(briefId, { ...entry, triagePending: progress.pending, kept: progress.kept });
+  return next;
+}
+
+/**
+ * What a brief card says of its newest analysis:
+ * - "unfinished": a whole-pool search not through yet: profiles of its
+ *   snapshot wait for the triage, profiles it kept are not in the
+ *   results yet, or results are not read in full. Its counts are not its
+ *   answer yet (a run still going and one interrupted look alike), so it
+ *   says neither. Without the triage's counts, a search none of whose
+ *   profiles was read in full cannot be told from a triage that kept
+ *   nobody: it reads unfinished too;
+ * - "matches": how many profiles match, once every profile was through
+ *   (0 for a triage that kept nobody);
+ * - "ranked": how many profiles an analysis no model read ranked.
+ */
+export type CardAnalysis =
+  | { kind: "unfinished" }
+  | { kind: "matches"; count: number }
+  | { kind: "ranked"; count: number };
+
+export function cardAnalysisOf(
+  analysis: Pick<LatestAnalysis, "method" | "total" | "assessed" | "present"> &
+    Partial<Pick<LatestAnalysis, "triagePending" | "kept">>,
+): CardAnalysis {
+  if (analysis.method === "triage") {
+    if (analysis.assessed < analysis.total) return { kind: "unfinished" };
+    const pending = analysis.triagePending ?? null;
+    const kept = analysis.kept ?? null;
+    if (pending === null || kept === null)
+      return analysis.assessed === 0
+        ? { kind: "unfinished" }
+        : { kind: "matches", count: analysis.present };
+    if (pending > 0 || kept > analysis.total) return { kind: "unfinished" };
+    return { kind: "matches", count: analysis.present };
+  }
+  if (analysis.assessed > 0) return { kind: "matches", count: analysis.present };
+  return { kind: "ranked", count: analysis.total };
 }
 
 // ---------------------------------------------------------------------
@@ -190,15 +273,9 @@ export function nearOf(results: readonly MatchResult[]): MatchResult[] {
   return results.filter((result) => decisionOf(result) === "borderline").sort(compareTiered);
 }
 
-/** How many matches each tier holds; a match the tiering has not reached yet counts in none. */
-export function tierCounts(results: readonly MatchResult[]): Record<AssessmentTier, number> {
-  const counts: Record<AssessmentTier, number> = { A: 0, B: 0, C: 0 };
-  for (const result of results) {
-    if (decisionOf(result) !== "fit") continue;
-    const tier = tierOf(result);
-    if (tier) counts[tier] += 1;
-  }
-  return counts;
+/** The profiles the full reading set aside (decision no_fit), the closest first, for the list a person opens on demand. */
+export function setAsideOf(results: readonly MatchResult[]): MatchResult[] {
+  return results.filter((result) => decisionOf(result) === "no_fit").sort(compareTiered);
 }
 
 /** What a whole-pool search's triage counted (the read profiles and their verdicts), as the funnel needs it. */
@@ -206,36 +283,45 @@ export interface TriageTally {
   read: number;
   yes: number;
   close: number;
+  no: number;
   unknown: number;
 }
 
 /**
- * The four figures of the funnel: the profiles the triage read, the
- * ones it kept (yes, close, unknown: a card too thin to judge is read
- * rather than dropped), the ones read in full, the matches. Without a
- * triage (an analysis stored before it, or the text path), every
- * result counts as read and kept.
+ * The figures of the funnel: the profiles the triage read, the ones it
+ * kept (yes, close, unknown: a card too thin to judge is read rather
+ * than dropped), the ones read in full, the matches, and the ones set
+ * aside (another métier at the triage, or no_fit after the full
+ * reading), which a person can always open. Without a triage (an
+ * analysis stored before it, or the text path), every result counts as
+ * read and kept.
  */
 export interface Funnel {
   analysed: number;
   kept: number;
   assessed: number;
   matches: number;
+  setAside: number;
 }
 
 export function funnelOf(results: readonly MatchResult[], triage: TriageTally | null): Funnel {
   let assessed = 0;
   let matches = 0;
+  let noFit = 0;
   for (const result of results) {
     if (result.assessment) assessed += 1;
-    if (decisionOf(result) === "fit") matches += 1;
+    const decision = decisionOf(result);
+    if (decision === "fit") matches += 1;
+    else if (decision === "no_fit") noFit += 1;
   }
-  if (!triage) return { analysed: results.length, kept: results.length, assessed, matches };
+  if (!triage)
+    return { analysed: results.length, kept: results.length, assessed, matches, setAside: noFit };
   return {
     analysed: Math.max(0, triage.read),
     kept: Math.max(0, triage.yes + triage.close + triage.unknown),
     assessed,
     matches,
+    setAside: Math.max(0, triage.no) + noFit,
   };
 }
 
@@ -282,6 +368,57 @@ export function reservationLine(result: Pick<MatchResult, "assessment">): string
   return doubt ?? sentence(assessment.concerns?.[0]) ?? synthesisLine(result);
 }
 
+/**
+ * Why a profile was set aside, as its row in the list of the profiles
+ * set aside says it: for a "no" at the triage, the reason the model gave
+ * on its card; else the first requirement at "no" that sets a profile
+ * aside on its own (the role, then the required ones), then the
+ * reading's main reservation, then the first sentence of its summary.
+ * Null when nothing was written (the row then names the verdict alone).
+ */
+export type SetAsideReason =
+  | { kind: "missing"; criterion: BriefCriterion }
+  | { kind: "text"; text: string };
+
+export function setAsideReason(
+  criteria: readonly BriefCriterion[],
+  entry: Pick<MatchResult, "assessment" | "triage">,
+): SetAsideReason | null {
+  if (entry.triage?.verdict === "no") {
+    const reason = sentence(entry.triage.reason);
+    return reason ? { kind: "text", text: reason } : null;
+  }
+  const missing = firstMissingRequirement(criteria, entry);
+  if (missing) return { kind: "missing", criterion: missing };
+  const assessment = entry.assessment;
+  if (!assessment) return null;
+  const text = sentence(assessment.concerns?.[0]) ?? sentence(firstSentence(assessment.summary));
+  return text ? { kind: "text", text } : null;
+}
+
+/** How many profiles set aside one page of their list shows, and one "Voir plus" adds. */
+export const SET_ASIDE_PAGE = 50;
+
+/**
+ * The rows of a list read page after page, once the next page landed:
+ * the rows known first, in their order, then the page's rows not known
+ * yet (a verdict written between two reads can shift a page by a row,
+ * and a row is listed once). The list given is left untouched.
+ */
+export function appendPage<T extends { candidateId: string }>(
+  rows: readonly T[],
+  page: readonly T[],
+): T[] {
+  const known = new Set(rows.map((row) => row.candidateId));
+  const out = [...rows];
+  for (const row of page) {
+    if (known.has(row.candidateId)) continue;
+    known.add(row.candidateId);
+    out.push(row);
+  }
+  return out;
+}
+
 /** How many of a result's criteria the deterministic pass found, out of how many: the line of a row ranked on the text alone. */
 export function requirementTally(result: Pick<MatchResult, "verdicts">): {
   met: number;
@@ -315,27 +452,38 @@ export function mergeResults(
 }
 
 /**
+ * True when the role profile now defines the role otherwise than the
+ * search's role criterion: the search ran on another job (runSearch
+ * writes that definition from the profile, unless the profile defines
+ * nothing or something protected, which this reads as no change).
+ */
+export function roleChangedSince(
+  profile: BriefRow["role_profile"],
+  searchCriteria: readonly BriefCriterion[],
+): boolean {
+  const role = roleCriterion(searchCriteria);
+  if (!role || !profile) return false;
+  const definition = roleDefinitionOf(profile);
+  return (
+    definition.length > 0 &&
+    definition !== role.value &&
+    !protectedCriterion(role.label, definition, "role")
+  );
+}
+
+/**
  * True when the job a search rests on is no longer the brief's: the
  * criteria saved since differ from the ones the search took, or the
- * role profile now defines the role otherwise than the search's role
- * criterion (the next search rewrites that definition from the profile,
- * as runSearch does, unless the profile defines nothing or something
- * protected). A search the team checked and changed is run again; one
- * they left as it was starts as it is.
+ * role profile now defines the role otherwise (roleChangedSince). A
+ * search the team checked and changed is run again; one they left as it
+ * was starts as it is.
  */
 export function jobChangedSince(
   brief: Pick<BriefRow, "criteria" | "role_profile">,
   searchCriteria: readonly BriefCriterion[],
 ): boolean {
   if (!sameCriteria(brief.criteria, searchCriteria)) return true;
-  const role = roleCriterion(searchCriteria);
-  if (!role || !brief.role_profile) return false;
-  const definition = roleDefinitionOf(brief.role_profile);
-  return (
-    definition.length > 0 &&
-    definition !== role.value &&
-    !protectedCriterion(role.label, definition, "role")
-  );
+  return roleChangedSince(brief.role_profile, searchCriteria);
 }
 
 /** The most rows the deterministic ranking shows when no model reads the profiles. */

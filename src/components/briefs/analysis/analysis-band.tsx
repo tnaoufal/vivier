@@ -3,60 +3,68 @@
  * where the analysis stands, in the state it is in. Idle, the headline
  * counts the matches ("12 profils correspondent"); one line of figures
  * under it says how the pool narrowed (the profiles analysed, the ones
- * the triage kept, the ones read in depth while some are left to read)
- * and when, the method behind an info icon; the pills on the right split
- * the matches by tier; the earlier analyses sit behind a quiet button.
- * Running, it shows the four steps, the bar of the current one with how
- * far it is and the time left when known, one live sentence and the way
- * to stop. Waiting for the team's check, one line and the way to the
- * role (the header's "Lancer la recherche" then starts the analysis). An
+ * the triage kept, the ones read in depth while some are left to read,
+ * the ones set aside: a quiet button that opens their list, each with
+ * its reason) and when, the method behind an info icon; the earlier
+ * analyses sit behind a quiet button. Once done, the profiles the pool
+ * gained since are counted, with the way to analyse them.
+ * Running, the live figure comes first with the way to stop (a heading
+ * from the first moment, while the search is prepared), then the bar of
+ * the current step with how far it is and the time left when known.
+ * Waiting for the team's check, one line and the way to the role (the
+ * header's "Lancer la recherche" then starts the analysis). An
  * interrupted analysis says how many profiles are left, with "Reprendre",
  * or that another session drives it; one stored before the whole pool
- * was read says how many it read, the reason behind an info icon; one no
- * model could read says how many profiles it ranked out of the pool and
- * how many are shown. With no match once everything ran, the requirement
- * most often missing and the way back to the role; an empty pool says
- * so, with the way to import CVs.
+ * was read says how many it read in full, the reason behind an info
+ * icon; one no model could read says how many profiles it ranked out of
+ * the pool and how many are shown. With no match once everything ran,
+ * the requirement most often missing and the way back to the role; an
+ * empty pool says so, with the way to import CVs. A list of analyses
+ * that could not be read says so, with the way to read it again.
  */
 import { useId, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { Briefcase, Play, Sparkles, Square, TriangleAlert, Upload, Users } from "lucide-react";
+import {
+  Briefcase,
+  Play,
+  RefreshCw,
+  Sparkles,
+  Square,
+  TriangleAlert,
+  Upload,
+  UserPlus,
+  Users,
+} from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { InfoTip } from "@/components/app-shell/info-tip";
-import { Pill, type PillTone } from "@/components/app-shell/pill";
+import { Pill } from "@/components/app-shell/pill";
 import { ProgressBar } from "@/components/app-shell/progress-bar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { kindKey } from "@/lib/briefs/criteria";
-import { BAND_STEPS, remainingMs, stepOf, tierCounts } from "@/lib/briefs/presentation";
+import { BAND_STEPS, remainingMs, stepOf } from "@/lib/briefs/presentation";
 import { formatCount } from "@/lib/candidates/format";
-import type { AssessmentTier } from "@/lib/db/types";
 import { formatDateTime, useI18n, type TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-import { AnalysisStepper } from "./analysis-stepper";
 import { PreviousAnalysesMenu } from "./previous-analyses-menu";
 import type { AnalysisController } from "./use-analysis";
-
-const TIERS: readonly AssessmentTier[] = ["A", "B", "C"];
-const TIER_TONES: Record<AssessmentTier, PillTone> = {
-  A: "positive",
-  B: "caution",
-  C: "neutral",
-};
 
 export function AnalysisBand({
   analysis,
   canEdit,
   modelAvailable,
   onCheckRole,
+  onShowSetAside,
 }: {
   analysis: AnalysisController;
   canEdit: boolean;
   modelAvailable: boolean | null;
   /** Shows the "Le poste" tab, where the team checks what the model wrote. */
   onCheckRole: () => void;
+  /** Opens the list of the profiles set aside, the figure's count as its title. */
+  onShowSetAside: () => void;
 }) {
   const { t, locale } = useI18n();
   const headingId = useId();
@@ -106,17 +114,21 @@ export function AnalysisBand({
           ? t("briefs.analysis.eta.soon")
           : t("briefs.analysis.eta.minutes", { count: Math.ceil(left / 60_000) });
     const stepName = t(`briefs.analysis.step.${BAND_STEPS[stepOf(step)] ?? "triage"}`);
-    const status = measured
-      ? t("briefs.analysis.progress", {
-          done: count(measured.done),
-          total: count(measured.total),
-        })
-      : t(
-          progress && step === "promote" ? "briefs.analysis.promoting" : "briefs.analysis.starting",
-        );
-    // While the search itself runs there is nothing to count yet.
-    const live = !progress
+    // Under the heading: the step and how far it is; nothing while the search itself is prepared (the heading says it).
+    const status = !progress
       ? null
+      : measured
+        ? t("briefs.analysis.progress", {
+            step: stepName,
+            done: count(measured.done),
+            total: count(measured.total),
+          })
+        : step === "promote"
+          ? t("briefs.analysis.promoting")
+          : stepName;
+    // The live figure first: while the search itself runs there is nothing to count yet, and the heading says what runs.
+    const live = !progress
+      ? t("briefs.analysis.starting")
       : step === "triage" || step === "promote"
         ? plural(step === "triage" ? progress.kept : funnel.kept, {
             none: "briefs.analysis.live.kept.none",
@@ -130,42 +142,42 @@ export function AnalysisBand({
           });
     return shell(
       <>
-        <AnalysisStepper step={step} />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2
+            id={headingId}
+            className="font-display text-xl text-ink tabular-nums"
+            aria-live="polite"
+          >
+            {live}
+          </h2>
+          <Button
+            type="button"
+            variant="outline"
+            icon={<Square />}
+            onClick={analysis.stop}
+            disabled={analysis.stopping}
+            aria-busy={analysis.stopping || undefined}
+            className="self-start sm:self-auto"
+          >
+            {t("briefs.analysis.stop")}
+          </Button>
+        </div>
         <div className="space-y-2">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <p className="text-sm text-ink tabular-nums">{status}</p>
-            {eta ? <p className="text-meta text-muted-foreground">{eta}</p> : null}
-          </div>
+          {status !== null || eta ? (
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <p className="text-sm text-ink tabular-nums">{status}</p>
+              {eta ? <p className="text-meta text-muted-foreground">{eta}</p> : null}
+            </div>
+          ) : null}
           <ProgressBar
             value={measured ? measured.done : null}
             max={measured ? measured.total : 100}
             size="md"
             active
-            label={`${stepName} · ${status}`}
+            label={status ?? live}
           />
         </div>
-        {live !== null ? (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2
-              id={headingId}
-              className="font-display text-xl text-ink tabular-nums"
-              aria-live="polite"
-            >
-              {live}
-            </h2>
-            <Button
-              type="button"
-              variant="outline"
-              icon={<Square />}
-              onClick={analysis.stop}
-              className="self-start sm:self-auto"
-            >
-              {t("briefs.analysis.stop")}
-            </Button>
-          </div>
-        ) : null}
       </>,
-      live !== null,
     );
   }
 
@@ -175,9 +187,35 @@ export function AnalysisBand({
       return (
         <EmptyState
           compact
+          icon={<TriangleAlert />}
           title={t("briefs.analysis.loadFailed")}
           action={
-            <Button type="button" variant="outline" onClick={() => analysis.open(failed)}>
+            <Button
+              type="button"
+              variant="outline"
+              icon={<RefreshCw />}
+              onClick={() => analysis.open(failed)}
+            >
+              {t("common.retry")}
+            </Button>
+          }
+        />
+      );
+    }
+    // The list could not be read: nothing is known of the analyses, which is not "none".
+    if (analysis.searchesError) {
+      return (
+        <EmptyState
+          compact
+          icon={<TriangleAlert />}
+          title={t("briefs.analysis.loadFailed")}
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              icon={<RefreshCw />}
+              onClick={analysis.retrySearches}
+            >
               {t("common.retry")}
             </Button>
           }
@@ -306,7 +344,6 @@ export function AnalysisBand({
 
   const matches = analysis.matches.length;
   const zero = band === "done" && matches === 0;
-  const tiers = tierCounts(view.results);
   const legacy = band === "legacy";
   const missing = analysis.mostMissing;
   // How the pool narrowed, each figure once: the profiles analysed, the
@@ -349,6 +386,28 @@ export function AnalysisBand({
           : []),
       ];
 
+  // The profiles set aside are a figure, never rows of the list; the
+  // figure opens them on demand, so what the model set aside is never out
+  // of a person's reach. The hit area grows to 40px without moving the line.
+  const setAside =
+    funnel.setAside > 0 ? (
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        onClick={onShowSetAside}
+        className="relative cursor-pointer rounded-sm underline decoration-dotted underline-offset-4 transition-colors duration-fast ease-out-soft before:absolute before:-inset-x-1 before:-inset-y-2.5 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {funnel.setAside === 1
+          ? t("briefs.analysis.setAside.one")
+          : t("briefs.analysis.setAside.many", { count: count(funnel.setAside) })}
+      </button>
+    ) : null;
+  const line: { key: string; node: ReactNode }[] = [
+    ...figures.map((figure) => ({ key: figure.key, node: figure.text })),
+    ...(setAside ? [{ key: "setAside", node: setAside }] : []),
+    { key: "date", node: date },
+  ];
+
   return shell(
     <>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -361,9 +420,9 @@ export function AnalysisBand({
             )}
           >
             {plural(matches, {
-              // Nothing matches yet is not "nothing matches" while profiles are still to read.
+              // Nothing matches yet is not "nothing matches" while profiles are still to read (an earlier analysis stopped before its reads ended included).
               none:
-                band === "incomplete"
+                band === "incomplete" || (legacy && analysis.remaining > 0)
                   ? "briefs.analysis.matches.noneYet"
                   : "briefs.search.line.present.none",
               one: "briefs.analysis.matches.one",
@@ -371,10 +430,10 @@ export function AnalysisBand({
             })}
           </h2>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground tabular-nums">
-            {[...figures, { key: "date", text: date }].map((figure, index) => (
-              <span key={figure.key} className="inline-flex items-center gap-x-2">
+            {line.map((item, index) => (
+              <span key={item.key} className="inline-flex items-center gap-x-2">
                 {index > 0 ? <span aria-hidden="true">·</span> : null}
-                <span>{figure.text}</span>
+                {typeof item.node === "string" ? <span>{item.node}</span> : item.node}
               </span>
             ))}
             {wholePool && !legacy ? (
@@ -386,28 +445,6 @@ export function AnalysisBand({
             {funnel.assessed > 0 ? <Pill size="sm">{t("briefs.results.why")}</Pill> : null}
           </div>
         </div>
-        {matches > 0 && (tiers.A || tiers.B || tiers.C) ? (
-          <ul
-            aria-label={t("briefs.analysis.tiers")}
-            className="flex shrink-0 flex-wrap items-center gap-1.5"
-          >
-            {TIERS.map((tier) =>
-              tiers[tier] ? (
-                <li key={tier}>
-                  <Pill tone={TIER_TONES[tier]} dot>
-                    <span aria-hidden="true">{`${tier} · ${count(tiers[tier])}`}</span>
-                    <span className="sr-only">
-                      {t("briefs.analysis.tierCount", {
-                        label: t(`briefs.tier.${tier}`),
-                        count: count(tiers[tier]),
-                      })}
-                    </span>
-                  </Pill>
-                </li>
-              ) : null,
-            )}
-          </ul>
-        ) : null}
       </div>
 
       {band === "incomplete" ? (
@@ -446,17 +483,43 @@ export function AnalysisBand({
         </div>
       ) : null}
 
+      {/* The pool gained profiles since this analysis ended: none of them was read. */}
+      {band === "done" && analysis.newProfiles > 0 ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex min-w-0 items-center gap-2 text-sm text-ink">
+            <UserPlus aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 tabular-nums">
+              {analysis.newProfiles === 1
+                ? t("briefs.analysis.newProfiles.one")
+                : t("briefs.analysis.newProfiles.many", { count: count(analysis.newProfiles) })}
+            </span>
+          </p>
+          {analysis.canAnalyseNew ? (
+            <Button
+              type="button"
+              variant="outline"
+              icon={<Sparkles />}
+              onClick={analysis.resume}
+              className="self-start sm:self-auto"
+            >
+              {t("briefs.analysis.analyseNew")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       {legacy ? (
         <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-ink">
           <TriangleAlert
             aria-hidden="true"
             className="size-4 shrink-0 text-caution-foreground dark:text-caution"
           />
+          {/* What was read in full, not what the retrieval returned. */}
           <span className="min-w-0">
             {view.poolSize === null
-              ? t("briefs.analysis.legacy.unknownPool", { read: count(view.results.length) })
+              ? t("briefs.analysis.legacy.unknownPool", { read: count(funnel.assessed) })
               : t("briefs.analysis.legacy", {
-                  read: count(view.results.length),
+                  read: count(funnel.assessed),
                   total: count(view.poolSize),
                 })}
           </span>

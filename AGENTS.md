@@ -17,8 +17,10 @@ stack and nothing else.
   extracts criteria from a brief, ranks and assesses requirement by
   requirement (a reading, bound by rules in `src/lib/briefs/assessment.ts`);
   a person retains or dismisses, and `shortlist_items.decided_by` says who. The UI never hides
-  this. A criterion the CV says nothing about is `not_stated`, never a
-  mismatch; a field the model did not read is absent, never invented.
+  this: a profile an analysis set aside stays viewable on demand, with its reason, from the
+  funnel's figure, and a member can have one the triage set aside read in
+  full anyway. A criterion the CV says nothing about is `not_stated`, never
+  a mismatch; a field the model did not read is absent, never invented.
 - No sensitive inference: age, date of birth, gender, origin, family,
   health, religion, union, politics are never extracted, stored or used
   as criteria. The photo read from a CV's first page is stored and shown

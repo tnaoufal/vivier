@@ -100,12 +100,16 @@ same endpoint for one call (the assessment reads
 feature has a no-model path (it always should: the analysis runs on text
 alone, a dossier is written from the verdicts). Record every call with
 `recordUsage(orgId, kind, usage)`, `kind` one of `structure`, `embed`,
-`ocr`, `brief`, `assess`, `summary`. A payload that carries a candidate's
-text goes through `redactIdentity()` (`src/lib/briefs/prompts.ts`) first:
-the model reads a profile, never a name, an e-mail or a phone number; and
-an answer that a page will show is bound by pure rules before it is stored
-(`enforceAssessment()` is the pattern). Rate-limit scopes are `model`,
-`email`, `share`, `processor`, `search` and `assess`.
+`ocr`, `brief`, `assess`, `triage`, `summary`, a failed one too: a call
+that fails after billed attempts throws `ModelAnswerError`, whose
+`usage` (`usageOf(error)`) is recorded before the error goes on. A
+payload that carries a candidate's text goes through `redactIdentity()`
+(`src/lib/briefs/prompts.ts`) first: the model reads a profile, never a
+name, an e-mail or a phone number; and an answer that a page will show
+is bound by pure rules before it is stored (`enforceAssessment()` is the
+pattern). Rate-limit scopes are `model`, `email`, `share`, `processor`,
+`search`, `triage` and `assess` (the last two count per user alone once
+the user is known).
 
 ## Sentences
 

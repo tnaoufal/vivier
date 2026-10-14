@@ -15,7 +15,9 @@ import {
   BAND_STEPS,
   bandStateOf,
   BRIEF_FILTERS,
+  appendPage,
   briefSubtitle,
+  cardAnalysisOf,
   countByFilter,
   digestResults,
   ETA_MIN_ELAPSED_MS,
@@ -32,10 +34,14 @@ import {
   remainingMs,
   requirementTally,
   reservationLine,
+  roleChangedSince,
+  SET_ASIDE_PAGE,
+  setAsideOf,
+  setAsideReason,
   stepOf,
   synthesisLine,
-  tierCounts,
   withAnalysis,
+  withTriageProgress,
   type BandInputs,
   type LatestAnalysis,
 } from "./presentation";
@@ -199,6 +205,8 @@ describe("analysisOfRow", () => {
         total: 3,
         assessed: 2,
         present: 1,
+        triagePending: null,
+        kept: null,
       },
     });
   });
@@ -221,6 +229,8 @@ describe("analysisOfRow", () => {
         total: 140,
         assessed: 96,
         present: 12,
+        triagePending: null,
+        kept: null,
       },
     });
   });
@@ -233,6 +243,8 @@ describe("analysisOfRow", () => {
       total: 3,
       assessed: 2,
       present: 1,
+      triagePending: null,
+      kept: null,
     });
   });
 
@@ -252,7 +264,16 @@ describe("analysisOfRow", () => {
 
 describe("withAnalysis", () => {
   function latest(searchId: string, createdAt: string, present: number): LatestAnalysis {
-    return { searchId, createdAt, method: "triage", total: 10, assessed: 10, present };
+    return {
+      searchId,
+      createdAt,
+      method: "triage",
+      total: 10,
+      assessed: 10,
+      present,
+      triagePending: null,
+      kept: null,
+    };
   }
   const known = new Map([["b1", latest("s2", "2026-10-03T10:00:00Z", 1)]]);
 
@@ -272,6 +293,198 @@ describe("withAnalysis", () => {
 
   it("keeps the newest when an older search is patched late", () => {
     expect(withAnalysis(known, "b1", latest("s1", "2026-10-02T10:00:00Z", 7))).toBe(known);
+  });
+
+  it("keeps the triage's counts known for the same search when a patch carries none", () => {
+    const counted = new Map([
+      ["b1", { ...latest("s2", "2026-10-03T10:00:00Z", 1), triagePending: 0, kept: 10 }],
+    ]);
+    const patched = withAnalysis(counted, "b1", latest("s2", "2026-10-03T10:00:00Z", 4));
+    expect(patched.get("b1")).toMatchObject({ present: 4, triagePending: 0, kept: 10 });
+    const newer = withAnalysis(counted, "b1", latest("s3", "2026-10-04T10:00:00Z", 0));
+    expect(newer.get("b1")).toMatchObject({ searchId: "s3", triagePending: null, kept: null });
+  });
+});
+
+describe("withTriageProgress", () => {
+  const known = new Map<string, LatestAnalysis>([
+    [
+      "b1",
+      {
+        searchId: "s2",
+        createdAt: "2026-10-03T10:00:00Z",
+        method: "triage",
+        total: 0,
+        assessed: 0,
+        present: 0,
+        triagePending: null,
+        kept: null,
+      },
+    ],
+  ]);
+
+  it("writes the counts read into the entry of the same search", () => {
+    const next = withTriageProgress(known, "b1", "s2", { pending: 0, kept: 0 });
+    expect(next.get("b1")).toMatchObject({ triagePending: 0, kept: 0 });
+    expect(known.get("b1")?.triagePending).toBeNull();
+  });
+
+  it("leaves the map as it is once a newer search took the brief's place, or for a brief unknown", () => {
+    expect(withTriageProgress(known, "b1", "s1", { pending: 3, kept: 1 })).toBe(known);
+    expect(withTriageProgress(known, "b9", "s2", { pending: 3, kept: 1 })).toBe(known);
+  });
+});
+
+describe("cardAnalysisOf", () => {
+  const base = { method: "triage" as const, total: 40, assessed: 40, present: 12 };
+
+  it("counts the matches of a whole-pool search once every kept profile was read in full", () => {
+    expect(cardAnalysisOf(base)).toEqual({ kind: "matches", count: 12 });
+    expect(cardAnalysisOf({ ...base, present: 0 })).toEqual({ kind: "matches", count: 0 });
+  });
+
+  it("calls a whole-pool search unfinished while none or only some of its profiles were read", () => {
+    expect(cardAnalysisOf({ ...base, total: 0, assessed: 0, present: 0 })).toEqual({
+      kind: "unfinished",
+    });
+    expect(cardAnalysisOf({ ...base, assessed: 0, present: 0 })).toEqual({ kind: "unfinished" });
+    expect(cardAnalysisOf({ ...base, assessed: 39 })).toEqual({ kind: "unfinished" });
+  });
+
+  it("reads 0 matches for a triage that kept nobody once nothing is left to read", () => {
+    const none = { ...base, total: 0, assessed: 0, present: 0 };
+    expect(cardAnalysisOf({ ...none, triagePending: 0, kept: 0 })).toEqual({
+      kind: "matches",
+      count: 0,
+    });
+    expect(cardAnalysisOf({ ...none, triagePending: 12, kept: 0 })).toEqual({
+      kind: "unfinished",
+    });
+  });
+
+  it("never gives a final count while the triage has profiles to read or kept ones to bring in", () => {
+    // Every result read in full, but the triage left profiles of the pool unread.
+    expect(cardAnalysisOf({ ...base, triagePending: 5, kept: 40 })).toEqual({
+      kind: "unfinished",
+    });
+    // The triage kept more profiles than the results hold.
+    expect(cardAnalysisOf({ ...base, triagePending: 0, kept: 44 })).toEqual({
+      kind: "unfinished",
+    });
+    expect(cardAnalysisOf({ ...base, triagePending: 0, kept: 40 })).toEqual({
+      kind: "matches",
+      count: 12,
+    });
+  });
+
+  it("counts the matches of an older analysis a model read, else the profiles it ranked", () => {
+    expect(cardAnalysisOf({ method: "hybrid", total: 50, assessed: 20, present: 3 })).toEqual({
+      kind: "matches",
+      count: 3,
+    });
+    expect(cardAnalysisOf({ method: "text", total: 18, assessed: 0, present: 0 })).toEqual({
+      kind: "ranked",
+      count: 18,
+    });
+    expect(cardAnalysisOf({ method: "hybrid", total: 0, assessed: 0, present: 0 })).toEqual({
+      kind: "ranked",
+      count: 0,
+    });
+  });
+});
+
+describe("setAsideReason", () => {
+  const criteria: BriefCriterion[] = [
+    { id: "skill", kind: "skill", label: "SAP", value: "sap", required: false, weight: 2 },
+    { id: "lang", kind: "language", label: "Anglais", value: "anglais", required: true, weight: 3 },
+    { id: "role", kind: "role", label: "Contrôleur", value: "contrôle", required: true, weight: 3 },
+  ];
+  const rows = (pairs: [string, "yes" | "partial" | "no" | "unknown"][]) =>
+    pairs.map(([criterionId, met]) => ({ criterionId, met, evidence: null }));
+
+  it("gives the triage's reason for a profile it set aside, null when it wrote none", () => {
+    expect(
+      setAsideReason(criteria, {
+        triage: { verdict: "no", reason: "  Comptable fournisseurs.  " },
+      }),
+    ).toEqual({ kind: "text", text: "Comptable fournisseurs." });
+    expect(setAsideReason(criteria, { triage: { verdict: "no", reason: " " } })).toBeNull();
+    expect(setAsideReason(criteria, { triage: { verdict: "no", reason: null } })).toBeNull();
+  });
+
+  it("names the role, then a required requirement at no, never one that is only weighted", () => {
+    const both = assessed("no_fit", {
+      requirements: rows([
+        ["skill", "no"],
+        ["lang", "no"],
+        ["role", "no"],
+      ]),
+      concerns: ["Peu d'encadrement."],
+    });
+    expect(setAsideReason(criteria, { assessment: both })).toEqual({
+      kind: "missing",
+      criterion: criteria[2],
+    });
+    const required = assessed("no_fit", {
+      requirements: rows([
+        ["skill", "no"],
+        ["lang", "no"],
+        ["role", "yes"],
+      ]),
+    });
+    expect(setAsideReason(criteria, { assessment: required })).toEqual({
+      kind: "missing",
+      criterion: criteria[1],
+    });
+  });
+
+  it("falls back to the main reservation, then the summary's first sentence", () => {
+    const concern = assessed("no_fit", {
+      requirements: rows([["skill", "no"]]),
+      concerns: ["  Un parcours surtout commercial.  ", "Autre."],
+      summary: "Six ans. Puis autre.",
+    });
+    expect(setAsideReason(criteria, { assessment: concern })).toEqual({
+      kind: "text",
+      text: "Un parcours surtout commercial.",
+    });
+    const summary = assessed("no_fit", { concerns: [" "], summary: "Six ans en audit. Puis." });
+    expect(setAsideReason(criteria, { assessment: summary })).toEqual({
+      kind: "text",
+      text: "Six ans en audit.",
+    });
+    expect(
+      setAsideReason(criteria, { assessment: assessed("no_fit", { summary: "" }) }),
+    ).toBeNull();
+  });
+
+  it("reads a profile the triage kept by its reading, never by the triage's reason", () => {
+    const kept = {
+      triage: { verdict: "close" as const, reason: "Métier voisin." },
+      assessment: assessed("no_fit", { concerns: ["Trop junior."] }),
+    };
+    expect(setAsideReason(criteria, kept)).toEqual({ kind: "text", text: "Trop junior." });
+    expect(setAsideReason(criteria, { triage: kept.triage })).toBeNull();
+  });
+});
+
+describe("appendPage", () => {
+  const row = (candidateId: string, reason: string | null = null) => ({ candidateId, reason });
+
+  it("appends the rows of the next page in their order", () => {
+    const first = [row("a"), row("b")];
+    const next = appendPage(first, [row("c"), row("d")]);
+    expect(next.map((entry) => entry.candidateId)).toEqual(["a", "b", "c", "d"]);
+    expect(first.map((entry) => entry.candidateId)).toEqual(["a", "b"]);
+  });
+
+  it("lists a row once when a page shifted, keeping the first reading of it", () => {
+    const next = appendPage([row("a", "x"), row("b")], [row("b", "y"), row("c"), row("c")]);
+    expect(next).toEqual([row("a", "x"), row("b"), row("c")]);
+  });
+
+  it("pages fifty at a time", () => {
+    expect(SET_ASIDE_PAGE).toBe(50);
   });
 });
 
@@ -315,6 +528,35 @@ describe("jobChangedSince", () => {
     expect(
       jobChangedSince({ criteria: [skill], role_profile: profile("audit interne") }, [skill]),
     ).toBe(false);
+  });
+});
+
+describe("roleChangedSince", () => {
+  const role: BriefCriterion = {
+    id: "role",
+    kind: "role",
+    label: "Contrôleur de gestion",
+    value: "finance d'entreprise",
+    required: true,
+    weight: 3,
+  };
+
+  it("is true once the profile defines the role otherwise than the search's role criterion", () => {
+    expect(roleChangedSince(profile("audit interne"), [role])).toBe(true);
+  });
+
+  it("is false for the same definition, a criterion saved elsewhere, or nothing to compare", () => {
+    expect(roleChangedSince(profile("finance d'entreprise"), [role])).toBe(false);
+    // Only the role counts: the triage sorts on the job, never on the other criteria.
+    expect(
+      roleChangedSince(profile("finance d'entreprise"), [
+        role,
+        { ...role, id: "skill", kind: "skill", required: false },
+      ]),
+    ).toBe(false);
+    expect(roleChangedSince(null, [role])).toBe(false);
+    expect(roleChangedSince(profile("audit interne"), [])).toBe(false);
+    expect(roleChangedSince({ ...profile(""), title: " " }, [role])).toBe(false);
   });
 });
 
@@ -388,9 +630,10 @@ describe("matchesOf and nearOf", () => {
     expect(nearOf([])).toEqual([]);
   });
 
-  it("splits the matches by tier, an untiered match and the other decisions in none", () => {
-    expect(tierCounts(results)).toEqual({ A: 2, B: 1, C: 1 });
-    expect(tierCounts([])).toEqual({ A: 0, B: 0, C: 0 });
+  it("keeps only the profiles the full reading set aside, the closest first", () => {
+    const out = [tiered("low", "no_fit", 12), ...results, tiered("high", "no_fit", 40)];
+    expect(setAsideOf(out).map((entry) => entry.candidateId)).toEqual(["high", "out", "low"]);
+    expect(setAsideOf([result("x")])).toEqual([]);
   });
 });
 
@@ -403,26 +646,38 @@ describe("funnelOf", () => {
     result("e"),
   ];
 
-  it("reads the first two figures off the triage and the last two off the results", () => {
-    expect(funnelOf(results, { read: 1091, yes: 30, close: 12, unknown: 4 })).toEqual({
+  it("reads the first two figures off the triage and the reading's off the results", () => {
+    expect(funnelOf(results, { read: 1091, yes: 30, close: 12, no: 1045, unknown: 4 })).toEqual({
       analysed: 1091,
       kept: 46,
       assessed: 4,
       matches: 2,
+      setAside: 1046,
     });
   });
 
-  it("counts every result as read and kept without a triage", () => {
-    expect(funnelOf(results, null)).toEqual({ analysed: 5, kept: 5, assessed: 4, matches: 2 });
+  it("counts every result as read and kept without a triage, and the no_fit ones as set aside", () => {
+    expect(funnelOf(results, null)).toEqual({
+      analysed: 5,
+      kept: 5,
+      assessed: 4,
+      matches: 2,
+      setAside: 1,
+    });
   });
 
   it("reads an empty analysis as zeros", () => {
-    expect(funnelOf([], { read: 0, yes: 0, close: 0, unknown: 0 })).toEqual({
+    expect(funnelOf([], { read: 0, yes: 0, close: 0, no: 0, unknown: 0 })).toEqual({
       analysed: 0,
       kept: 0,
       assessed: 0,
       matches: 0,
+      setAside: 0,
     });
+  });
+
+  it("never counts a negative triage figure", () => {
+    expect(funnelOf([], { read: -1, yes: 0, close: 0, no: -4, unknown: 0 }).setAside).toBe(0);
   });
 });
 

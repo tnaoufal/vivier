@@ -8,7 +8,9 @@
  * answers honestly that no model is set up, never a made-up result.
  *
  * Every call here is behind `enforceRateLimit("model")` in the server
- * functions that use it, and every answer is recorded in ai_usage.
+ * functions that use it, and every call is recorded in ai_usage, an
+ * answer that failed included (its attempts were billed:
+ * ModelAnswerError carries what they cost).
  */
 import OpenAI from "openai";
 import type { ZodType } from "zod";
@@ -51,7 +53,12 @@ function client(config: ModelConfig): OpenAI {
   if (cached?.key !== key) {
     cached = {
       key,
-      client: new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl, maxRetries: 1, timeout: 45_000 }),
+      client: new OpenAI({
+        apiKey: config.apiKey,
+        baseURL: config.baseUrl,
+        maxRetries: 1,
+        timeout: 45_000,
+      }),
     };
   }
   return cached.client;
@@ -68,9 +75,47 @@ export interface JsonAnswer<T> {
   usage: Usage;
 }
 
+/** What completeJson() is asked. */
+export interface JsonRequest<T> {
+  system: string;
+  user: string;
+  schema: ZodType<T>;
+  temperature?: number;
+  maxTokens?: number;
+  model?: string | null;
+  config?: ModelConfig | null;
+}
+
+/**
+ * A call that ended without a valid answer after attempts the provider
+ * billed: the caller records `usage` all the same. `status` is the
+ * provider's HTTP status when the provider failed (absent when the
+ * answers were not valid JSON), so a caller tells the two apart as it
+ * would on the provider's own error.
+ */
+export class ModelAnswerError extends Error {
+  readonly usage: Usage;
+  readonly status?: number;
+
+  constructor(message: string, usage: Usage, status?: number) {
+    super(message);
+    this.name = "ModelAnswerError";
+    this.usage = usage;
+    if (status !== undefined) this.status = status;
+  }
+}
+
+/** What a failed call cost, when it cost something; null otherwise. */
+export function usageOf(error: unknown): Usage | null {
+  return error instanceof ModelAnswerError ? error.usage : null;
+}
+
 /** The first balanced JSON object or array in a text, for a model that wraps its answer. */
 export function extractJson(text: string): string | null {
-  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  const trimmed = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "");
   const start = trimmed.search(/[[{]/);
   if (start < 0) return null;
   const open = trimmed[start];
@@ -101,15 +146,7 @@ export function extractJson(text: string): string | null {
  * same endpoint for this call (the assessment may use a stronger one);
  * empty or null means the configured one, and the usage names the one used.
  */
-export async function completeJson<T>(input: {
-  system: string;
-  user: string;
-  schema: ZodType<T>;
-  temperature?: number;
-  maxTokens?: number;
-  model?: string | null;
-  config?: ModelConfig | null;
-}): Promise<JsonAnswer<T>> {
+export async function completeJson<T>(input: JsonRequest<T>): Promise<JsonAnswer<T>> {
   const config = input.config ?? modelConfig();
   if (!config) throw new AppError("SETUP:model");
   const model = input.model?.trim() || config.model;
@@ -122,20 +159,43 @@ export async function completeJson<T>(input: {
   let tokensIn = 0;
   let tokensOut = 0;
   let lastError = "";
+  // A failure after an attempt that answered (and was billed) carries what it cost.
+  const billed = (error: unknown): unknown => {
+    if (tokensIn + tokensOut === 0) return error;
+    const status =
+      typeof error === "object" &&
+      error !== null &&
+      "status" in error &&
+      typeof error.status === "number"
+        ? error.status
+        : undefined;
+    return new ModelAnswerError(
+      `The model failed after an invalid answer: ${error instanceof Error ? error.message : String(error)}`,
+      { model, tokensIn, tokensOut },
+      status,
+    );
+  };
   for (let attempt = 0; attempt < 2; attempt++) {
-    const completion = await api.chat.completions.create({
-      model,
-      messages:
-        attempt === 0
-          ? messages
-          : [
-              ...messages,
-              { role: "user", content: `Your previous answer was not valid: ${lastError}. Answer again with JSON only.` },
-            ],
-      temperature: input.temperature ?? 0.1,
-      max_tokens: input.maxTokens ?? 2000,
-      response_format: { type: "json_object" },
-    });
+    const completion = await api.chat.completions
+      .create({
+        model,
+        messages:
+          attempt === 0
+            ? messages
+            : [
+                ...messages,
+                {
+                  role: "user",
+                  content: `Your previous answer was not valid: ${lastError}. Answer again with JSON only.`,
+                },
+              ],
+        temperature: input.temperature ?? 0.1,
+        max_tokens: input.maxTokens ?? 2000,
+        response_format: { type: "json_object" },
+      })
+      .catch((error: unknown) => {
+        throw billed(error);
+      });
     tokensIn += completion.usage?.prompt_tokens ?? 0;
     tokensOut += completion.usage?.completion_tokens ?? 0;
     const text = completion.choices[0]?.message?.content ?? "";
@@ -160,7 +220,11 @@ export async function completeJson<T>(input: {
       .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
       .join("; ");
   }
-  throw new Error(`The model did not answer valid JSON: ${lastError}`);
+  throw new ModelAnswerError(`The model did not answer valid JSON: ${lastError}`, {
+    model,
+    tokensIn,
+    tokensOut,
+  });
 }
 
 /** One embedding per text, normalised to EMBEDDING_DIMENSIONS (OpenAI models are shortened; others must match). */
@@ -169,7 +233,8 @@ export async function embed(
   config: ModelConfig | null = modelConfig(),
 ): Promise<{ vectors: number[][]; usage: Usage }> {
   if (!config) throw new AppError("SETUP:model");
-  if (!texts.length) return { vectors: [], usage: { model: config.embeddingModel, tokensIn: 0, tokensOut: 0 } };
+  if (!texts.length)
+    return { vectors: [], usage: { model: config.embeddingModel, tokensIn: 0, tokensOut: 0 } };
   const api = client(config);
   const openai = config.baseUrl.includes("api.openai.com");
   // encoding_format stated on purpose: without it the SDK asks for base64 and
@@ -195,7 +260,11 @@ export async function embed(
   }
   return {
     vectors,
-    usage: { model: config.embeddingModel, tokensIn: response.usage?.prompt_tokens ?? 0, tokensOut: 0 },
+    usage: {
+      model: config.embeddingModel,
+      tokensIn: response.usage?.prompt_tokens ?? 0,
+      tokensOut: 0,
+    },
   };
 }
 

@@ -438,12 +438,13 @@ read.
     Idle: the count of matches as the headline (`font-display`), one line
     of figures under it ("analysés · retenus au tri · lus en détail"
     while some are left, then the date), the method behind an `InfoTip`,
-    the tier `Pill`s on the right, the earlier analyses behind a quiet
-    button. Running: the stepper of the four steps (done ones checked,
-    the current one ringed in the accent), a `ProgressBar` with "{done}
-    sur {total} profils" and the time left once known, one live count
-    (`aria-live`), "Interrompre". Unfinished: what is left and
-    "Reprendre", or "En cours dans une autre session". Waiting for the
+    the earlier analyses behind a quiet button (the tiers are on the
+    rows, never counted again in the band); once done, the profiles the
+    pool gained since and "Analyser". Running: the live count first
+    (`aria-live`, "Préparation du vivier…" while the search is
+    prepared) with "Interrompre", then a `ProgressBar` with "{step} ·
+    {done} / {total}" and the time left once known. Unfinished: what is
+    left and "Reprendre", or "En cours dans une autre session". Waiting for the
     team's check: one line and "Vérifier le poste". No match once
     everything ran: "0 correspondance", the requirement most often
     missing and "Revoir le poste". An empty pool: `EmptyState` with the
@@ -458,11 +459,12 @@ read.
     profiles: muted rows, no tier, their main reservation as the line. A
     profile set aside is a figure of the band, never a row.
   - the **drawer** (`Sheet size="lg"`, from the right): the `Avatar lg`,
-    the name, the position held today, the tier, the decision and the
-    score in its header, previous and next (and the arrow keys), one row
-    of actions (add to the shortlist, open the profile); then why this
-    profile, the reading against the role, the strengths and the
-    reservations side by side, the requirements with their evidence, the
+    the name, the position held today, the tier, the decision (only when
+    it is not "Correspond") and the score in its header, previous and
+    next (and the arrow keys), one row of actions (add to the shortlist,
+    open the profile); then why this profile (the tiering's note first),
+    the requirements with their evidence, the strengths and the
+    reservations side by side, the reading against the role, the
     interview points, and the triage's verdict, small and muted.
 - **Dialog** (a confirmation, a form): `size` by content (`sm` for a
   question, `lg` for a form with rows, `xl` for an upload with a table),

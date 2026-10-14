@@ -316,9 +316,18 @@ a thin card is read in full rather than dropped, and the guard
 (`carriesRoleName()`, on the job's title and its equivalent titles
 without what a job ad adds: "H/F", "CDI", "(e)") keeps every card whose
 current title or headline names the job. A profile set aside keeps its
-verdict and reason in `search_triage`; the page counts it and lists it
-nowhere. The detail of the prompts and the rules is in the README
-("Briefs and search").
+verdict and reason in `search_triage`; the page counts it in the band's
+figures, and that figure opens on demand the list of every profile set
+aside (`listSetAside()`, keyset pages under RLS) with its reason, where
+a member may bring one back to be read in full (`readAnyway()`: its
+`no` becomes `close`, then it is promoted like a profile kept). Each
+start or resume first extends the snapshot to the active profiles the
+pool gained (`extendTriage()`, `start_triage` again), and a finished
+analysis counts the ones gained since (`countOutsideSnapshot()`, an
+anti-join). The triage refuses a batch once the role profile defines
+the job otherwise than the search's role criterion (`INPUT:job_changed`:
+a new search runs on the new job). The detail of the prompts and the
+rules is in the README ("Briefs and search").
 
 ### Share: a dossier to a hiring manager
 

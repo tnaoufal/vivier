@@ -48,12 +48,9 @@ const fr = {
   "candidates.processing.hide": "Masquer",
   "candidates.processing.quota.one": "1 CV en attente de quota",
   "candidates.processing.quota.many": "{count} CV en attente de quota",
-  "candidates.processing.quota.reached": "Quota atteint : {used} / {quota} CV ce mois.",
-  "candidates.processing.quota.room": "{remaining} CV disponibles ce mois ({used} / {quota}).",
-  "candidates.processing.quota.roomQueued":
-    "{remaining} CV disponibles ce mois ({used} traités + {pending} en file / {quota}).",
-  "candidates.processing.quota.reachedQueued":
-    "Quota atteint avec la file : {used} traités + {pending} en file / {quota}.",
+  "candidates.processing.quota.reached": "Quota atteint · {used} / {quota}",
+  "candidates.processing.quota.room": "{remaining} / {quota} CV libres ce mois",
+  "candidates.processing.quota.reachedQueued": "Quota atteint, file comprise",
   "candidates.processing.quota.unknown": "Quota : {quota} CV par mois, usage non lu.",
   "candidates.processing.quota.requeue": "Relancer {count} CV",
   "candidates.processing.quota.requeued.one": "1 CV relancé.",
@@ -259,8 +256,10 @@ const fr = {
   "candidates.erase": "Effacer définitivement",
   "candidates.erase.title": "Effacer {name} définitivement ?",
   "candidates.erase.text.none": "Profil, commentaires et places en shortlist supprimés. Définitif.",
-  "candidates.erase.text.one": "Profil, 1 CV, commentaires et places en shortlist supprimés. Définitif.",
-  "candidates.erase.text.many": "Profil, {count} CV, commentaires et places en shortlist supprimés. Définitif.",
+  "candidates.erase.text.one":
+    "Profil, 1 CV, commentaires et places en shortlist supprimés. Définitif.",
+  "candidates.erase.text.many":
+    "Profil, {count} CV, commentaires et places en shortlist supprimés. Définitif.",
   "candidates.erase.typeName": "Tapez le nom pour confirmer : {name}",
   "candidates.erase.done": "Candidat effacé.",
 } as const;
@@ -312,12 +311,9 @@ const en = {
   "candidates.processing.hide": "Hide",
   "candidates.processing.quota.one": "1 CV waiting for quota",
   "candidates.processing.quota.many": "{count} CVs waiting for quota",
-  "candidates.processing.quota.reached": "Quota reached: {used} / {quota} CVs this month.",
-  "candidates.processing.quota.room": "{remaining} CVs left this month ({used} / {quota}).",
-  "candidates.processing.quota.roomQueued":
-    "{remaining} CVs left this month ({used} processed + {pending} queued / {quota}).",
-  "candidates.processing.quota.reachedQueued":
-    "Quota reached with the queue: {used} processed + {pending} queued / {quota}.",
+  "candidates.processing.quota.reached": "Quota reached · {used} / {quota}",
+  "candidates.processing.quota.room": "{remaining} / {quota} CVs free this month",
+  "candidates.processing.quota.reachedQueued": "Quota reached, queue included",
   "candidates.processing.quota.unknown": "Quota: {quota} CVs a month, use not read.",
   "candidates.processing.quota.requeue": "Retry {count} CVs",
   "candidates.processing.quota.requeued.one": "1 CV re-queued.",
@@ -514,8 +510,10 @@ const en = {
   "candidates.erase": "Erase permanently",
   "candidates.erase.title": "Erase {name} permanently?",
   "candidates.erase.text.none": "Profile, comments and shortlist entries deleted. This is final.",
-  "candidates.erase.text.one": "Profile, 1 CV, comments and shortlist entries deleted. This is final.",
-  "candidates.erase.text.many": "Profile, {count} CVs, comments and shortlist entries deleted. This is final.",
+  "candidates.erase.text.one":
+    "Profile, 1 CV, comments and shortlist entries deleted. This is final.",
+  "candidates.erase.text.many":
+    "Profile, {count} CVs, comments and shortlist entries deleted. This is final.",
   "candidates.erase.typeName": "Type the name to confirm: {name}",
   "candidates.erase.done": "Candidate erased.",
 } as const satisfies Record<keyof typeof fr, string>;

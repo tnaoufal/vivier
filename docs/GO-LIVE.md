@@ -77,14 +77,16 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Rate limits: the `VIVIER_RATE_LIMITER` binding (`wrangler.jsonc`, 60
       calls a minute, mirrored by `RATE_LIMIT_POLICY` in
       `src/lib/platform/rate-limit.server.ts`) counts per scope, per address
-      (an IPv6 by its /64) and per user, in each data centre. An analysis
-      spends three scopes: `search` (the search and the promotion), `triage`
-      (four calls in flight) and `assess` (the screening two in flight, then
-      the second opinion and the tiering). A refused analysis call waits 20,
-      40 then 65 seconds before it fails, and the end of its stage or
-      "Reprendre" sends it again, so nothing is lost; but recruiters behind
-      one office address share its bucket, and a very fast model can bring
-      four triage calls near sixty a minute. If teams report long pauses,
+      (an IPv6 by its /64) and per user, in each data centre; the `triage`
+      and `assess` scopes count per user alone once the member is known,
+      so recruiters behind one office address do not share a bucket. An
+      analysis spends three scopes: `search` (the search, the snapshot's
+      extension and the promotion), `triage` (four calls in flight) and
+      `assess` (the screening two in flight, then the second opinion and
+      the tiering). A refused analysis call waits 20, 40 then 65 seconds
+      before it fails, and the end of its stage or "Reprendre" sends it
+      again, so nothing is lost; but a very fast model can bring four
+      triage calls near sixty a minute. If teams report long pauses,
       raise `simple.limit` in `wrangler.jsonc` and `RATE_LIMIT_POLICY`
       together, and deploy.
 

@@ -725,13 +725,21 @@ stopped):
    of every group (eight at most, `finalRankGroup`), so the order of what
    is presented is one comparison and not several.
 
-**While it runs**, the band shows the four steps ("Tri du vivier",
-"Lecture approfondie", "Seconde lecture", "Classement"; the promotion
-closes the first, the final comparison belongs to the last), the bar of
-the current one with "{done} sur {total} profils" and the time left once
-known, and one live count (the profiles kept so far, then the likely
-matches); "Interrompre" stops at the next batch, and leaving the page
-stops the loop. A batch that fails is sent once more at the end of its
+**While it runs**, the band opens with one live count (the profiles
+kept so far, then the likely matches; "Préparation du vivier…" while the
+search itself is prepared) and "Interrompre", then the bar of the
+current step ("Tri du vivier", "Lecture approfondie", "Seconde
+lecture", "Classement"; the promotion closes the first, the final
+comparison belongs to the last) with "{step} · {done} / {total}" and the
+time left once known; "Interrompre" stops at the next batch (pressed
+while the search is prepared, the search is stored and nothing of it is
+read), and leaving the page stops the loop. "Reprendre" comes back once
+the calls a stopped loop had in flight have landed, so none is sent
+twice. Each start or resume of a whole-pool search first takes in the
+active profiles the pool gained since its snapshot; once it is done, the
+band counts the ones gained since ("12 nouveaux profils", "Analyser"). A
+match the second opinion has not seen yet reads "À confirmer" while the
+analysis is not through. A batch that fails is sent once more at the end of its
 stage; an error no retry fixes (rights, setup, the session) stops the
 loop and says why; a call the rate limit refused waits 20, 40 then 65
 seconds before it counts as failed. What came back is stored: every
@@ -758,7 +766,7 @@ survives a look at the matches, and "Lancer la recherche" is held while
 either editor has unsaved edits. The matches tab is the analysis band
 (the count of matches as its headline; "1 240 profils analysés · 86
 retenus au tri" and the date under it; the method behind an info icon;
-the matches split by tier; the earlier analyses behind a quiet button),
+the earlier analyses behind a quiet button),
 then **the matches alone** (`fit`), one compact row each, tier then
 score: the rank, the photo or the initials, the name and the position
 held today, one line (the tiering's note, else the first sentence of the
@@ -766,17 +774,24 @@ reading), the tier, the score as a small ring, and the shortlist button
 beside the row. Right under them a quiet toggle opens **the near
 profiles** (`borderline`), each row with its main reservation (the
 second opinion's doubt, else the first concern). A profile set aside
-(`no_fit`, or `no` at the triage) is a figure of the band, never a row.
+(`no_fit`, or `no` at the triage) is a figure of the band, never a row
+of the list; the figure opens a drawer of its own that lists every one
+on demand, fifty at a time, with its reason (the triage's, else the
+must-have at `no`, else the main reservation), each leading to the
+profile; a member may have one the triage set aside read in full anyway
+("Lire quand même": its `no` becomes `close`, it joins the results and
+the analysis resumes), since a person decides, not the model.
 A row opens **the drawer**, which walks its list with two buttons and the
 arrow keys and stays on its person when a batch reorders the list: the
-tier, the decision and the score; why this profile (the reading's
-summary and the tiering's note, marked as the model's); the five
-dimensions with their notes, the composite's make-up and the model's own
-score; the strengths and the reservations side by side, the second
-opinion's doubt first; the requirements with their evidence (the role
-first, an unverified quote marked, what the CV does not state "Non
-renseigné"); the interview points; the count of withheld sentences; and
-the triage's verdict and reason, small and muted. Without a model, or
+tier, the decision when it is not "Correspond", and the score; why this
+profile (the tiering's note first, then the reading's summary, marked as
+the model's); the requirements with their evidence (the role first, an
+unverified quote marked, what the CV does not state "Non renseigné");
+the strengths and the reservations side by side, the second opinion's
+doubt first; the five dimensions with their notes, the composite's
+make-up and the model's own score behind an info icon; the interview
+points; the count of withheld sentences; and the triage's verdict and
+reason, small and muted. Without a model, or
 when the brief has no criteria, the band says "Texte seul" and the tab
 lists the head of the deterministic ranking (20 rows, `TEXT_RANKING_MAX`)
 with each row's count of requirements met; an analysis stored before
@@ -796,11 +811,11 @@ to the near profiles. Everything the rules can only hold back is a near
 profile (an adjacent métier, a métier under 70, a composite between 45
 and 74, a must-have not stated or met in part, a doubt with evidence, a
 tier C), and a role at `no`, a must-have at `no` or a composite under 45
-is set aside, counted and not listed. So a pool with no match reads "0
-correspondance" once every stage ran, with how many profiles were
-analysed, the requirement most often missing and the way back to the
-role; while profiles are still to read it reads "Aucune correspondance
-pour l'instant". The thresholds are the exported constants of
+is set aside, counted and listed only on demand. So a pool with no
+match reads "0 correspondance" once every stage ran, with how many
+profiles were analysed, the requirement most often missing and the way
+back to the role; while profiles are still to read it reads "Aucune
+correspondance pour l'instant". The thresholds are the exported constants of
 `src/lib/briefs/assessment.ts`, each tested at its boundary in
 `assessment.test.ts`.
 
@@ -991,14 +1006,16 @@ conventions, plus one the Worker alone reads (`LLM_ASSESSMENT_MODEL`):
   batch is behind `enforceRateLimit(scope)` (scopes `model`, `email`,
   `share`, `processor`, `search`, `triage`, `assess`): 60 calls per minute
   per client and per scope (the address, an IPv6 by its /64, and the user
-  id as a second bucket). An analysis spends three scopes: `search` (the
-  search and the promotion), `triage` (four calls in flight) and `assess`
-  (two in flight; the second opinion and the tiering share it). A
-  throttled call answers `RATE:limited`: the analysis waits 20, 40 then 65
-  seconds before it counts the call as failed, and the end of its stage
-  or "Reprendre" sends it again; elsewhere the page says to try again in
-  a minute. People behind one office address share that address's
-  bucket.
+  id as a second bucket; `triage` and `assess` count by the user alone
+  once it is known, so an office behind one address does not share them).
+  An analysis spends three scopes: `search` (the search, the snapshot's
+  extension and the promotion), `triage` (four calls in flight) and
+  `assess` (two in flight; the second opinion and the tiering share it).
+  A throttled call answers `RATE:limited`: the analysis waits 20, 40 then
+  65 seconds before it counts the call as failed, and the end of its
+  stage or "Reprendre" sends it again; elsewhere the page says to try
+  again in a minute. People behind one office address share that
+  address's bucket for the other scopes.
 - **Without a key** `modelConfigured()` is false: criteria are typed in,
   analyses run on text with the deterministic verdicts alone (no
   triage, no assessment, no derived criteria), dossiers are written by

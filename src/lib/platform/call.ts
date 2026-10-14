@@ -24,11 +24,16 @@ const CODE_KEYS: Record<AppErrorCode, TranslationKey> = {
   "SETUP:processor": "common.notConfigured",
   "SETUP:service_key": "common.notConfigured",
   "INPUT:invalid": "common.error",
+  "INPUT:job_changed": "briefs.analysis.jobChanged",
   NOT_FOUND: "common.notFound",
 };
 
 /** The sentence for an error a server function threw, in the locale; a generic one when unknown. */
-export function errorMessage(locale: Locale, error: unknown, overrides?: Partial<Record<AppErrorCode, string>>): string {
+export function errorMessage(
+  locale: Locale,
+  error: unknown,
+  overrides?: Partial<Record<AppErrorCode, string>>,
+): string {
   const code = appErrorCode(error);
   if (code) {
     const override = overrides?.[code];

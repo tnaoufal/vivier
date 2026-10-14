@@ -16,6 +16,7 @@ export type AppErrorCode =
   | "SETUP:processor"
   | "SETUP:service_key"
   | "INPUT:invalid"
+  | "INPUT:job_changed"
   | "NOT_FOUND";
 
 export class AppError extends Error {
@@ -41,8 +42,7 @@ function statusOf(code: AppErrorCode): number {
 
 /** The code carried by an error thrown on the server, read on either side. */
 export function appErrorCode(error: unknown): AppErrorCode | null {
-  const message =
-    error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
   const match = /^(AUTH|ORG|RATE|SETUP|INPUT):[a-z_]+|^NOT_FOUND/.exec(message);
   return match ? (match[0] as AppErrorCode) : null;
 }

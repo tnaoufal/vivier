@@ -138,7 +138,7 @@ export function ProcessingBanner({
       ? t("candidates.processing.quota.one")
       : t("candidates.processing.quota.many", { count: count(counts.quota) });
   // The month's state under the figures: said only once the use is read, or that it could not
-  // be; the queue is named when it takes part of the room, so the figures add up.
+  // be; the room left already counts the queue, so the figure is what is really free.
   const quotaSentence =
     counts.quota === 0
       ? null
@@ -152,23 +152,11 @@ export function ProcessingBanner({
                 used: count(used.data),
               })
             : room === 0
-              ? t("candidates.processing.quota.reachedQueued", {
+              ? t("candidates.processing.quota.reachedQueued")
+              : t("candidates.processing.quota.room", {
                   quota: count(quota),
-                  used: count(used.data),
-                  pending: count(pending),
-                })
-              : pending > 0
-                ? t("candidates.processing.quota.roomQueued", {
-                    quota: count(quota),
-                    used: count(used.data),
-                    pending: count(pending),
-                    remaining: count(room),
-                  })
-                : t("candidates.processing.quota.room", {
-                    quota: count(quota),
-                    used: count(used.data),
-                    remaining: count(room),
-                  });
+                  remaining: count(room),
+                });
 
   // What the banner says aloud: the end of a wave and the set-aside figures, never the pending
   // count (it moves with every CV read) nor the unfolded lists. One span per figure, so only the
@@ -344,7 +332,10 @@ export function ProcessingBanner({
               variant="ghost"
               icon={
                 <ChevronDown
-                  className={cn("transition-transform duration-base ease-out-soft", open && "rotate-180")}
+                  className={cn(
+                    "transition-transform duration-base ease-out-soft",
+                    open && "rotate-180",
+                  )}
                 />
               }
               onClick={() => setOpen((value) => !value)}

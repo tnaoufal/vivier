@@ -6,10 +6,13 @@
  * the near profiles and, when it is open, their rows, so the list opens
  * where its control is; and the drawer of the row opened, which walks
  * the list it was opened from and follows its person when a batch
- * reorders the list. A profile set aside by the analysis is only
- * counted in the band's figures.
+ * reorders the list. While the analysis is not through, a match the
+ * second opinion has not seen is marked as such. A profile set aside by
+ * the analysis is a figure of the band, never a row here: the figure
+ * opens their own drawer, where each one is listed with its reason, and
+ * one the triage set aside can be brought back to be read in full.
  */
-import { useEffect, useId, useState } from "react";
+import { Fragment, useEffect, useId, useState } from "react";
 
 import { requirementTally, reservationLine, synthesisLine } from "@/lib/briefs/presentation";
 import { formatCount } from "@/lib/candidates/format";
@@ -20,6 +23,7 @@ import { AnalysisBand } from "./analysis-band";
 import { MatchDrawer } from "./match-drawer";
 import { MatchList, MatchListSkeleton } from "./match-list";
 import { QuietButton } from "./quiet-button";
+import { SetAsideDrawer } from "./set-aside-drawer";
 import type { AnalysisController } from "./use-analysis";
 
 type ListName = "main" | "near";
@@ -41,6 +45,7 @@ export function MatchesTab({
   const nearId = useId();
   const nearToggleId = useId();
   const [nearOpen, setNearOpen] = useState(false);
+  const [setAsideOpen, setSetAsideOpen] = useState(false);
   // The drawer follows a person, not a place: a batch that reorders the list keeps it on them.
   const [drawer, setDrawer] = useState<{ list: ListName; candidateId: string } | null>(null);
   const { view, band } = analysis;
@@ -50,6 +55,7 @@ export function MatchesTab({
   useEffect(() => {
     setNearOpen(false);
     setDrawer(null);
+    setSetAsideOpen(false);
   }, [viewId]);
 
   const textOnly = band === "textOnly";
@@ -82,6 +88,7 @@ export function MatchesTab({
         canEdit={canEdit}
         modelAvailable={modelAvailable}
         onCheckRole={onCheckRole}
+        onShowSetAside={() => setSetAsideOpen(true)}
       />
 
       {opening ? (
@@ -95,6 +102,7 @@ export function MatchesTab({
           addedIds={analysis.addedIds}
           canAdd={canAdd}
           showScore={!textOnly}
+          provisional={band === "running" || band === "incomplete"}
           onOpen={(index) => openRow("main", index)}
           onAdd={analysis.add}
         />
@@ -151,6 +159,24 @@ export function MatchesTab({
         canAdd={canAdd}
         onAdd={analysis.add}
       />
+
+      {view ? (
+        // Keyed by the analysis: another one starts a fresh drawer, its pages read from the first.
+        <Fragment key={view.id}>
+          <SetAsideDrawer
+            open={setAsideOpen}
+            onOpenChange={setSetAsideOpen}
+            orgId={orgId}
+            searchId={view.id}
+            total={analysis.funnel.setAside}
+            triageCount={view.method === "triage" ? (analysis.triage?.no ?? 0) : 0}
+            read={analysis.setAside}
+            criteria={view.criteria}
+            canReadAnyway={canEdit && view.method === "triage" && modelAvailable !== false}
+            onReadAnyway={analysis.readAnyway}
+          />
+        </Fragment>
+      ) : null}
     </div>
   );
 }

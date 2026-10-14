@@ -1,9 +1,11 @@
 /**
  * /app/shortlists/:shortlistId: the board of one shortlist. The brief in
- * the header (a link to it, its status when not open, "read only" for a
- * viewer), a way to the brief's search to add candidates and the share
- * dialog (members), folded to their icons on a phone; three columns from
- * lg, stacked before: to review, retained, dismissed, each with its count
+ * the header (its status when not open, "read only" and the way to the
+ * brief for a viewer), a way to the brief's search to add candidates and
+ * the share dialog (members), folded to their icons on a phone; an empty
+ * board has neither in its header, only its empty state's one filled way
+ * to add candidates (nothing to share yet); three columns from lg,
+ * stacked before: to review, retained, dismissed, each with its count
  * and a list of cards; a drawer for one item, in three tabs; the shares
  * under the board. Live through realtime on the shortlist's items, the
  * organisation's votes and comments, each change debounced into one
@@ -85,6 +87,8 @@ function ShortlistPage() {
   }, [onChanged, org.id, shortlistId]);
 
   const items = useMemo(() => board.data?.items ?? [], [board.data]);
+  // Known to be empty (read, no item): not while the board is still being read.
+  const emptyBoard = board.data !== null && items.length === 0;
   const groups = useMemo(() => groupByStatus(items), [items]);
   const votes = useMemo(() => votesByItem(board.data?.votes ?? []), [board.data]);
   const commentCounts = board.data?.commentCounts;
@@ -159,7 +163,7 @@ function ShortlistPage() {
   }
 
   const addLink = briefId ? (
-    <Button asChild variant="outline" icon={<UserPlus />}>
+    <Button asChild variant="primary" icon={<UserPlus />}>
       <Link to={briefPath(briefId)}>{t("shortlists.addCandidates")}</Link>
     </Button>
   ) : null;
@@ -180,9 +184,10 @@ function ShortlistPage() {
         eyebrow={eyebrow}
         title={title}
         meta={
-          // The counts are the columns' own headings below; the header keeps the way to the brief.
+          // The counts are the columns' own headings below. A member's way to the brief is
+          // "Ajouter des candidats"; a viewer, who has none, keeps this link.
           <>
-            {briefId ? (
+            {briefId && !canAct ? (
               <Link
                 to={briefPath(briefId)}
                 className="rounded-sm text-meta font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -201,7 +206,8 @@ function ShortlistPage() {
           </>
         }
         actions={
-          canAct ? (
+          // An empty board: its empty state carries the one way forward, and there is nothing to share yet.
+          canAct && !emptyBoard ? (
             <>
               {addHeaderLink}
               <Button

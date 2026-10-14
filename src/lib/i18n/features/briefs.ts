@@ -1,9 +1,8 @@
-/** Words of the briefs: the list, a new brief, the brief page (its two tabs), the role profile and the criteria, the analysis of the whole talent pool and its matches. */
+/** Words of the briefs: the list, a new brief, the brief page (its two tabs), the role profile and the criteria, the analysis of the whole talent pool, its matches and the profiles it set aside. */
 const fr = {
   // list
   "briefs.title": "Briefs",
   "briefs.new": "Nouveau brief",
-  "briefs.count.none": "0 brief",
   "briefs.count.one": "1 brief",
   "briefs.count.many": "{count} briefs",
   "briefs.status.draft": "Brouillon",
@@ -17,24 +16,14 @@ const fr = {
   "briefs.list.filter": "Filtrer par statut",
   "briefs.filters.clear": "Effacer le filtre",
   "briefs.list.analysis.none": "Aucune analyse",
-  "briefs.list.analysis.ranked.none": "Dernière analyse sans résultat",
-  "briefs.list.analysis.ranked.one": "1 profil classé",
-  "briefs.list.analysis.ranked.many": "{count} profils classés",
   "briefs.listError": "La liste n'a pas pu être chargée.",
-  "briefs.empty.title": "Aucun brief pour l'instant",
-  "briefs.empty.text":
-    "Décrivez le poste en quelques phrases : les critères et la recherche dans le vivier partent de là.",
+  "briefs.empty.title": "Aucun brief",
   "briefs.empty.filtered.title": "Aucun brief dans cet état",
-  "briefs.empty.filtered.text": "Changez le filtre pour voir les autres.",
 
   // new
   "briefs.new.title": "Nouveau brief",
-  "briefs.new.text":
-    "Un titre et le besoin en texte libre. Les critères viennent ensuite, proposés par le modèle quand il y en a un, validés par vous.",
   "briefs.new.create": "Créer le brief",
   "briefs.new.created": "Brief créé.",
-  "briefs.new.forbidden":
-    "Votre rôle ne permet pas de créer un brief. Demandez à un administrateur.",
 
   // the brief page
   "briefs.back": "Retour aux briefs",
@@ -56,8 +45,6 @@ const fr = {
   "briefs.form.description": "Le besoin",
   "briefs.form.description.placeholder":
     "Un contrôleur de gestion senior, anglais courant, Lyon, disponible sous trois mois…",
-  "briefs.form.description.help":
-    "Écrivez comme vous le diriez à un collègue : le poste, le contexte, ce qui compte vraiment.",
   "briefs.form.status": "Statut",
   "briefs.form.unsaved": "Modifications non enregistrées",
 
@@ -140,6 +127,8 @@ const fr = {
   "briefs.analysis.assessed.none": "0 lu en détail",
   "briefs.analysis.assessed.one": "1 lu en détail",
   "briefs.analysis.assessed.many": "{count} lus en détail",
+  "briefs.analysis.setAside.one": "1 écarté",
+  "briefs.analysis.setAside.many": "{count} écartés",
   "briefs.analysis.method.topic": "Méthode",
   "briefs.analysis.method.tip":
     "Chaque profil du vivier est trié sur son métier ; les retenus sont lus en entier, revus par une seconde lecture, puis classés.",
@@ -148,8 +137,6 @@ const fr = {
   "briefs.analysis.ranked.many": "{count} profils classés",
   "briefs.analysis.ranked.partial": "{read} profils classés sur {total}",
   "briefs.analysis.ranked.top": "{count} premiers affichés",
-  "briefs.analysis.tiers": "Répartition par niveau",
-  "briefs.analysis.tierCount": "{label} : {count}",
   "briefs.analysis.near.one": "1 profil proche à creuser",
   "briefs.analysis.near.many": "{count} profils proches à creuser",
   "briefs.analysis.previous": "Analyses précédentes",
@@ -157,16 +144,13 @@ const fr = {
   "briefs.analysis.method.hybrid": "Profils les plus proches",
   "briefs.analysis.method.text": "Texte seul",
   "briefs.analysis.missing": "Exigence la plus souvent manquante : {label}",
-  "briefs.analysis.steps": "Étapes de l'analyse",
   "briefs.analysis.step.triage": "Tri du vivier",
   "briefs.analysis.step.read": "Lecture approfondie",
   "briefs.analysis.step.challenge": "Seconde lecture",
   "briefs.analysis.step.rank": "Classement",
-  "briefs.analysis.step.done": "terminée",
-  "briefs.analysis.step.current": "en cours",
   "briefs.analysis.starting": "Préparation du vivier…",
   "briefs.analysis.promoting": "Rassemblement des profils retenus…",
-  "briefs.analysis.progress": "{done} sur {total} profils",
+  "briefs.analysis.progress": "{step} · {done} / {total}",
   "briefs.analysis.eta.minutes": "environ {count} min restantes",
   "briefs.analysis.eta.soon": "moins d'une minute",
   "briefs.analysis.live.kept.none": "Aucun profil retenu au tri jusqu'ici",
@@ -185,6 +169,10 @@ const fr = {
   "briefs.analysis.left.one": "1 profil reste à analyser",
   "briefs.analysis.left.many": "{count} profils restent à analyser",
   "briefs.analysis.resume": "Reprendre",
+  "briefs.analysis.newProfiles.one": "1 nouveau profil",
+  "briefs.analysis.newProfiles.many": "{count} nouveaux profils",
+  "briefs.analysis.analyseNew": "Analyser",
+  "briefs.analysis.jobChanged": "Le poste a changé : lancez une nouvelle recherche.",
   "briefs.analysis.legacy": "Analyse antérieure : {read} profils lus sur {total}",
   "briefs.analysis.legacy.unknownPool": "Analyse antérieure : {read} profils lus",
   "briefs.analysis.legacy.topic": "Analyse antérieure",
@@ -201,6 +189,7 @@ const fr = {
   "briefs.match.added": "Ajoutée",
   "briefs.match.addedLabel": "Ajoutée à la shortlist",
   "briefs.match.tally": "{met} / {total} exigences",
+  "briefs.match.unconfirmed": "À confirmer",
 
   // the drawer of a match
   "briefs.drawer.previous": "Profil précédent",
@@ -213,11 +202,20 @@ const fr = {
     "Score composé : métier 40 %, séniorité 15 %, contexte 15 %, trajectoire et réalisations 15 %, exigences 15 %.",
   "briefs.drawer.modelScore": "Le modèle seul donnait {score}.",
   "briefs.drawer.doubt": "Seconde lecture : {reason}",
-  "briefs.drawer.rankNote": "Classement : {note}",
   "briefs.triage.yes": "Même métier",
   "briefs.triage.close": "Métier voisin",
   "briefs.triage.unknown": "Fiche trop mince pour trancher",
   "briefs.triage.no": "Autre métier",
+
+  // the profiles set aside, on demand
+  "briefs.setAside.title": "Profils écartés",
+  "briefs.setAside.group.read": "Écartés après lecture",
+  "briefs.setAside.group.triage": "Métier différent",
+  "briefs.setAside.missing": "Non satisfait : {label}",
+  "briefs.setAside.more": "Voir plus",
+  "briefs.setAside.empty": "Aucun profil écarté",
+  "briefs.setAside.readAnyway": "Lire quand même",
+  "briefs.setAside.readAnyway.done": "Profil remis en lecture.",
 
   // results
   "briefs.results.noName": "Sans nom",
@@ -308,7 +306,6 @@ const fr = {
 const en = {
   "briefs.title": "Briefs",
   "briefs.new": "New brief",
-  "briefs.count.none": "0 briefs",
   "briefs.count.one": "1 brief",
   "briefs.count.many": "{count} briefs",
   "briefs.status.draft": "Draft",
@@ -322,22 +319,13 @@ const en = {
   "briefs.list.filter": "Filter by status",
   "briefs.filters.clear": "Clear the filter",
   "briefs.list.analysis.none": "No analysis yet",
-  "briefs.list.analysis.ranked.none": "Last analysis without a result",
-  "briefs.list.analysis.ranked.one": "1 profile ranked",
-  "briefs.list.analysis.ranked.many": "{count} profiles ranked",
   "briefs.listError": "The list could not be loaded.",
-  "briefs.empty.title": "No brief yet",
-  "briefs.empty.text":
-    "Describe the position in a few sentences: the criteria and the search of the talent pool start from there.",
+  "briefs.empty.title": "No briefs",
   "briefs.empty.filtered.title": "No brief in this state",
-  "briefs.empty.filtered.text": "Change the filter to see the others.",
 
   "briefs.new.title": "New brief",
-  "briefs.new.text":
-    "A title and the need as free text. The criteria come next, proposed by the model when there is one, validated by you.",
   "briefs.new.create": "Create the brief",
   "briefs.new.created": "Brief created.",
-  "briefs.new.forbidden": "Your role does not allow creating a brief. Ask an administrator.",
 
   "briefs.back": "Back to briefs",
   "briefs.notFound.title": "This brief does not exist",
@@ -357,8 +345,6 @@ const en = {
   "briefs.form.description": "The need",
   "briefs.form.description.placeholder":
     "A senior management controller, fluent English, Lyon, available within three months…",
-  "briefs.form.description.help":
-    "Write it as you would say it to a colleague: the position, the context, what really matters.",
   "briefs.form.status": "Status",
   "briefs.form.unsaved": "Unsaved changes",
 
@@ -436,6 +422,8 @@ const en = {
   "briefs.analysis.assessed.none": "0 read in depth",
   "briefs.analysis.assessed.one": "1 read in depth",
   "briefs.analysis.assessed.many": "{count} read in depth",
+  "briefs.analysis.setAside.one": "1 set aside",
+  "briefs.analysis.setAside.many": "{count} set aside",
   "briefs.analysis.method.topic": "Method",
   "briefs.analysis.method.tip":
     "Every profile of the pool is sorted on its job; the ones kept are read in full, checked by a second reading, then ranked.",
@@ -444,8 +432,6 @@ const en = {
   "briefs.analysis.ranked.many": "{count} profiles ranked",
   "briefs.analysis.ranked.partial": "{read} profiles ranked out of {total}",
   "briefs.analysis.ranked.top": "Top {count} shown",
-  "briefs.analysis.tiers": "Split by tier",
-  "briefs.analysis.tierCount": "{label}: {count}",
   "briefs.analysis.near.one": "1 near profile to look into",
   "briefs.analysis.near.many": "{count} near profiles to look into",
   "briefs.analysis.previous": "Previous analyses",
@@ -453,16 +439,13 @@ const en = {
   "briefs.analysis.method.hybrid": "Closest profiles",
   "briefs.analysis.method.text": "Text only",
   "briefs.analysis.missing": "Requirement most often missing: {label}",
-  "briefs.analysis.steps": "Steps of the analysis",
   "briefs.analysis.step.triage": "Pool sorting",
   "briefs.analysis.step.read": "In-depth reading",
   "briefs.analysis.step.challenge": "Second reading",
   "briefs.analysis.step.rank": "Ranking",
-  "briefs.analysis.step.done": "done",
-  "briefs.analysis.step.current": "in progress",
   "briefs.analysis.starting": "Preparing the pool…",
   "briefs.analysis.promoting": "Gathering the profiles kept…",
-  "briefs.analysis.progress": "{done} of {total} profiles",
+  "briefs.analysis.progress": "{step} · {done} / {total}",
   "briefs.analysis.eta.minutes": "about {count} min left",
   "briefs.analysis.eta.soon": "under a minute",
   "briefs.analysis.live.kept.none": "No profile kept by the sorting so far",
@@ -481,6 +464,10 @@ const en = {
   "briefs.analysis.left.one": "1 profile left to analyse",
   "briefs.analysis.left.many": "{count} profiles left to analyse",
   "briefs.analysis.resume": "Resume",
+  "briefs.analysis.newProfiles.one": "1 new profile",
+  "briefs.analysis.newProfiles.many": "{count} new profiles",
+  "briefs.analysis.analyseNew": "Analyse",
+  "briefs.analysis.jobChanged": "The role changed: run a new search.",
   "briefs.analysis.legacy": "Earlier analysis: {read} profiles read out of {total}",
   "briefs.analysis.legacy.unknownPool": "Earlier analysis: {read} profiles read",
   "briefs.analysis.legacy.topic": "Earlier analysis",
@@ -496,6 +483,7 @@ const en = {
   "briefs.match.added": "Added",
   "briefs.match.addedLabel": "Added to the shortlist",
   "briefs.match.tally": "{met} / {total} requirements",
+  "briefs.match.unconfirmed": "To confirm",
 
   "briefs.drawer.previous": "Previous profile",
   "briefs.drawer.next": "Next profile",
@@ -507,11 +495,19 @@ const en = {
     "Composite score: role 40 %, seniority 15 %, context 15 %, trajectory and achievements 15 %, requirements 15 %.",
   "briefs.drawer.modelScore": "The model alone gave {score}.",
   "briefs.drawer.doubt": "Second reading: {reason}",
-  "briefs.drawer.rankNote": "Ranking: {note}",
   "briefs.triage.yes": "Same job",
   "briefs.triage.close": "Neighbouring job",
   "briefs.triage.unknown": "Card too thin to tell",
   "briefs.triage.no": "Another job",
+
+  "briefs.setAside.title": "Profiles set aside",
+  "briefs.setAside.group.read": "Set aside after reading",
+  "briefs.setAside.group.triage": "Different job",
+  "briefs.setAside.missing": "Not met: {label}",
+  "briefs.setAside.more": "Show more",
+  "briefs.setAside.empty": "No profile set aside",
+  "briefs.setAside.readAnyway": "Read anyway",
+  "briefs.setAside.readAnyway.done": "Profile sent for reading.",
 
   "briefs.results.noName": "No name",
   "briefs.results.gone": "Profile removed",

@@ -2,19 +2,21 @@
  * One profile of an analysis in a drawer from the right, to decide
  * whether to present it without leaving the list: the header names the
  * person (photo or initials, the position held today, where, the years)
- * with the tier, the decision and the score, the buttons (and the left
- * and right arrow keys) that walk the list, and one row of actions (add
- * to the shortlist, open the profile); then, in this order, why this
- * profile (the reading's summary and the ranking's note, marked as the
- * model's), the reading against the role (the five dimensions with
- * their notes), the strengths and the reservations side by side (the
- * second reading's doubt first), the requirements of the brief with the
- * evidence (the role first; what the CV does not say reads "Non
- * renseigné", never as a lack), the points for the interview, and the
+ * with the tier, the decision when it is not "matches" (a near profile;
+ * every row of the main list matches) and the score, the buttons (and
+ * the left and right arrow keys) that walk the list, and one row of
+ * actions (add to the shortlist, open the profile); then, in this
+ * order, why this profile (the ranking's note first, why it ranks
+ * there, then the reading's summary, marked as the model's), the
+ * requirements of the brief with the evidence (the role first; what the
+ * CV does not say reads "Non renseigné", never as a lack), the strengths
+ * and the reservations side by side (the second reading's doubt first),
+ * the reading against the role (the five dimensions, how the score is
+ * composed behind an info icon), the points for the interview, and the
  * triage's verdict, small and muted. A profile no model read shows its
  * requirements alone.
  */
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   ChevronLeft,
@@ -233,6 +235,17 @@ export function MatchDrawer({
     : [];
   const markLabel = (met: RequirementMet) => t(`briefs.met.${met}`);
   const isAdded = shown ? added(shown.candidateId) : false;
+  // One insert per click: the button only knows it was added once the shortlist is read again.
+  const [adding, setAdding] = useState(false);
+  async function addShown(result: MatchResult) {
+    if (adding) return;
+    setAdding(true);
+    try {
+      await onAdd(result);
+    } finally {
+      setAdding(false);
+    }
+  }
 
   return (
     <Sheet
@@ -264,7 +277,9 @@ export function MatchDrawer({
                   {meta ? <p className="truncate text-meta text-muted-foreground">{meta}</p> : null}
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {tier ? <TierPill tier={tier} /> : null}
-                    <DecisionPill decision={decisionOf(shown)} />
+                    {decisionOf(shown) !== "fit" ? (
+                      <DecisionPill decision={decisionOf(shown)} />
+                    ) : null}
                     {candidate?.status === "archived" ? (
                       <Pill dot>{t("briefs.results.archived")}</Pill>
                     ) : null}
@@ -292,8 +307,9 @@ export function MatchDrawer({
                       <Button
                         type="button"
                         icon={<ListPlus />}
-                        onClick={() => void onAdd(shown)}
-                        disabled={isAdded}
+                        onClick={() => void addShown(shown)}
+                        disabled={isAdded || adding}
+                        aria-busy={adding || undefined}
                       >
                         {t("briefs.results.addToShortlist")}
                       </Button>
@@ -345,19 +361,16 @@ export function MatchDrawer({
                     </span>
                   }
                 >
+                  {/* Why it ranks there first: the note that sets it apart from the others. */}
+                  {rankNote ? <p className="text-body text-ink">{rankNote}</p> : null}
                   <p
                     className={cn(
-                      "text-body",
+                      rankNote ? "text-sm" : "text-body",
                       assessment.summary.trim() ? "text-ink" : "text-muted-foreground",
                     )}
                   >
                     {assessment.summary.trim() || t("common.unknown")}
                   </p>
-                  {rankNote ? (
-                    <p className="text-sm text-muted-foreground">
-                      {t("briefs.drawer.rankNote", { note: rankNote })}
-                    </p>
-                  ) : null}
                   {withheld > 0 ? (
                     <p className="text-meta text-muted-foreground">
                       {withheld === 1
@@ -368,19 +381,15 @@ export function MatchDrawer({
                 </DrawerSection>
               ) : null}
 
-              {assessment?.dimensions ? (
-                <DrawerSection
-                  title={t("briefs.drawer.reading")}
-                  aside={
-                    <InfoTip label={t("briefs.drawer.reading")}>
-                      {t("briefs.drawer.composite")}
-                      {typeof assessment.modelScore === "number"
-                        ? ` ${t("briefs.drawer.modelScore", { score: Math.round(assessment.modelScore) })}`
-                        : ""}
-                    </InfoTip>
-                  }
-                >
-                  <DimensionMeters dimensions={assessment.dimensions} />
+              {rows.length ? (
+                <DrawerSection title={t("briefs.results.requirements")}>
+                  <RequirementList
+                    rows={rows}
+                    markLabel={markLabel}
+                    requiredLabel={t("common.required")}
+                    compact
+                    className="-mt-2"
+                  />
                 </DrawerSection>
               ) : null}
 
@@ -399,15 +408,19 @@ export function MatchDrawer({
                 </div>
               ) : null}
 
-              {rows.length ? (
-                <DrawerSection title={t("briefs.results.requirements")}>
-                  <RequirementList
-                    rows={rows}
-                    markLabel={markLabel}
-                    requiredLabel={t("common.required")}
-                    compact
-                    className="-mt-2"
-                  />
+              {assessment?.dimensions ? (
+                <DrawerSection
+                  title={t("briefs.drawer.reading")}
+                  aside={
+                    <InfoTip label={t("briefs.drawer.reading")}>
+                      {t("briefs.drawer.composite")}
+                      {typeof assessment.modelScore === "number"
+                        ? ` ${t("briefs.drawer.modelScore", { score: Math.round(assessment.modelScore) })}`
+                        : ""}
+                    </InfoTip>
+                  }
+                >
+                  <DimensionMeters dimensions={assessment.dimensions} />
                 </DrawerSection>
               ) : null}
 

@@ -4,7 +4,9 @@
  * given. Rows rise in once, in the order they land: a batch that
  * returns unfolds row by row, a row already on screen never rises
  * again (its entrance played, it drops the animation, so the tiering
- * moving it cannot replay it), another analysis unfolds afresh. Before
+ * moving it cannot replay it), another analysis unfolds afresh. While an
+ * analysis is not through, a match the second opinion has not seen is
+ * marked as such. Before
  * the first rows are known, skeleton rows of the same height hold the
  * place.
  */
@@ -28,6 +30,7 @@ export function MatchList({
   canAdd,
   muted = false,
   showScore = true,
+  provisional = false,
   onOpen,
   onAdd,
   className,
@@ -41,6 +44,8 @@ export function MatchList({
   canAdd: boolean;
   muted?: boolean | undefined;
   showScore?: boolean | undefined;
+  /** The analysis is not through (running, or stopped): a match without the second opinion is marked. */
+  provisional?: boolean | undefined;
   onOpen: (index: number) => void;
   onAdd: (result: MatchResult) => Promise<void>;
   className?: string | undefined;
@@ -91,6 +96,9 @@ export function MatchList({
             line={lineOf(result)}
             muted={muted}
             showScore={showScore}
+            unconfirmed={
+              provisional && result.assessment?.decision === "fit" && !result.assessment.challenge
+            }
             added={addedIds.has(result.candidateId)}
             canAdd={canAdd}
             onOpen={() => onOpen(index)}

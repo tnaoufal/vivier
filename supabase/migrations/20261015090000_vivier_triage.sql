@@ -127,7 +127,15 @@ BEGIN
   SELECT coalesce(jsonb_agg(entry ORDER BY position), '[]'::jsonb)
   INTO merged
   FROM (
-    SELECT coalesce(n.value, o.value) AS entry, o.ordinality AS position
+    -- An entry sent without an assessment never replaces one stored with
+    -- it: a promotion or a late batch cannot erase a reading already made.
+    SELECT CASE
+             WHEN n.value IS NULL THEN o.value
+             WHEN jsonb_typeof(o.value -> 'assessment') = 'object'
+              AND jsonb_typeof(n.value -> 'assessment') IS DISTINCT FROM 'object' THEN o.value
+             ELSE n.value
+           END AS entry,
+           o.ordinality AS position
     FROM public.searches s
     CROSS JOIN LATERAL jsonb_array_elements(s.results) WITH ORDINALITY AS o(value, ordinality)
     LEFT JOIN LATERAL (

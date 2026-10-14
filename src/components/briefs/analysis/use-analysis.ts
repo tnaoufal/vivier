@@ -16,10 +16,16 @@
  * fixes (rights, setup, the session) stops the loop and says why; a rate
  * limit waits, longer each time, before the call counts as failed. A
  * candidate gone from the pool since the search is settled: never sent
- * again, never keeping an analysis from being complete. An analysis
- * another tab or a colleague is driving (its triage moves, its row
- * changes) is followed, not resumed a second time. Leaving the page
- * stops the loop; nothing stored is lost.
+ * again, never keeping an analysis from being complete, never listed. An
+ * analysis another tab or a colleague is driving (its triage moves, its
+ * row changes) is followed, not resumed a second time; a stopped loop
+ * lands the calls it had in flight before "Reprendre" comes back. A
+ * whole-pool search takes in the profiles the pool gained each time it
+ * starts or resumes, and says how many the pool gained since it ended;
+ * a profile its triage set aside can be brought back to be read in
+ * full. The team's check of the model's draft survives a reload: an
+ * untouched search the model's draft rests on opens at that check.
+ * Leaving the page stops the loop; nothing stored is lost.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -29,8 +35,10 @@ import { ASSESS_BATCH_MAX, mostMissingRequirement } from "@/lib/briefs/assessmen
 import {
   assessCandidates,
   challengeCandidates,
+  extendTriage,
   promoteTriage,
   rankCandidates,
+  readAnyway,
   runSearch,
   triageCandidates,
   type AssessmentBatch,
@@ -43,12 +51,14 @@ import {
   matchesOf,
   mergeResults,
   nearOf,
+  setAsideOf,
   TEXT_RANKING_MAX,
   type BandState,
   type Funnel,
 } from "@/lib/briefs/presentation";
 import {
   addShortlistItem,
+  countOutsideSnapshot,
   ensureShortlist,
   listSearches,
   pendingTriageIds,
@@ -66,6 +76,7 @@ import {
   finalRankGroup,
   pendingChallenges,
   pendingCount,
+  pendingProfiles,
   pendingRanks,
   pendingReads,
   READ_CONCURRENCY,
@@ -130,6 +141,8 @@ const TRIAGE_POLL_MS = 15_000;
 const ELSEWHERE_QUIET_MS = 90_000;
 /** How long the writes of a loop of this page may still echo back (realtime, the last reads) once it ended. */
 const OWN_ECHO_MS = 5_000;
+/** How long after a search was stored the brief may still have been written by it (the model's draft is saved just before). */
+const DRAFT_SAVED_MS = 5_000;
 
 /** Waits `ms`, or less once `stop` says the loop ended (checked every second). */
 async function pause(ms: number, stop: () => boolean = () => false): Promise<void> {
@@ -145,6 +158,10 @@ export interface AnalysisController {
   /** The analyses of the brief, newest first; null until read. */
   searches: SearchSummary[] | null;
   searchesLoading: boolean;
+  /** True when the list of analyses could not be read (nothing is known of them). */
+  searchesError: boolean;
+  /** Reads the list of analyses again, and opens the newest. */
+  retrySearches: () => void;
   view: AnalysisView | null;
   /** True while an analysis is being opened (not a quiet refresh). */
   opening: boolean;
@@ -155,15 +172,21 @@ export interface AnalysisController {
   /** True while the details the band needs are still being read (a whole-pool search's triage). */
   detailsLoading: boolean;
   starting: boolean;
+  /** True once "Interrompre" was pressed while the search itself was being prepared: it stops as soon as it is stored. */
+  stopping: boolean;
   progress: RunProgress | null;
   band: BandState;
   funnel: Funnel;
-  /** Profiles left: unread by the triage, plus what the stages after it still have to send. */
+  /** Profiles left: unread by the triage, plus the distinct profiles the stages after it still have to settle. */
   remaining: number;
+  /** Active profiles the pool gained since the snapshot of the newest whole-pool analysis, once it is done (0 otherwise). */
+  newProfiles: number;
   /** True while another tab or a colleague drives the analysis on screen: it moves without this page. */
   elsewhere: boolean;
   matches: MatchResult[];
   near: MatchResult[];
+  /** The profiles the full reading set aside (no_fit), listed on demand with those the triage set aside. */
+  setAside: MatchResult[];
   /** The deterministic ranking a text-only analysis shows, TEXT_RANKING_MAX at most. */
   ranking: MatchResult[];
   /** The requirement most often at "no" among the profiles read, for the zero state. */
@@ -173,6 +196,8 @@ export interface AnalysisController {
   addedIds: ReadonlySet<string>;
   canRun: boolean;
   canResume: boolean;
+  /** True when the profiles the pool gained can be analysed now (resume() takes them in). */
+  canAnalyseNew: boolean;
   /** A new search, or the start of the one on screen once the team checked the job and changed nothing. */
   run: () => Promise<void>;
   /** Sends what the analysis on screen still lacks. */
@@ -180,6 +205,8 @@ export interface AnalysisController {
   stop: () => void;
   open: (searchId: string) => void;
   add: (result: MatchResult) => Promise<void>;
+  /** Brings a profile the triage set aside back to be read in full (a person overrules the model); true once stored. */
+  readAnyway: (candidateId: string) => Promise<boolean>;
 }
 
 export function useAnalysis({
@@ -204,10 +231,16 @@ export function useAnalysis({
   const briefId = brief.id;
 
   const [view, setView] = useState<AnalysisView | null>(null);
+  // The brief as load() reads it, without making load() change with every edit of the brief.
+  const briefRef = useRef(brief);
+  briefRef.current = brief;
   const [opening, setOpening] = useState<string | null>(null);
   const [openFailed, setOpenFailed] = useState<string | null>(null);
   const [autoOpened, setAutoOpened] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const startingRef = useRef(starting);
+  startingRef.current = starting;
   const [progress, setProgress] = useState<RunProgress | null>(null);
   // The search whose understanding of the job the model wrote and the team has not checked yet.
   const [checkFor, setCheckFor] = useState<string | null>(null);
@@ -219,6 +252,8 @@ export function useAnalysis({
   const elsewhereTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The loops of this page still landing their calls (a stopped one finishes the calls in flight): their writes are not someone else's.
   const ownLoops = useRef(0);
+  // The same, as state: "Reprendre" waits until a stopped loop landed its calls, or it would send them twice.
+  const [draining, setDraining] = useState(0);
   // The whole-pool searches this page promoted: a profile kept by the
   // triage that left the pool before its promotion never enters the
   // results, and must not keep the analysis "incomplete" forever.
@@ -255,8 +290,27 @@ export function useAnalysis({
   );
 
   const results = useMemo<readonly MatchResult[]>(() => view?.results ?? [], [view]);
-  const matches = useMemo(() => matchesOf(results), [results]);
-  const near = useMemo(() => nearOf(results), [results]);
+
+  // A candidate gone from the pool (erased, or archived: the stages read
+  // active profiles only) is settled, and listed nowhere. Only the
+  // candidates read so far count, so nothing is settled on a guess.
+  const skip = useMemo(() => {
+    const out = new Set<string>();
+    for (const [id, row] of people) if (row === null || row.status !== "active") out.add(id);
+    return out;
+  }, [people]);
+  const skipRef = useRef(skip);
+  skipRef.current = skip;
+
+  const matches = useMemo(
+    () => matchesOf(results).filter((result) => !skip.has(result.candidateId)),
+    [results, skip],
+  );
+  const near = useMemo(
+    () => nearOf(results).filter((result) => !skip.has(result.candidateId)),
+    [results, skip],
+  );
+  const setAside = useMemo(() => setAsideOf(results), [results]);
   const textOnly =
     view !== null &&
     view.method !== "triage" &&
@@ -265,17 +319,6 @@ export function useAnalysis({
     () => (textOnly ? rankResults(results).slice(0, TEXT_RANKING_MAX) : []),
     [results, textOnly],
   );
-
-  // A candidate gone from the pool (erased, or archived: the stages read
-  // active profiles only) is settled. Only the candidates read so far
-  // count, so nothing is settled on a guess.
-  const skip = useMemo(() => {
-    const out = new Set<string>();
-    for (const [id, row] of people) if (row === null || row.status !== "active") out.add(id);
-    return out;
-  }, [people]);
-  const skipRef = useRef(skip);
-  skipRef.current = skip;
 
   /** The candidates the stages still have to send, whatever the pool says of them. */
   const pendingIds = useMemo(() => {
@@ -343,7 +386,9 @@ export function useAnalysis({
     () => funnelOf(results, wholePool ? triageState : null),
     [results, triageState, wholePool],
   );
+  // Whether a stage has anything left (a candidate once per stage and group), and how many distinct profiles that is.
   const stagePending = useMemo(() => pendingCount(results, skip), [results, skip]);
+  const profilesLeft = useMemo(() => pendingProfiles(results, skip), [results, skip]);
   const triagePending = wholePool ? (triageState?.pending ?? 0) : 0;
   const promotionPending =
     wholePool &&
@@ -402,6 +447,21 @@ export function useAnalysis({
           poolSize: typeof row.pool_size === "number" ? row.pool_size : null,
         });
         setTriage(state ? { searchId: row.id, state } : null);
+        // A whole-pool search nothing was read of, resting on the model's
+        // draft of the role that nobody touched since it ran (a reload
+        // forgets the check in memory): it opens at the check again,
+        // never resumed on an unchecked job.
+        const saved = briefRef.current;
+        if (
+          !quiet &&
+          row.method === "triage" &&
+          row.results.length === 0 &&
+          state !== null &&
+          state.read === 0 &&
+          saved.role_profile?.model &&
+          Date.parse(saved.updated_at) <= Date.parse(row.created_at) + DRAFT_SAVED_MS
+        )
+          setCheckFor(row.id);
       } catch (error) {
         console.error(error);
         if (!quiet && current()) {
@@ -426,7 +486,10 @@ export function useAnalysis({
 
   // The latest analysis opens by itself once the list is known.
   useEffect(() => {
-    if (autoOpened || view || searches.loading) return;
+    // A search being started takes the place; the list read meanwhile must not open the previous one over it.
+    // A list not read (an error) opens nothing yet: its retry does.
+    if (autoOpened || view || searches.loading || searches.data === null || runningRef.current)
+      return;
     setAutoOpened(true);
     const latest = searches.data?.[0];
     if (latest) void load(latest.id, false);
@@ -495,6 +558,8 @@ export function useAnalysis({
   const stop = useCallback(() => {
     runToken.current += 1;
     setProgress(null);
+    // The search being prepared is stored all the same; nothing of it is read once it is.
+    if (startingRef.current) setStopping(true);
   }, []);
 
   /** Reads again where a whole-pool search's triage stands, for the analysis on screen. */
@@ -655,9 +720,26 @@ export function useAnalysis({
       // The profiles the triage could not read in this run, even sent twice.
       let triageLeft = 0;
       ownLoops.current += 1;
+      setDraining((value) => value + 1);
       try {
         const supabase = await requireSupabase();
         if (start.method === "triage") {
+          // The profiles the pool gained since the snapshot (imported while
+          // the search waited, or since it ran) join it, so the analysis
+          // reads every profile of the pool as it is now. Best effort: the
+          // snapshot as it stands is read either way.
+          try {
+            const extension = await extendTriage({ data: { ...(await common()) } });
+            if (live() && extension.added > 0)
+              setView((previous) =>
+                previous && previous.id === start.id
+                  ? { ...previous, poolSize: extension.poolSize }
+                  : previous,
+              );
+          } catch (error) {
+            console.error(error);
+          }
+          if (!live()) return;
           const [state, unread] = await Promise.all([
             readTriageState(supabase, orgId, start.id),
             pendingTriageIds(supabase, orgId, start.id),
@@ -783,7 +865,7 @@ export function useAnalysis({
             if (row === null || row.status !== "active") settled.add(id);
         }
         if (!live()) return;
-        const left = triageLeft + pendingCount(current, settled);
+        const left = triageLeft + pendingProfiles(current, settled);
         if (left > 0)
           toast.error(
             left === 1
@@ -798,6 +880,7 @@ export function useAnalysis({
         // Stopped or done, the counts on screen are read again once the calls in flight have landed.
         void refreshSearches();
         if (start.method === "triage") void refreshTriage(start.id);
+        setDraining((value) => value - 1);
         setTimeout(() => {
           ownLoops.current -= 1;
         }, OWN_ECHO_MS);
@@ -822,11 +905,14 @@ export function useAnalysis({
       void analyse(checked);
       return;
     }
-    // An analysis still being opened gives way to the new one.
+    // An analysis still being opened gives way to the new one, and the newest of the list no longer opens by itself.
     loadSeq.current += 1;
     setOpening(null);
+    setAutoOpened(true);
     setStarting(true);
     onStarted?.();
+    // "Interrompre" pressed while the search is prepared changes the token: the search is shown, not read.
+    const token = runToken.current;
     try {
       const answer = await runSearch({ data: { ...(await withToken()), orgId, briefId } });
       const next: AnalysisView = {
@@ -838,7 +924,6 @@ export function useAnalysis({
         poolSize: answer.poolSize,
       };
       setOpenFailed(null);
-      setAutoOpened(true);
       setView(next);
       setTriage(
         answer.method === "triage"
@@ -867,12 +952,16 @@ export function useAnalysis({
         setCheckFor(next.id);
         return;
       }
+      if (runToken.current !== token) return;
       void analyse(next);
     } catch (error) {
       console.error(error);
       toast.error(errorMessage(locale, error));
+      // No search was stored: with nothing on screen, the newest of the list opens by itself again.
+      if (!viewRef.current) setAutoOpened(false);
     } finally {
       setStarting(false);
+      setStopping(false);
     }
   }, [
     analyse,
@@ -893,8 +982,8 @@ export function useAnalysis({
     const current = viewRef.current;
     if (!canEdit || criteriaDirty || !current || runningRef.current || modelAvailable === false)
       return;
-    // Driven elsewhere: resuming it here would send its profiles a second time.
-    if (elsewhere === current.id) return;
+    // Driven elsewhere, or a stopped loop of this page still landing its calls: resuming now would send its profiles a second time.
+    if (elsewhere === current.id || draining > 0) return;
     // Nothing of it was read and the team changed the job since it ran
     // (the check of the model's draft, seen again after a reload): a new
     // search takes what they saved.
@@ -909,7 +998,7 @@ export function useAnalysis({
       return;
     }
     void analyse(current);
-  }, [analyse, brief, canEdit, criteriaDirty, elsewhere, modelAvailable, run]);
+  }, [analyse, brief, canEdit, criteriaDirty, draining, elsewhere, modelAvailable, run]);
 
   const add = useCallback(
     async (result: MatchResult) => {
@@ -944,39 +1033,109 @@ export function useAnalysis({
     [briefId, canEdit, orgId, refreshShortlist, shortlistId, t, user],
   );
 
+  const bringBack = useCallback(
+    async (candidateId: string): Promise<boolean> => {
+      const current = viewRef.current;
+      if (!canEdit || !current || current.method !== "triage") return false;
+      try {
+        const answer = await readAnyway({
+          data: { ...(await withToken()), orgId, briefId, searchId: current.id, candidateId },
+        });
+        const entry = answer.entry;
+        if (entry)
+          setView((previous) =>
+            previous && previous.id === current.id
+              ? { ...previous, results: mergeResults(previous.results, [entry]) }
+              : previous,
+          );
+        void refreshTriage(current.id);
+        toast.success(t("briefs.setAside.readAnyway.done"));
+        // Read in full now when nothing else runs here; else the run under way or the next resume reads it.
+        resume();
+        return true;
+      } catch (error) {
+        console.error(error);
+        toast.error(errorMessage(locale, error));
+        return false;
+      }
+    },
+    [briefId, canEdit, locale, orgId, refreshTriage, resume, t],
+  );
+
+  // What the pool gained since the newest whole-pool analysis ended: read
+  // once it is done, again when its snapshot grows; a count that fails
+  // shows nothing rather than a wrong figure.
+  const [outside, setOutside] = useState<{ searchId: string; count: number } | null>(null);
+  const newestId = searches.data?.[0]?.id ?? null;
+  const watchOutside =
+    band === "done" &&
+    wholePool &&
+    viewId !== null &&
+    viewId === newestId &&
+    modelAvailable !== false;
+  const snapshotSize = triageState?.total ?? null;
+  useEffect(() => {
+    if (!watchOutside || viewId === null) return undefined;
+    const searchId = viewId;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const count = await countOutsideSnapshot(await requireSupabase(), orgId, searchId);
+        if (!cancelled) setOutside({ searchId, count });
+      } catch (error) {
+        console.error(error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, snapshotSize, viewId, watchOutside]);
+  const newProfiles = watchOutside && outside?.searchId === viewId ? outside.count : 0;
+  const idle =
+    canEdit &&
+    !criteriaDirty &&
+    modelAvailable !== false &&
+    !running &&
+    draining === 0 &&
+    !(view !== null && elsewhere === view.id);
+
   return {
     searches: searches.data,
     searchesLoading: searches.loading && searches.data === null,
+    searchesError: searches.error !== null && searches.data === null,
+    retrySearches: () => {
+      setAutoOpened(false);
+      void refreshSearches();
+    },
     view,
     opening: opening !== null,
     openFailed,
     triage: triageState,
     detailsLoading,
     starting,
+    stopping,
     progress,
     band,
     funnel,
-    remaining: triagePending + stagePending,
+    remaining: triagePending + profilesLeft,
+    newProfiles,
     elsewhere: view !== null && elsewhere === view.id,
     matches,
     near,
+    setAside,
     ranking,
     mostMissing,
     candidateOf,
     shortlistId,
     addedIds,
     canRun: canEdit && !criteriaDirty && !running,
-    canResume:
-      canEdit &&
-      !criteriaDirty &&
-      modelAvailable !== false &&
-      !running &&
-      band === "incomplete" &&
-      !(view !== null && elsewhere === view.id),
+    canResume: idle && band === "incomplete",
+    canAnalyseNew: idle && newProfiles > 0,
     run,
     resume,
     stop,
     open,
     add,
+    readAnyway: bringBack,
   };
 }

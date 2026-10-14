@@ -3,7 +3,8 @@
  * the organisation shows photos) or the initials, the name and the
  * position held today, one line that tells it apart (why it ranks
  * there, or its main reservation for a near profile), the tier the
- * ranking gave, the score as a small ring, and the way to the shortlist
+ * ranking gave (or "À confirmer" while the second opinion has not seen
+ * a match yet), the score as a small ring, and the way to the shortlist
  * (a check once added). The row is one button that opens the profile's
  * drawer; the shortlist button sits beside it, never inside it. A
  * candidate still being read shows placeholders, an erased one says so.
@@ -13,6 +14,7 @@ import { Check, ListPlus } from "lucide-react";
 import { useState } from "react";
 
 import { Avatar } from "@/components/app-shell/avatar";
+import { Pill } from "@/components/app-shell/pill";
 import { ScoreRing } from "@/components/app-shell/score-ring";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,6 +38,7 @@ export function MatchRow({
   line,
   muted = false,
   showScore = true,
+  unconfirmed = false,
   added,
   canAdd,
   onOpen,
@@ -52,6 +55,8 @@ export function MatchRow({
   muted?: boolean | undefined;
   /** False on a ranking no model read (the ring would only say "no score"). */
   showScore?: boolean | undefined;
+  /** A match the second opinion has not seen yet (a run under way or stopped): it may still leave the list. */
+  unconfirmed?: boolean | undefined;
   added: boolean;
   /** True when the person may add to the shortlist. */
   canAdd: boolean;
@@ -129,7 +134,13 @@ export function MatchRow({
             </span>
           ) : null}
         </span>
-        {tier ? (
+        {unconfirmed ? (
+          <span className="shrink-0">
+            <Pill size="sm" tone="caution" dot>
+              {t("briefs.match.unconfirmed")}
+            </Pill>
+          </span>
+        ) : tier ? (
           <span className="hidden shrink-0 sm:inline-flex">
             <TierPill tier={tier} compact />
           </span>
