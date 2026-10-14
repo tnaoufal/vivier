@@ -27,6 +27,7 @@ const candidate: CandidateRow = {
   last_contact_at: null,
   status: "active",
   fingerprint: "secret-key",
+  photo_path: null,
   search_text: "index text",
   created_by: "u1",
   created_at: "2026-10-13T08:00:00Z",

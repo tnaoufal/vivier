@@ -18,7 +18,7 @@ export const PAGE_SIZE = 50;
 
 /** Every column of CandidateRow, named so the embedding vector never travels to the browser. */
 export const CANDIDATE_COLUMNS =
-  "id, org_id, full_name, email, phone, headline, location, years_experience, availability, summary, skills, languages, experiences, education, links, tags, confidence, source, consent_status, consent_at, last_contact_at, status, fingerprint, search_text, created_by, created_at, updated_at";
+  "id, org_id, full_name, email, phone, headline, location, years_experience, availability, summary, skills, languages, experiences, education, links, tags, confidence, source, consent_status, consent_at, last_contact_at, status, fingerprint, search_text, photo_path, created_by, created_at, updated_at";
 
 /** What a list row needs; search_text and fingerprint stay on the server. */
 export const CANDIDATE_LIST_COLUMNS =

@@ -12,6 +12,7 @@ const org = (id: string): OrganizationRow => ({
   plan: "trial",
   seat_limit: 3,
   cv_quota_month: 200,
+  show_photos: true,
   created_by: null,
   created_at: "",
   updated_at: "",

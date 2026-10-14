@@ -35,6 +35,8 @@ export interface OrganizationRow {
   plan: Plan;
   seat_limit: number;
   cv_quota_month: number;
+  /** Candidates' photos are shown in the interface; a team that practises anonymous CVs turns it off. */
+  show_photos: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -132,6 +134,8 @@ export interface CandidateRow {
   status: CandidateStatus;
   fingerprint: string | null;
   search_text: string | null;
+  /** `<org_id>/<candidate_id>.png` in the private `photos` bucket, read from page 1 of the CV; identification only, never sent to the model. */
+  photo_path: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
