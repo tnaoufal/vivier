@@ -91,7 +91,9 @@ export function earliestOf(a: string | null, b: string | null): string | null {
   const timeB = b === null ? Number.NaN : Date.parse(b);
   if (Number.isNaN(timeA)) return Number.isNaN(timeB) ? null : b;
   if (Number.isNaN(timeB)) return a;
-  // The same instant written two ways (the database's offset, the browser's Z) keeps the one held.
+  // The same instant written two ways (the database's offset, the browser's Z) answers b:
+  // the caller passes the value it holds first, so an equal fresh reading wins and the
+  // notation settles on the database's after the first read instead of alternating.
   return timeA < timeB ? a : b;
 }
 
