@@ -12,6 +12,10 @@ import {
   queryTextOf,
   redactIdentity,
   RETRIEVAL_LIMIT,
+  ROLE_DEFINITION_MAX,
+  ROLE_DEFINITION_QUERY_TERMS,
+  roleDefinitionPrompt,
+  TEXT_QUERY_MAX_TERMS,
   textQueryOf,
   type AssessmentProfile,
 } from "./prompts";
@@ -62,6 +66,22 @@ describe("textQueryOf", () => {
     expect(textQueryOf(brief, 2)).toBe("controle OR gestion");
     expect(textQueryOf({ title: "de la", description: "", criteria: [] })).toBe("");
   });
+
+  it("keeps the other criteria ahead of the role, whose definition lends its first terms before the title and the rest after", () => {
+    const definition = Array.from({ length: 60 }, (_, index) => `mission${index}`).join(" ");
+    const role: BriefCriterion = { id: "r", kind: "role", label: "Business Developer", value: definition, required: true, weight: 3 };
+    const terms = textQueryOf({ ...brief, criteria: [role, ...criteria] }).split(" OR ");
+    expect(terms).toHaveLength(TEXT_QUERY_MAX_TERMS);
+    // The skill and the language the brief asks for make the query although the role is saved first.
+    expect(terms.slice(0, 4)).toEqual(["controle", "gestion", "anglais", "courant"]);
+    expect(terms.slice(4, 6)).toEqual(["business", "developer"]);
+    expect(terms.indexOf("mission0")).toBe(6);
+    expect(terms.indexOf(`mission${ROLE_DEFINITION_QUERY_TERMS - 1}`)).toBeLessThan(terms.indexOf("controleur"));
+    expect(terms.indexOf("lyon")).toBeLessThan(terms.indexOf(`mission${ROLE_DEFINITION_QUERY_TERMS}`));
+    expect(terms).toContain("mois");
+    expect(terms).not.toContain("mission59");
+    expect(ROLE_DEFINITION_QUERY_TERMS).toBe(12);
+  });
 });
 
 describe("prompts", () => {
@@ -79,6 +99,65 @@ describe("prompts", () => {
     expect(assessment).toContain("No praise");
     expect(assessment).toContain("protected characteristic");
     expect(assessment).toContain("The team reviews your reading and decides");
+  });
+
+  it("ask for the role first: the extraction opens with it, the assessment judges it before anything else", () => {
+    const system = extractionSystemPrompt();
+    expect(system).toContain('"kind":"role|skill|');
+    expect(system).toContain("The FIRST criterion is always the role, exactly one");
+    expect(system).toContain(`up to ${ROLE_DEFINITION_MAX} characters`);
+    expect(system).toContain("equivalent titles");
+    expect(ROLE_DEFINITION_MAX).toBe(600);
+    const assessment = assessmentSystemPrompt();
+    expect(assessment).toContain("The role comes first.");
+    expect(assessment).toContain("Judge what the person DID");
+    expect(assessment).toContain("every company names a job differently");
+    expect(assessment).toContain('met "unknown" only when the profile holds no experience at all');
+    expect(assessment).toContain('a role at "no" is "no_fit" whatever the rest');
+    expect(assessment).toContain('A role at "partial" is at most "borderline"');
+    expect(assessment).toContain("The first sentence says whether the candidate's métier is the role");
+  });
+
+  it("write the role's definition from the job as it is in the market, in words the guard lets through", () => {
+    // "Famille de métiers" would read as a family situation to the wider guard; the definition names the job's domain instead.
+    for (const system of [extractionSystemPrompt(), roleDefinitionPrompt({ title: "T", description: "" }).system]) {
+      expect(system).toContain("the domain of the job");
+      expect(system).not.toContain("job family");
+      expect(system).toContain('not "family" or "famille"');
+      expect(system).toContain("from what this job is in the market");
+    }
+    // The extraction's "nothing the brief does not say" makes the role definition its one exception.
+    expect(extractionSystemPrompt()).toContain("except the role definition, which you write from your knowledge of the job");
+  });
+
+  it("make the role the exception to the silence rule, judge it on the career as a whole, and ask for it as the first entry", () => {
+    const assessment = assessmentSystemPrompt();
+    // A career of other missions is a "no" with those missions as evidence, never an "unknown".
+    expect(assessment).toContain("a CV full of other missions is not silence");
+    expect(assessment).toContain('a "no" without evidence is not accepted');
+    expect(assessment).toContain("Silence is never a lack for the other requirements (the role has its own rule above)");
+    expect(assessment).toContain('"unknown", not "no"');
+    // Recency, duration, side missions; titles without a description; managers of the job; the sector.
+    expect(assessment).toContain("most recent positions and on those held longest");
+    expect(assessment).toContain("a side task of another job");
+    expect(assessment).toContain("a comptable général keeps the books");
+    expect(assessment).toContain("When a position carries no description, read its title");
+    expect(assessment).toContain("examples, not a closed list");
+    expect(assessment).toContain("led, not done");
+    expect(assessment).toContain("narrows the role only when the brief insists on it");
+    // The role travels apart in the payload, so the answer's shape is spelled out.
+    expect(assessment).toContain('Answer the role as the FIRST entry of "requirements", with "criterionId" equal to brief.role.id');
+    expect(assessment).toContain("before how the positions were titled");
+    expect(assessment).not.toContain("never how the positions were titled");
+  });
+
+  it("derive the role of a brief written before the role existed with the title and the text", () => {
+    const prompt = roleDefinitionPrompt({ title: " Business Developer ", description: "Conquête de nouveaux comptes." });
+    expect(prompt.system).toContain('{"label":"...","value":"..."}');
+    expect(prompt.system).toContain("the job title as the brief names it");
+    expect(prompt.system).toContain("equivalent titles");
+    expect(prompt.system).toContain("never a protected characteristic");
+    expect(prompt.user).toBe("Title: Business Developer\n\nBrief:\nConquête de nouveaux comptes.");
   });
 
   it("reads the whole pool up to 200 candidates, else 120 retrieved rows", () => {
@@ -113,6 +192,8 @@ describe("assessmentPayload", () => {
   it("sends the brief's requirements and a structured profile with its dated experiences, clipped", () => {
     const payload = assessmentPayload(brief, profile());
     expect(payload.brief.title).toBe(brief.title);
+    // A brief analysed before the role existed: no role, the requirements alone.
+    expect(payload.brief.role).toBeNull();
     expect(payload.brief.requirements).toEqual([
       { id: "a", label: "Contrôle de gestion", value: "contrôle de gestion", required: true, weight: 3 },
       { id: "b", label: "Anglais courant", value: "anglais B2", required: false, weight: 2 },
@@ -125,6 +206,14 @@ describe("assessmentPayload", () => {
     expect(payload.candidate.experiences).toHaveLength(1);
     expect(payload.candidate.experiences[0]).toMatchObject({ title: "Contrôleur de gestion", company: "Acme", start: "2019-01", end: null });
     expect(payload.candidate.experiences[0]?.description).toHaveLength(500);
+  });
+
+  it("names the role first and apart from the other requirements, wherever the brief keeps it", () => {
+    const role: BriefCriterion = { id: "r", kind: "role", label: "Contrôleur de gestion", value: "Finance : budgets, reporting…", required: true, weight: 3 };
+    const payload = assessmentPayload({ ...brief, criteria: [...criteria, role] }, profile());
+    expect(Object.keys(payload.brief)).toEqual(["title", "description", "role", "requirements"]);
+    expect(payload.brief.role).toEqual({ id: "r", label: "Contrôleur de gestion", definition: "Finance : budgets, reporting…" });
+    expect(payload.brief.requirements.map((requirement) => requirement.id)).toEqual(["a", "b"]);
   });
 
   it("never carries the candidate's id, name, email or phone: only the CV's text as the processor indexed it", () => {

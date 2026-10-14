@@ -1,26 +1,32 @@
 /**
  * What the model's assessment of a candidate becomes once it is read
  * here: every requirement of the brief gets a row, the evidence and the
- * summary are clipped, and the decision and score obey the brief's
- * required requirements whatever the model answered (a required
- * requirement clearly not met is a no_fit, one the CV says nothing
- * about is at most borderline). Pure: no model, no data access; every
- * rule is stated once and tested in assessment.test.ts. The rest of the
- * module reads assessed results for the panel: buckets by decision, the
- * requirement most often missing, the rows a RequirementList shows, with
- * the deterministic verdicts as the fallback when no model answered.
+ * summary are clipped, and the decision and score obey the brief first
+ * on its role, then on its required requirements, whatever the model
+ * answered (a métier that is not the role is a no_fit however the rest
+ * reads, an adjacent one is at most borderline; a required requirement
+ * clearly not met is a no_fit, one the CV says nothing about is at most
+ * borderline). Pure: no model, no data access; every rule is stated
+ * once and tested in assessment.test.ts. The rest of the module reads
+ * assessed results for the panel: buckets by decision, the requirement
+ * most often missing, the rows a RequirementList shows (the role first,
+ * wherever the brief keeps it), with the deterministic verdicts as the
+ * fallback when no model answered.
  */
 import type { RequirementRow } from "@/components/app-shell/requirement-list";
 import type {
   Assessment,
   AssessmentDecision,
   BriefCriterion,
+  CriterionKind,
   CriterionResult,
   CriterionVerdict,
   MatchResult,
   RequirementAssessment,
   RequirementMet,
 } from "@/lib/db/types";
+
+import { roleCriterion, roleFirst } from "./criteria";
 
 /** The most candidates one assessment call reads: the browser sends batches of this size, one after the other. */
 export const ASSESS_BATCH_MAX = 6;
@@ -34,6 +40,12 @@ export const BORDERLINE_MIN_SCORE = 45;
 export const REQUIRED_NO_SCORE_CAP = 39;
 /** A required requirement at "unknown" caps the score here (and the decision at borderline). */
 export const REQUIRED_UNKNOWN_SCORE_CAP = 69;
+/** The role at "no" (another métier) caps the score here and forces no_fit, whatever the other requirements. */
+export const ROLE_NO_SCORE_CAP = 25;
+/** The role at "partial" (an adjacent métier) caps the score here and the decision at borderline. */
+export const ROLE_PARTIAL_SCORE_CAP = 65;
+/** The role at "unknown" (no experience to read) caps the score here and the decision at borderline. */
+export const ROLE_UNKNOWN_SCORE_CAP = 60;
 
 /** The model's answer as the schema lets it through, before any rule applies. */
 export interface ModelAssessmentAnswer {
@@ -116,13 +128,18 @@ function requirementOf(
 /**
  * The assessment stored for a result: the model's answer made to obey
  * the brief. Every criterion gets a row (one the model skipped is
- * "unknown"); the summary is clipped; then the decision and the score:
- * a required requirement at "no" forces no_fit and caps the score at 39;
- * a required requirement at "unknown" caps the decision at borderline
- * and the score at 69; a required requirement at "partial" caps the
- * decision at borderline (met in part is not met); "fit" needs a score
- * of 70 or more, "borderline" 45 or more, otherwise no_fit. The model's
- * own no_fit or borderline is never raised: it is allowed to be stricter.
+ * "unknown"); the summary is clipped; then the decision and the score,
+ * the role first: the role at "no" forces no_fit and caps the score at
+ * 25, whatever the other requirements say and whether or not the team
+ * kept it required; at "partial" it caps the decision at borderline and
+ * the score at 65; at "unknown" at borderline and 60 (a role at "yes"
+ * without evidence is already "partial" by the general rule). Then the
+ * required requirements: one at "no" forces no_fit and caps the score
+ * at 39; one at "unknown" caps the decision at borderline and the score
+ * at 69; one at "partial" caps the decision at borderline (met in part
+ * is not met); "fit" needs a score of 70 or more, "borderline" 45 or
+ * more, otherwise no_fit. The model's own no_fit or borderline is never
+ * raised: it is allowed to be stricter.
  */
 export function enforceAssessment(
   criteria: readonly BriefCriterion[],
@@ -143,9 +160,22 @@ export function enforceAssessment(
   const requiredNo = required("no");
   const requiredUnknown = required("unknown");
   const requiredPartial = required("partial");
+  const role = roleCriterion(criteria);
+  const roleMet: RequirementMet | null = role ? (requirements[criteria.indexOf(role)]?.met ?? "unknown") : null;
 
   let score = clampScore(modelAnswer.score);
   let decision: AssessmentDecision = isDecision(modelAnswer.decision) ? modelAnswer.decision : decisionFromScore(score);
+  // The métier first: another one sets the profile aside whatever the rest, an adjacent one asks for a human look.
+  if (roleMet === "no") {
+    decision = "no_fit";
+    score = Math.min(score, ROLE_NO_SCORE_CAP);
+  } else if (roleMet === "partial") {
+    score = Math.min(score, ROLE_PARTIAL_SCORE_CAP);
+    if (decision === "fit") decision = "borderline";
+  } else if (roleMet === "unknown") {
+    score = Math.min(score, ROLE_UNKNOWN_SCORE_CAP);
+    if (decision === "fit") decision = "borderline";
+  }
   if (requiredNo) {
     decision = "no_fit";
     score = Math.min(score, REQUIRED_NO_SCORE_CAP);
@@ -220,9 +250,19 @@ export function bucketResults(results: readonly MatchResult[]): ResultBuckets {
 }
 
 /**
- * The required criterion most often at "no" across the assessed results
- * (the first in the brief's order on a tie); null when no assessed
- * result has a required requirement at "no".
+ * True for a criterion whose "no" sets a profile aside on its own: the
+ * role, whether or not the team kept it required, and every required
+ * one. What the panel and the cards name as the reason.
+ */
+function setsAside(criterion: BriefCriterion): boolean {
+  return criterion.kind === "role" || criterion.required;
+}
+
+/**
+ * The criterion most often at "no" among those that set a profile aside
+ * (the role, then the required ones; the first in that order on a tie)
+ * across the assessed results; null when no assessed result has one at
+ * "no".
  */
 export function mostMissingRequirement(
   criteria: readonly BriefCriterion[],
@@ -236,8 +276,8 @@ export function mostMissingRequirement(
   }
   let best: BriefCriterion | null = null;
   let bestCount = 0;
-  for (const criterion of criteria) {
-    if (!criterion.required) continue;
+  for (const criterion of roleFirst(criteria)) {
+    if (!setsAside(criterion)) continue;
     const count = counts.get(criterion.id) ?? 0;
     if (count > bestCount) {
       best = criterion;
@@ -254,26 +294,38 @@ const VERDICT_TO_MET: Record<CriterionVerdict, RequirementMet> = {
   not_stated: "unknown",
 };
 
+/** A RequirementList row with the kind of its criterion, so a card can name the role as such ("Métier · Business Developer"). */
+export type ResultRequirementRow = RequirementRow & { kind: CriterionKind };
+
 /**
- * One row per criterion for the shared RequirementList: from the
- * assessment when the model answered, else from the deterministic
- * verdicts (found → yes, in part → partial, absent → no, not stated →
- * unknown); a criterion neither one speaks about is unknown.
+ * One row per criterion for the shared RequirementList, the role first
+ * wherever the brief keeps it: from the assessment when the model
+ * answered, else from the deterministic verdicts (found → yes, in part
+ * → partial, absent → no, not stated → unknown); a criterion neither
+ * one speaks about is unknown.
  */
 export function requirementRows(
   criteria: readonly BriefCriterion[],
   result: Pick<MatchResult, "verdicts" | "assessment">,
-): RequirementRow[] {
+): ResultRequirementRow[] {
   const assessed = new Map((result.assessment?.requirements ?? []).map((row) => [row.criterionId, row] as const));
   const verdicts = new Map(result.verdicts.map((verdict) => [verdict.criterionId, verdict] as const));
-  return criteria.map((criterion) => {
+  return roleFirst(criteria).map((criterion) => {
     const row = assessed.get(criterion.id);
     if (row) {
-      return { id: criterion.id, label: criterion.label, required: criterion.required, met: row.met, evidence: row.evidence };
+      return {
+        id: criterion.id,
+        kind: criterion.kind,
+        label: criterion.label,
+        required: criterion.required,
+        met: row.met,
+        evidence: row.evidence,
+      };
     }
     const verdict = verdicts.get(criterion.id);
     return {
       id: criterion.id,
+      kind: criterion.kind,
       label: criterion.label,
       required: criterion.required,
       met: verdict ? VERDICT_TO_MET[verdict.verdict] : "unknown",
@@ -282,7 +334,11 @@ export function requirementRows(
   });
 }
 
-/** The first required requirement at "no" of an assessed result: the reason a card in "set aside" shows. */
+/**
+ * The first requirement at "no" that sets a profile aside on its own
+ * (the role, then the required ones, in the brief's order) of an
+ * assessed result: the reason a card in "set aside" shows.
+ */
 export function firstMissingRequirement(
   criteria: readonly BriefCriterion[],
   result: Pick<MatchResult, "assessment">,
@@ -290,5 +346,5 @@ export function firstMissingRequirement(
   const assessment = result.assessment;
   if (!assessment) return null;
   const rows = new Map(assessment.requirements.map((row) => [row.criterionId, row.met] as const));
-  return criteria.find((criterion) => criterion.required && rows.get(criterion.id) === "no") ?? null;
+  return roleFirst(criteria).find((criterion) => setsAside(criterion) && rows.get(criterion.id) === "no") ?? null;
 }

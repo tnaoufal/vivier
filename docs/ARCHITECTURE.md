@@ -105,6 +105,8 @@ runSearch({token, org,
                              load brief (service role, org filter) ─▶ briefs
                              no criteria? derive them (a proposal)                        ──▶ JSON {criteria} │ skipped
                                saved into the brief                 ─▶ briefs.criteria
+                             no role? derive it (label + definition)                      ──▶ JSON {label, value} │ the title
+                               saved in front of the criteria        ─▶ briefs.criteria
                              count active candidates                ─▶ candidates (HEAD, count=exact)
                              ≤ 200: load the whole pool             ─▶ candidates (org filter, active)
                              > 200: queryTextOf(brief)                                    ──▶ embed (1024) │ none
@@ -130,10 +132,12 @@ assessCandidates({token,
                              load brief, load search (org filter)   ─▶ briefs, searches
                              load the profiles (active)             ─▶ candidates
                              per candidate, in parallel:
-                               assessmentPayload(): fields + CV text,
+                               assessmentPayload(): role apart, then
+                                 requirements, fields + CV text,
                                  name / e-mail / phone redacted                           ──▶ JSON {requirements, decision,
                                enforceAssessment(): a row per                                 score, summary}
                                  criterion, no evidence → unknown,                            (LLM_ASSESSMENT_MODEL | LLM_MODEL)
+                                 role "no" → no_fit, score ≤ 25,
                                  required "no" → no_fit, score ≤ 39, …
                                recordUsage("assess")                ─▶ ai_usage
                              re-read the row, write the entries     ─▶ searches.results (assessment per entry)
@@ -148,6 +152,31 @@ drawer of a profile page, which the browser calls directly) are SECURITY
 INVOKER: even called with the service role, the Worker filters by the
 organisation it verified, and the browser can call them only for the
 organisations it belongs to.
+
+The **role requirement** is the criterion of kind `role` a brief holds
+once (`briefs.criteria`, `src/lib/briefs/criteria.ts`): the job as the
+team names it, and its definition (the job's domain, core missions,
+equivalent titles, sector when stated, written from what the job is in
+the market), required and essential by default. The guard against
+protected characteristics reads a role on its core list only, since a
+job's domain is written with words ("famille de produits", "politique
+commerciale") the wider list bans. The extraction proposes it first;
+`runSearch` gives it to a brief that has none (one small call,
+`roleDefinitionPrompt`, else the title; never a title that names a
+protected characteristic, which the parser would drop on the next read)
+and saves it in front of the other criteria, once. The assessment
+payload names it apart (`brief.role`) and the system prompt judges it
+before anything else, from what the person did before the titles, since
+every company names a job differently: a CV full of other missions is a
+`no` with those missions as evidence, not silence; the métier is judged
+on the most recent and longest positions; a title without a description
+is read for what it usually means. `enforceAssessment()` then binds the
+answer on the role first: `no` forces `no_fit` and caps the score at 25
+(`ROLE_NO_SCORE_CAP`), whatever the other requirements and whether or not
+the team kept it required; `partial` caps the decision at `borderline` and
+the score at 65 (`ROLE_PARTIAL_SCORE_CAP`); `unknown` at `borderline` and
+60 (`ROLE_UNKNOWN_SCORE_CAP`). The deterministic pass only finds the role
+in a title that carries the words of its name, never calls it missing.
 
 ### Share: a dossier to a hiring manager
 

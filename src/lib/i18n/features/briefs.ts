@@ -49,8 +49,8 @@ const fr = {
 
   // criteria
   "briefs.criteria.title": "Critères",
-  "briefs.criteria.help": "L'analyse vérifie chaque critère un par un dans le CV : satisfait, en partie, non satisfait, ou non renseigné quand le CV n'en dit rien. « Obligatoire » écarte de la sélection proposée : un profil qui ne le satisfait pas est présenté à part, rien n'est supprimé.",
-  "briefs.criteria.empty": "Aucun critère pour l'instant. Ajoutez une ligne, demandez des propositions, ou lancez l'analyse : les exigences seront déduites du brief.",
+  "briefs.criteria.help": "Le métier est la première exigence : sa définition (missions principales, intitulés équivalents) guide l'analyse, qui juge ce que la personne a fait et non l'intitulé de ses postes. Puis chaque critère est vérifié un par un dans le CV : satisfait, en partie, non satisfait, ou non renseigné quand le CV n'en dit rien. « Obligatoire » écarte de la sélection proposée : un profil qui ne le satisfait pas est présenté à part, rien n'est supprimé.",
+  "briefs.criteria.empty": "Aucun critère pour l'instant. Ajoutez une ligne, demandez des propositions, ou lancez l'analyse : le métier et les exigences seront déduits du brief.",
   "briefs.criteria.add": "Ajouter un critère",
   "briefs.criteria.save": "Enregistrer les critères",
   "briefs.criteria.saved": "Critères enregistrés.",
@@ -59,6 +59,8 @@ const fr = {
   "briefs.criteria.label": "Libellé",
   "briefs.criteria.label.placeholder": "Libellé affiché, ex. Anglais courant",
   "briefs.criteria.value": "Valeur recherchée",
+  "briefs.criteria.value.role": "Définition du métier",
+  "briefs.criteria.value.placeholder.role": "Définition du métier : missions principales, intitulés équivalents, secteur si le brief le précise…",
   "briefs.criteria.value.placeholder.skill": "Ex. contrôle de gestion",
   "briefs.criteria.value.placeholder.experience": "Années, ex. 5",
   "briefs.criteria.value.placeholder.language": "Ex. anglais C1",
@@ -70,6 +72,8 @@ const fr = {
   "briefs.criteria.weight": "Poids",
   "briefs.criteria.remove": "Retirer ce critère",
   "briefs.criteria.protected": "Ce critère porte sur une caractéristique protégée : il ne sera pas enregistré.",
+  "briefs.criteria.role.duplicate": "Un seul métier par brief : cette ligne ne sera pas enregistrée.",
+  "briefs.kind.role": "Métier",
   "briefs.kind.skill": "Compétence",
   "briefs.kind.experience": "Expérience",
   "briefs.kind.language": "Langue",
@@ -96,7 +100,7 @@ const fr = {
 
   // search and analysis
   "briefs.search.help":
-    "L'analyse lit chaque profil du vivier jusqu'à {max} profils actifs ; au-delà, les {limit} profils les plus proches du brief. Chaque exigence du brief est vérifiée une par une avec ce que dit le CV. Seuls les profils qui correspondent sont présentés ; l'analyse propose, l'équipe retient.",
+    "L'analyse lit chaque profil du vivier jusqu'à {max} profils actifs ; au-delà, les {limit} profils les plus proches du brief. Le métier est jugé en premier, d'après ce que la personne a fait ; puis chaque exigence du brief est vérifiée une par une avec ce que dit le CV. Seuls les profils qui correspondent sont présentés ; l'analyse propose, l'équipe retient.",
   "briefs.search.run": "Lancer l'analyse",
   "briefs.search.running": "Recherche en cours…",
   "briefs.search.resume": "Reprendre l'analyse",
@@ -126,6 +130,8 @@ const fr = {
   "briefs.search.line.noCriteria.model": "Pas d'analyse par le modèle : ce brief n'avait pas de critères.",
   "briefs.search.line.truncated":
     "Vivier de {total} profils : seuls les {read} les plus proches du brief ont été lus, les autres n'ont pas été examinés.",
+  "briefs.search.line.roleStale":
+    "Cette analyse date d'avant le métier du brief : ses verdicts ne l'ont pas jugé. Relancez l'analyse pour qu'il soit jugé en premier.",
   "briefs.search.empty.title": "Aucune analyse pour l'instant",
   "briefs.search.empty.text": "Lancez l'analyse : les profils du vivier sont lus et vérifiés exigence par exigence, et seuls ceux qui correspondent sont présentés.",
   "briefs.search.none.title": "Aucun profil trouvé",
@@ -138,12 +144,12 @@ const fr = {
 
   // result sections
   "briefs.section.fit": "Profils correspondants",
-  "briefs.section.fit.help": "D'après le CV, toutes les exigences obligatoires sont satisfaites. L'équipe retient ou non.",
+  "briefs.section.fit.help": "Le métier correspond et, d'après le CV, toutes les exigences obligatoires sont satisfaites. L'équipe retient ou non.",
   "briefs.section.borderline": "À vérifier",
-  "briefs.section.borderline.help": "Une exigence obligatoire est non renseignée ou satisfaite en partie, ou des exigences importantes manquent : un regard humain tranche.",
+  "briefs.section.borderline.help": "Le métier est voisin, une exigence obligatoire est non renseignée ou satisfaite en partie, ou des exigences importantes manquent : un regard humain tranche.",
   "briefs.section.noFit": "Écartés par l'analyse",
   "briefs.section.noFit.help":
-    "D'après la lecture du modèle, le profil ne répond pas au brief : une exigence obligatoire n'est pas satisfaite, ou le score est trop bas. Rien n'est supprimé : la fiche reste ouverte.",
+    "D'après la lecture du modèle, le profil ne répond pas au brief : le métier n'est pas celui du poste (cela écarte à lui seul, quelles que soient les autres exigences), une exigence obligatoire n'est pas satisfaite, ou le score est trop bas. Rien n'est supprimé : la fiche reste ouverte.",
   "briefs.section.unassessed": "Non analysés",
   "briefs.section.unassessed.help": "Ces profils n'ont pas encore été lus par le modèle : seul le classement sur le texte s'applique.",
   "briefs.section.ranked": "Profils classés",
@@ -162,6 +168,7 @@ const fr = {
   "briefs.results.noScore": "Pas de score : profil non analysé",
   "briefs.results.requirements": "Exigences du brief",
   "briefs.results.reason": "Exigence non satisfaite : {label}",
+  "briefs.results.reason.role": "Le métier ne correspond pas : {label}",
   "briefs.results.reason.model": "D'après la lecture du modèle, le profil ne répond pas au brief (score {score} sur 100).",
   "briefs.results.why": "Lecture du modèle",
   "briefs.results.addToShortlist": "Ajouter à la shortlist",
@@ -224,8 +231,8 @@ const en = {
   "briefs.form.unsaved": "Unsaved changes",
 
   "briefs.criteria.title": "Criteria",
-  "briefs.criteria.help": "The analysis checks each criterion one by one in the CV: met, partly, not met, or not stated when the CV says nothing about it. \"Required\" sets aside from the proposed selection: a profile that does not meet it is presented apart, nothing is deleted.",
-  "briefs.criteria.empty": "No criteria yet. Add a row, ask for proposals, or run the analysis: the requirements will be derived from the brief.",
+  "briefs.criteria.help": "The role is the first requirement: its definition (core missions, equivalent titles) guides the analysis, which judges what the person did, not how their positions were titled. Then each criterion is checked one by one in the CV: met, partly, not met, or not stated when the CV says nothing about it. \"Required\" sets aside from the proposed selection: a profile that does not meet it is presented apart, nothing is deleted.",
+  "briefs.criteria.empty": "No criteria yet. Add a row, ask for proposals, or run the analysis: the role and the requirements will be derived from the brief.",
   "briefs.criteria.add": "Add a criterion",
   "briefs.criteria.save": "Save the criteria",
   "briefs.criteria.saved": "Criteria saved.",
@@ -234,6 +241,8 @@ const en = {
   "briefs.criteria.label": "Label",
   "briefs.criteria.label.placeholder": "Label shown, e.g. Fluent English",
   "briefs.criteria.value": "Value to find",
+  "briefs.criteria.value.role": "Role definition",
+  "briefs.criteria.value.placeholder.role": "Role definition: core missions, equivalent titles, sector when the brief states it…",
   "briefs.criteria.value.placeholder.skill": "e.g. management control",
   "briefs.criteria.value.placeholder.experience": "Years, e.g. 5",
   "briefs.criteria.value.placeholder.language": "e.g. english C1",
@@ -245,6 +254,8 @@ const en = {
   "briefs.criteria.weight": "Weight",
   "briefs.criteria.remove": "Remove this criterion",
   "briefs.criteria.protected": "This criterion is about a protected characteristic: it will not be saved.",
+  "briefs.criteria.role.duplicate": "One role per brief: this row will not be saved.",
+  "briefs.kind.role": "Role",
   "briefs.kind.skill": "Skill",
   "briefs.kind.experience": "Experience",
   "briefs.kind.language": "Language",
@@ -269,7 +280,7 @@ const en = {
   "briefs.proposals.dropped": "{count} proposal(s) set aside: they were about a protected characteristic.",
 
   "briefs.search.help":
-    "The analysis reads every profile of the talent pool up to {max} active profiles; beyond that, the {limit} profiles closest to the brief. Every requirement of the brief is checked one by one against what the CV says. Only the profiles that match are presented; the analysis proposes, the team retains.",
+    "The analysis reads every profile of the talent pool up to {max} active profiles; beyond that, the {limit} profiles closest to the brief. The role is judged first, from what the person did; then every requirement of the brief is checked one by one against what the CV says. Only the profiles that match are presented; the analysis proposes, the team retains.",
   "briefs.search.run": "Run the analysis",
   "briefs.search.running": "Searching…",
   "briefs.search.resume": "Resume the analysis",
@@ -299,6 +310,8 @@ const en = {
   "briefs.search.line.noCriteria.model": "No analysis by the model: this brief had no criteria.",
   "briefs.search.line.truncated":
     "Talent pool of {total} profiles: only the {read} closest to the brief were read, the others were not looked at.",
+  "briefs.search.line.roleStale":
+    "This analysis predates the brief's role: its verdicts did not judge it. Run the analysis again so it is judged first.",
   "briefs.search.empty.title": "No analysis yet",
   "briefs.search.empty.text": "Run the analysis: the profiles of the talent pool are read and checked requirement by requirement, and only those that match are presented.",
   "briefs.search.none.title": "No profile found",
@@ -310,12 +323,12 @@ const en = {
   "briefs.search.loadFailed": "This analysis could not be reopened.",
 
   "briefs.section.fit": "Matching profiles",
-  "briefs.section.fit.help": "According to the CV, every required requirement is met. The team retains or not.",
+  "briefs.section.fit.help": "The role matches and, according to the CV, every required requirement is met. The team retains or not.",
   "briefs.section.borderline": "To check",
-  "briefs.section.borderline.help": "A required requirement is not stated or only partly met, or important ones are missing: a human look decides.",
+  "briefs.section.borderline.help": "The role is adjacent, a required requirement is not stated or only partly met, or important ones are missing: a human look decides.",
   "briefs.section.noFit": "Set aside by the analysis",
   "briefs.section.noFit.help":
-    "According to the model's reading, the profile does not answer the brief: a required requirement is not met, or the score is too low. Nothing is deleted: the profile stays open.",
+    "According to the model's reading, the profile does not answer the brief: the role is not the job's (that alone sets a profile aside, whatever the other requirements), a required requirement is not met, or the score is too low. Nothing is deleted: the profile stays open.",
   "briefs.section.unassessed": "Not analysed",
   "briefs.section.unassessed.help": "These profiles have not been read by the model yet: only the ranking on the text applies.",
   "briefs.section.ranked": "Ranked profiles",
@@ -333,6 +346,7 @@ const en = {
   "briefs.results.noScore": "No score: profile not analysed",
   "briefs.results.requirements": "Requirements of the brief",
   "briefs.results.reason": "Requirement not met: {label}",
+  "briefs.results.reason.role": "The role does not match: {label}",
   "briefs.results.reason.model": "According to the model's reading, the profile does not answer the brief (score {score} out of 100).",
   "briefs.results.why": "The model's reading",
   "briefs.results.addToShortlist": "Add to the shortlist",

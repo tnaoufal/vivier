@@ -78,11 +78,19 @@ provider accounts. Work it in one block before the first real CV.
       `LLM_EMBEDDING_MODEL=text-embedding-3-small`, shortened to 1024 dimensions automatically).
 - [ ] The expert assessment (`assessCandidates`: one call per profile read, kind
       `assess`) is what decides which CVs a hiring team sees as matching the
-      brief: when budget allows, set `LLM_ASSESSMENT_MODEL=mistral-medium-latest`
-      on the Worker for that call alone and keep `LLM_MODEL=mistral-small-latest`
-      for structuring, criteria and dossier drafts. Unset, `LLM_MODEL` assesses
-      too. An analysis of a 200-profile pool is 200 calls of about 9 000
-      characters each; `ai_usage.model` says which model answered.
+      brief, and since the role fit it judges first whether the candidate's
+      métier is the job from what the person did, not from the titles (a
+      semantic judgement a small model gets wrong more often): set
+      `LLM_ASSESSMENT_MODEL=mistral-medium-latest` (or `mistral-large-latest`
+      when budget allows) on the Worker for that call alone and keep
+      `LLM_MODEL=mistral-small-latest` for structuring, criteria, the role's
+      definition and dossier drafts. Unset, `LLM_MODEL` assesses too. Order of
+      magnitude: an analysis of a 200-profile pool is 200 calls of about 9 000
+      characters (roughly 3 000 tokens in, 400 out each, 0.7 M tokens in all),
+      which at Mistral's list prices at the time of writing is well under a
+      euro with `mistral-medium-latest` and a few euros with
+      `mistral-large-latest` (check the current price list before deciding);
+      `ai_usage.model` says which model answered.
 
 ## Resend
 

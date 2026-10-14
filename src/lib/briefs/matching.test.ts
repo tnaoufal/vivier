@@ -12,6 +12,7 @@ import {
   levelRank,
   normalise,
   rankResults,
+  roleWords,
   sameLanguage,
   scoreCandidate,
   snippet,
@@ -40,11 +41,16 @@ function profile(partial: Partial<MatchProfile> = {}): MatchProfile {
     years_experience: partial.years_experience ?? null,
     availability: partial.availability ?? null,
     education: partial.education ?? [],
+    experiences: partial.experiences ?? [],
     search_text: partial.search_text ?? null,
   };
 }
 
 const none = { textRank: null, vectorRank: null };
+
+function experience(title: string): MatchProfile["experiences"][number] {
+  return { title, company: null, start: null, end: null, description: null };
+}
 
 describe("normalise", () => {
   it("strips diacritics, lowercases and collapses spaces", () => {
@@ -226,6 +232,54 @@ describe("evaluateCriterion: education", () => {
     expect(absent.verdict).toBe("missing");
     expect(absent.evidence).toBe("Master 2 Contrôle de gestion et finance, IAE Lyon");
     expect(evaluateCriterion(criterion({ kind: "education", value: "DSCG" }), profile()).verdict).toBe("not_stated");
+  });
+});
+
+describe("evaluateCriterion: role", () => {
+  const role = criterion({ kind: "role", label: "Business Developer", value: "Commercial chargé de conquérir de nouveaux comptes…", required: true, weight: 3 });
+
+  it("keeps the words of the job's name worth finding, once each, without function words", () => {
+    expect(roleWords("Chef de projet digital (H/F)")).toEqual(["chef", "projet", "digital"]);
+    expect(roleWords("Business Developer senior")).toEqual(["business", "developer"]);
+    expect(roleWords("Développeur / développeuse")).toEqual(["developpeur", "developpeuse"]);
+    expect(roleWords("de la")).toEqual([]);
+  });
+
+  it("matches when every word of the name sits in the headline or in the title of an experience, with that title as evidence", () => {
+    const byHeadline = evaluateCriterion(role, profile({ headline: "Senior business developer, SaaS" }));
+    expect(byHeadline.verdict).toBe("match");
+    expect(byHeadline.evidence).toBe("Senior business developer, SaaS");
+    const byTitle = evaluateCriterion(role, profile({ headline: "Directeur commercial", experiences: [experience("Directeur SAV"), experience("Business Developer")] }));
+    expect(byTitle.verdict).toBe("match");
+    expect(byTitle.evidence).toBe("Business Developer");
+    // Whole words only: a word of the name inside a longer word is not found.
+    expect(evaluateCriterion(role, profile({ headline: "Businessman" })).verdict).toBe("not_stated");
+  });
+
+  it("answers partial with the closest title when half of the words appear", () => {
+    const verdict = evaluateCriterion(role, profile({ experiences: [experience("Directeur SAV"), experience("Développeur business unit")] }));
+    expect(verdict.verdict).toBe("partial");
+    expect(verdict.evidence).toBe("Développeur business unit");
+    const three = criterion({ kind: "role", label: "Chef de projet digital", value: "x" });
+    expect(evaluateCriterion(three, profile({ headline: "Chef de produit" })).verdict).toBe("not_stated");
+    expect(evaluateCriterion(three, profile({ headline: "Chef de projet" })).verdict).toBe("partial");
+  });
+
+  it("never answers missing: a different title is no proof of a different métier, and no title at all is not stated", () => {
+    const other = evaluateCriterion(role, profile({ headline: "Directeur SAV", experiences: [experience("Responsable service après-vente")] }));
+    expect(other.verdict).toBe("not_stated");
+    expect(other.evidence).toBeNull();
+    expect(evaluateCriterion(role, profile()).verdict).toBe("not_stated");
+    expect(evaluateCriterion(role, profile({ experiences: [experience("  ")] })).verdict).toBe("not_stated");
+    expect(evaluateCriterion(criterion({ kind: "role", label: "de", value: "x" }), profile({ headline: "Business Developer" })).verdict).toBe("not_stated");
+  });
+
+  it("counts in the score like any criterion and never blocks on its own", () => {
+    const result = scoreCandidate([role], profile({ headline: "Directeur SAV" }), none);
+    expect(result.verdicts[0]?.verdict).toBe("not_stated");
+    expect(result.blocked).toBe(false);
+    expect(result.coverage).toBe(0);
+    expect(scoreCandidate([role], profile({ headline: "Business developer" }), none).score).toBe(100);
   });
 });
 

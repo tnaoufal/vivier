@@ -322,17 +322,61 @@ pass fills the gap) or `unavailable`.
 ## Briefs and search
 
 A brief (`/app/briefs/new`) is a title and free text. Its **criteria** are
-rows of `briefs.criteria`: a kind (`skill`, `experience`, `language`,
-`location`, `education`, `availability`, `other`), a label (what the chip
-says), a value (what is looked for), `required`, and a weight 1..3. With a
-model, `extractCriteria` proposes up to twelve from the text; the person
-adds the ones they keep, one by one or all at once, and nothing reaches
-the brief without their gesture. A proposal naming a protected
-characteristic is dropped and counted; the model's own warnings about
-requests it refused are shown. Without a model, one sentence says so and
-the criteria are typed in. A brief analysed with no criteria gets them
-derived from its text by the same extraction on that first analysis,
-saved into the brief, and a toast asks the person to check them.
+rows of `briefs.criteria`: a kind (`role`, `skill`, `experience`,
+`language`, `location`, `education`, `availability`, `other`), a label
+(what the chip says), a value (what is looked for; up to 600 characters),
+`required`, and a weight 1..3. With a model, `extractCriteria` proposes up
+to twelve from the text, the role first; the person adds the ones they
+keep, one by one or all at once, and nothing reaches the brief without
+their gesture. A proposal naming a protected characteristic is dropped and
+counted; the model's own warnings about requests it refused are shown.
+Without a model, one sentence says so and the criteria are typed in. A
+brief analysed with no criteria gets them derived from its text by the
+same extraction on that first analysis, saved into the brief, and a toast
+asks the person to check them.
+
+**The role comes first.** One criterion of kind `role` per brief is the
+job itself: its label is the job as the team names it ("Business
+Developer"), its value the *role definition*, a short text in the brief's
+language (`src/lib/briefs/criteria.ts`: the job's domain, the three to
+six core missions that define the job, the usual equivalent titles under
+which other companies name it, the sector when the brief says so), which
+the model writes from what the job is in the market, since a brief rarely
+spells out the missions. It is required and essential by default; the
+team edits the definition or unticks required. The guard against
+protected characteristics reads a role's definition on its core list
+only (age, sex, origin, nationality, religion, disability, pregnancy,
+marital status, union, sexual orientation): a job's domain is written
+with words such as "famille de produits" or "politique commerciale" that
+say nothing about a person. A brief written before the role existed gets
+its role on its next analysis (`runSearch`: one small model call,
+`roleDefinitionPrompt`, else the title stands for both; a title that
+itself names a protected characteristic is never saved), saved in front
+of its criteria with the same "check them" toast, and never added twice;
+an analysis stored before that says its verdicts never judged the métier.
+The assessment reads the role apart from the other requirements and
+judges it before anything else, from what the person *did* (missions,
+scope, clients, seniority of the positions) before how the positions were
+titled, since every company names a job differently: `yes` when the
+person held the role or an equivalent one under another title (a title
+with no description is read for what it usually means in its industry),
+`partial` for an adjacent role that shares part of the core missions (an
+account manager keeps clients, a business developer wins them), for a
+role held only long ago or briefly, or for a manager who led the job
+without carrying its missions, `no` when the career is another métier
+(a CV full of other missions is not silence: the `no` quotes them, and a
+core mission met as a side task of another job does not make the role),
+`unknown` only when the profile holds no experience at all; the same
+missions in another sector are the métier, with the sector named in the
+evidence. The rules then bind it before everything else: a role
+at `no` forces `no_fit` and caps the score at 25, whatever the other
+requirements and whether or not it is still required; at `partial` the
+decision is at most `borderline` and the score at most 65; at `unknown`,
+`borderline` and 60. The deterministic pass only ever *finds* the role, in
+a headline or an experience title that carries the words of its name
+(`match`, `partial` for half of them), never `missing`: a different title
+is no proof of a different métier. The cards show the role row first as
+"Métier · Business Developer".
 
 An **analysis** (`runSearch`, members, rate scope `search`) reads the pool,
 then the model reads each result:
