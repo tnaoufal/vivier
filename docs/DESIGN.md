@@ -426,6 +426,44 @@ read.
   ScoreRing `sm`, the missing required requirement named; a drawer for
   the item (`Sheet size="lg"`) with the profile, the verdicts, the note,
   the votes, the comments, the history.
+- **Brief page** (`/app/briefs/:briefId`): `PageHeader sticky` with the
+  title, the status and its date, the one filled action ("Lancer la
+  recherche", held with a tooltip while an editor has unsaved edits) and
+  the administrators' menu; then two `Tabs` kept in the URL
+  (`?tab=matches|brief`), both panels mounted: "Correspondances", its
+  count in the tab, and "Le poste" (the brief, the role profile and the
+  criteria in one `max-w-3xl` column). The matches tab, top to bottom and
+  nothing else:
+  - the **analysis band**, one `sheet` in the state the analysis is in.
+    Idle: the count of matches as the headline (`font-display`), one line
+    of figures under it ("analysés · retenus au tri · lus en détail"
+    while some are left, then the date), the method behind an `InfoTip`,
+    the tier `Pill`s on the right, the earlier analyses behind a quiet
+    button. Running: the stepper of the four steps (done ones checked,
+    the current one ringed in the accent), a `ProgressBar` with "{done}
+    sur {total} profils" and the time left once known, one live count
+    (`aria-live`), "Interrompre". Unfinished: what is left and
+    "Reprendre", or "En cours dans une autre session". Waiting for the
+    team's check: one line and "Vérifier le poste". No match once
+    everything ran: "0 correspondance", the requirement most often
+    missing and "Revoir le poste". An empty pool: `EmptyState` with the
+    import.
+  - the **match rows**, the matches alone in one `sheet` of compact rows:
+    the rank, the `Avatar md`, the name and the position held today, one
+    line (why it ranks there), the `TierPill compact` from `sm`, the
+    `ScoreRing sm`; the row is one button, the shortlist button sits
+    beside it, never inside. Rows rise in as their batch lands and never
+    again; skeleton rows of the same height hold the place before.
+  - right under them, a quiet toggle (`aria-expanded`) for the near
+    profiles: muted rows, no tier, their main reservation as the line. A
+    profile set aside is a figure of the band, never a row.
+  - the **drawer** (`Sheet size="lg"`, from the right): the `Avatar lg`,
+    the name, the position held today, the tier, the decision and the
+    score in its header, previous and next (and the arrow keys), one row
+    of actions (add to the shortlist, open the profile); then why this
+    profile, the reading against the role, the strengths and the
+    reservations side by side, the requirements with their evidence, the
+    interview points, and the triage's verdict, small and muted.
 - **Dialog** (a confirmation, a form): `size` by content (`sm` for a
   question, `lg` for a form with rows, `xl` for an upload with a table),
   `DialogHeader` with a title (a sentence only for a confirmation's

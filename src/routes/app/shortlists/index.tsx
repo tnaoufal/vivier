@@ -37,7 +37,6 @@ import {
   countByShortlist,
   filterUseful,
   matchesFilter,
-  totalOf,
   type ShortlistFilter,
   type StatusCounts,
 } from "@/lib/shortlists/tally";
@@ -208,13 +207,6 @@ function ShortlistLine({
   const nameOf = useMemberNamer();
   const countText = useCountText();
   const brief = row.briefs;
-  const total = totalOf(counts);
-  const profilesText =
-    total === 0
-      ? t("shortlists.profiles.none")
-      : total === 1
-        ? t("shortlists.profiles.one")
-        : t("shortlists.profiles.many", { count: total });
   const assignedText =
     assignees.length === 0
       ? t("shortlists.members.none")
@@ -237,7 +229,8 @@ function ShortlistLine({
           {brief && brief.status !== "open" ? <BriefStatusPill status={brief.status} size="sm" /> : null}
         </div>
         <p className="mt-0.5 text-meta text-muted-foreground" title={formatDateTime(locale, row.updated_at)}>
-          {t("shortlists.updated", { when: formatRelative(locale, row.updated_at) })} · {profilesText}
+          {/* No total here: the three count pills beside it already add up to it. */}
+          {t("shortlists.updated", { when: formatRelative(locale, row.updated_at) })}
         </p>
       </div>
       <ul className="flex flex-wrap items-center gap-1.5" aria-label={countsText}>

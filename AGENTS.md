@@ -26,7 +26,10 @@ stack and nothing else.
   bucket, off for an organisation with `organizations.show_photos`) and
   never reaches the model or any criterion. A career break, a gap or a
   period without a position is never read, scored or mentioned either
-  (such sentences are withheld).
+  (such sentences are withheld). The triage card (`triageCard()`,
+  `src/lib/briefs/triage.ts`) carries no identity: never the name, the
+  contact details, the place, a link, the photo, the summary or the CV
+  text, and the name and the place are taken out of its texts too.
 - Access is decided by `memberships.role` through RLS
   (`supabase/migrations`) and, in server functions, by `requireMember()`
   reading the access token the browser sends: never by anything else. The

@@ -1,15 +1,16 @@
 /**
  * /app/briefs/:briefId: the brief page. A slim sticky header carries the
  * title, the status, when it changed, the one filled action ("Lancer la
- * recherche", on both tabs, held while the criteria have unsaved rows,
- * the tooltip saying why) and, for administrators, a menu with the
- * deletion. Under it, two tabs kept in the URL (`?tab=matches|brief`;
- * by default the matches once the brief has an analysis, else the
- * role): "Correspondances" with the matches of the analysis on screen
- * as its count, and "Le poste" (the brief, its role profile and its
- * criteria in one readable column). Both panels stay mounted, so a
- * criterion being typed survives a look at the matches. Live through
- * realtime on this brief.
+ * recherche", on both tabs, held while the criteria or the role profile
+ * have unsaved edits, the tooltip saying why; once the team checked what
+ * the model wrote, it is also what starts the analysis) and, for
+ * administrators, a menu with the deletion. Under it, two tabs kept in
+ * the URL (`?tab=matches|brief`; by default the matches once the brief
+ * has an analysis, else the role): "Correspondances" with the matches
+ * of the analysis on screen as its count, and "Le poste" (the brief, its
+ * role profile and its criteria in one readable column). Both panels
+ * stay mounted, so a criterion being typed survives a look at the
+ * matches. Live through realtime on this brief.
  */
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -172,6 +173,9 @@ function BriefView({
   const canDelete = can("admin");
 
   const [criteriaDirty, setCriteriaDirty] = useState(false);
+  const [roleDirty, setRoleDirty] = useState(false);
+  // A search reads the saved brief: unsaved edits in either editor hold it.
+  const unsaved = criteriaDirty || roleDirty;
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -200,7 +204,7 @@ function BriefView({
   const analysis = useAnalysis({
     brief,
     canEdit,
-    criteriaDirty,
+    criteriaDirty: unsaved,
     modelAvailable,
     onStarted: showMatches,
   });
@@ -231,13 +235,13 @@ function BriefView({
     }
   }
 
-  // The one filled button of the page, unless the band asks to start the
-  // reading after the team's check: that state's own button is then the filled one.
+  // The one filled button of the page, in every state: after the team's
+  // check of the model's draft it starts the analysis (anew when they changed the job).
   const runLabel = analysis.starting ? t("briefs.search.running") : t("briefs.search.run");
   const runButton = canEdit ? (
     <Button
       type="button"
-      variant={analysis.band === "needsCheck" ? "outline" : "primary"}
+      variant="primary"
       icon={<Sparkles />}
       onClick={() => void analysis.run()}
       disabled={!analysis.canRun}
@@ -264,7 +268,7 @@ function BriefView({
         }
         actions={
           <>
-            {runButton && criteriaDirty ? (
+            {runButton && unsaved ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   {/* A disabled button takes no pointer: its wrapper carries the tooltip and the focus. */}
@@ -339,6 +343,7 @@ function BriefView({
               canEdit={canEdit}
               modelAvailable={modelAvailable}
               onSaved={onSaved}
+              onDirtyChange={setRoleDirty}
             />
             <CriteriaEditor
               brief={brief}

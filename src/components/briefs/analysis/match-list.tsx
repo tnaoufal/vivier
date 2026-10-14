@@ -1,10 +1,12 @@
 /**
  * A list of profiles of an analysis in one sheet of compact rows (the
- * matches, or the near profiles under their own small heading), in the
- * order given. Rows rise in once, in the order they land: a batch that
- * returns unfolds row by row, a row already on screen never moves
- * again, another analysis unfolds afresh. Before the first rows are
- * known, skeleton rows of the same height hold the place.
+ * matches, or the near profiles under their toggle), in the order
+ * given. Rows rise in once, in the order they land: a batch that
+ * returns unfolds row by row, a row already on screen never rises
+ * again (its entrance played, it drops the animation, so the tiering
+ * moving it cannot replay it), another analysis unfolds afresh. Before
+ * the first rows are known, skeleton rows of the same height hold the
+ * place.
  */
 import { useRef } from "react";
 
@@ -43,22 +45,44 @@ export function MatchList({
   onAdd: (result: MatchResult) => Promise<void>;
   className?: string | undefined;
 }) {
-  // The turn each row took when it landed: kept across renders so a row animates once.
-  const turns = useRef<{ key: string; map: Map<string, number> }>({ key: "", map: new Map() });
-  if (turns.current.key !== listKey) turns.current = { key: listKey, map: new Map() };
+  // The turn each row took when it landed, and the rows whose entrance
+  // already played: kept across renders so a row animates once. A
+  // browser restarts the animation of a node moved in the list, so a row
+  // that rose in loses the class before a batch can reorder it.
+  const turns = useRef<{ key: string; map: Map<string, number>; settled: Set<string> }>({
+    key: "",
+    map: new Map(),
+    settled: new Set(),
+  });
+  if (turns.current.key !== listKey)
+    turns.current = { key: listKey, map: new Map(), settled: new Set() };
   const next = arrivalIndexes(
     turns.current.map,
     results.map((result) => result.candidateId),
   );
   turns.current.map = next;
+  const settled = turns.current.settled;
+  // A row that left the list is forgotten, as its turn is: back later, it rises in again.
+  for (const id of settled) if (!next.has(id)) settled.delete(id);
 
   return (
     <ul className={cn("sheet divide-y divide-border overflow-hidden", className)}>
       {results.map((result, index) => (
         <li
           key={result.candidateId}
-          className="rise-in flex min-w-0 items-center transition-colors duration-fast ease-out-soft hover:bg-muted/50"
-          style={staggerVars(next.get(result.candidateId) ?? 0)}
+          className={cn(
+            "flex min-w-0 items-center transition-colors duration-fast ease-out-soft hover:bg-muted/50",
+            !settled.has(result.candidateId) && "rise-in",
+          )}
+          style={
+            settled.has(result.candidateId)
+              ? undefined
+              : staggerVars(next.get(result.candidateId) ?? 0)
+          }
+          onAnimationEnd={(event) => {
+            // The animations inside the row (the score ring, a pill) bubble up here: only the row's own entrance counts.
+            if (event.target === event.currentTarget) settled.add(result.candidateId);
+          }}
         >
           <MatchRow
             result={result}

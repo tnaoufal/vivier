@@ -6,9 +6,8 @@
  * synthesis, strengths, points of attention, the points the interview
  * should verify) under the assessment read only (the requirement table
  * with its evidence). A pill says where the words come from (the model
- * or the profiles) and one line that the sender answers for them. "Create the link"
- * stores the share; it sits in a footer of its own that the dialog
- * keeps below the scrolling sheets.
+ * or the profiles). "Create the link" stores the share; it sits in a
+ * footer of its own that the dialog keeps below the scrolling sheets.
  */
 import { useState } from "react";
 import { ChevronDown, FileText, Sparkles, Trash2 } from "lucide-react";
@@ -219,7 +218,6 @@ export function ReviewStep({ state, dispatch }: { state: DialogState; dispatch: 
           ) : (
             <Pill>{t("shares.review.fromProfiles")}</Pill>
           )}
-          <span className="text-muted-foreground">{t("shares.review.responsibility")}</span>
         </div>
         {state.modelFailed ? (
           <p className="text-sm text-caution-foreground dark:text-caution">{t("shares.review.modelFailed")}</p>

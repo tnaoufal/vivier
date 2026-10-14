@@ -234,17 +234,11 @@ export function ItemCard({
         </DropdownMenu>
       </div>
 
+      {/* The model's rank note stays in the drawer: on the card, the tier pill says where it ranks. */}
       {tier || assessment ? (
-        <div className="mt-3 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {tier ? <TierPill tier={tier} /> : null}
-            {assessment ? <DecisionPill decision={assessment.decision} /> : null}
-          </div>
-          {assessment?.rankNote ? (
-            <p className="text-meta text-muted-foreground">
-              {t("shortlists.item.rankNote", { note: assessment.rankNote })}
-            </p>
-          ) : null}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {tier ? <TierPill tier={tier} /> : null}
+          {assessment ? <DecisionPill decision={assessment.decision} /> : null}
         </div>
       ) : (
         <ScoreLine match={item.match} className="mt-3 block" />

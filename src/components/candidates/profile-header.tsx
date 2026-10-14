@@ -11,15 +11,29 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Check, Pencil, X } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
+import { InfoTip } from "@/components/app-shell/info-tip";
 import { Pill } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { currentPosition, displayName, metaLine } from "@/lib/candidates/format";
+import { confidenceTone, currentPosition, displayName, metaLine } from "@/lib/candidates/format";
 import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
-import type { CandidateRow } from "@/lib/db/types";
+import type { CandidateRow, ConfidenceMap } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
 
 import { ConfidenceHint } from "./confidence-pill";
+
+/** The read fields the sheet marks with a confidence pill (this head and profile-sections.tsx). */
+const HINTED_FIELDS: readonly (keyof ConfidenceMap)[] = [
+  "full_name",
+  "headline",
+  "languages",
+  "summary",
+  "experiences",
+  "education",
+  "skills",
+  "email",
+  "phone",
+];
 
 export function ProfileHeader({
   candidate,
@@ -42,6 +56,8 @@ export function ProfileHeader({
   const position = currentPosition(candidate);
   const meta = metaLine(locale, candidate);
   const languages = (candidate.languages ?? []).filter((language) => language?.name?.trim());
+  // One explanation for every "to check" pill of the page, beside the card's title, only when one shows.
+  const doubtful = HINTED_FIELDS.some((field) => confidenceTone(candidate.confidence[field]) !== "none");
 
   useEffect(() => {
     if (!editing) setValue(candidate.full_name ?? "");
@@ -103,6 +119,7 @@ export function ProfileHeader({
                 className="text-muted-foreground hover:text-ink"
               />
             ) : null}
+            {doubtful ? <InfoTip label={t("candidates.review")}>{t("candidates.confidence.help.check")}</InfoTip> : null}
           </div>
         )}
         <p className="mt-1 text-body text-ink">

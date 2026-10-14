@@ -4,7 +4,8 @@
  * time, from a compact card (the headline, the position held today,
  * four earlier ones, the years, the first degree, the first skills:
  * no name, no contact, no place, no link, no photo, no summary, no CV
- * text), the way a senior recruiter briefs a sourcer: is this person's
+ * text; the person's name, place and links are taken out of the texts
+ * too), the way a senior recruiter briefs a sourcer: is this person's
  * job this job, a neighbouring one worth reading, another one, or can
  * the card not tell. The profiles kept (yes, close, unknown: a card too
  * thin to judge is read in full rather than dropped, since silence is
@@ -27,13 +28,13 @@ import type {
 
 import { forbiddenSentence } from "./assessment";
 import { roleCriterion } from "./criteria";
-import { compareResults, containsWord, normalise } from "./matching";
+import { compareResults, containsWord, escapeRegExp, normalise } from "./matching";
 import { redactIdentity } from "./prompts";
 
 /** The most profiles one triage call reads. */
 export const TRIAGE_BATCH_MAX = 40;
-/** A verdict's reason is clipped here before it is stored. */
-export const TRIAGE_REASON_MAX = 160;
+/** A verdict's reason is clipped here before it is stored (the prompt asks for fifteen words). */
+export const TRIAGE_REASON_MAX = 120;
 /** How many triage calls the browser keeps in flight at once. */
 export const TRIAGE_CONCURRENCY = 4;
 /** The user message of a full batch stays under about this many characters: the cards shrink to fit. */
@@ -71,16 +72,24 @@ export const TRIAGE_PASSING: readonly TriageVerdict[] = TRIAGE_VERDICTS.filter(p
 // ---------------------------------------------------------------------
 
 /**
- * The columns the triage loads: the name is read only so redactIdentity()
- * can take it out of the texts; it never leaves. Never the contact
- * details, the place, the links, the photo, the summary or the CV text.
+ * The columns the triage loads: the name and the place are read only so
+ * the card's texts can be cleaned of them (a headline often ends with
+ * the city); neither ever leaves. Never the contact details, the links,
+ * the photo, the summary or the CV text.
  */
 export const TRIAGE_PROFILE_COLUMNS =
-  "id,full_name,headline,years_experience,experiences,education,skills";
+  "id,full_name,location,headline,years_experience,experiences,education,skills";
 
 export type TriageProfile = Pick<
   CandidateRow,
-  "id" | "full_name" | "headline" | "years_experience" | "experiences" | "education" | "skills"
+  | "id"
+  | "full_name"
+  | "location"
+  | "headline"
+  | "years_experience"
+  | "experiences"
+  | "education"
+  | "skills"
 >;
 
 export interface TriageCurrent {
@@ -132,13 +141,50 @@ function ended(end: unknown): boolean {
 }
 
 /**
+ * A web address, written whole or as a bare domain with a path
+ * ("linkedin.com/in/…"): a link never reaches the card. The bare form
+ * is read in lower case only, so a skill such as "ASP.NET/C#" stays.
+ */
+const LINK_PATTERNS = [
+  /\b(?:https?:\/\/|www\.)\S+/giu,
+  /\b[\w.-]+\.(?:com|fr|io|net|org|eu|be|ch|de|co|me|dev)\/\S*/gu,
+];
+/** A year (a degree's, a birth's): the card never carries one outside the dates of a position. */
+const YEAR_PATTERN = /(?<![\p{L}\p{N}])(?:19|20)\d{2}(?![\p{L}\p{N}])/gu;
+
+/**
+ * The patterns the person's place is taken out with: each part of the
+ * location as written ("Lyon, France" gives "Lyon" and "France"), whole
+ * words, whatever the case, without the numbers that go with it (a
+ * postcode, a district). A part of fewer than three letters stays.
+ */
+function placePatterns(location: string | null | undefined): RegExp[] {
+  if (typeof location !== "string") return [];
+  const patterns: RegExp[] = [];
+  for (const part of location.split(/[,;/|()–—]+|\s-\s/u)) {
+    const words = part.split(/[\s-]+/u).filter((word) => word.length > 0 && !/\d/u.test(word));
+    if (words.join("").length < 3) continue;
+    const body = words.map(escapeRegExp).join("[\\s-]+");
+    patterns.push(new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, "giu"));
+  }
+  return patterns;
+}
+
+/**
  * The compact card of one profile: every text redacted of the person's
- * name, e-mail and phone (redactIdentity), trimmed and clipped to
- * CARD_TEXT_MAX; the position held today apart from the earlier ones.
+ * name, e-mail and phone (redactIdentity), of their place (the parts of
+ * their location) and of any link, then trimmed and clipped to
+ * CARD_TEXT_MAX; the degree without its year; the position held today
+ * apart from the earlier ones.
  */
 export function triageCard(profile: TriageProfile, ref: string): TriageCard {
-  const text = (value: unknown, max: number = CARD_TEXT_MAX): string | null =>
-    typeof value === "string" ? clip(redactIdentity(value, profile.full_name), max) : null;
+  const places = placePatterns(profile.location);
+  const text = (value: unknown, max: number = CARD_TEXT_MAX): string | null => {
+    if (typeof value !== "string") return null;
+    let out = redactIdentity(value, profile.full_name);
+    for (const pattern of [...LINK_PATTERNS, ...places]) out = out.replace(pattern, " ");
+    return clip(out, max);
+  };
   const positions = (Array.isArray(profile.experiences) ? profile.experiences : []).flatMap(
     (entry) => {
       if (!entry || typeof entry !== "object") return [];
@@ -174,9 +220,8 @@ export function triageCard(profile: TriageProfile, ref: string): TriageCard {
     (entry) => entry && typeof entry.degree === "string" && entry.degree.trim(),
   );
   const school = degree ? text(degree.school) : null;
-  const education = degree
-    ? text(school ? `${degree.degree.trim()} — ${school}` : degree.degree)
-    : null;
+  const line = degree ? text(school ? `${degree.degree.trim()} — ${school}` : degree.degree) : null;
+  const education = line ? clip(line.replace(YEAR_PATTERN, " "), CARD_TEXT_MAX) : null;
   const skills: string[] = [];
   for (const skill of Array.isArray(profile.skills) ? profile.skills : []) {
     const value = text(skill);
@@ -249,9 +294,12 @@ function sameText(a: string, b: string): boolean {
  * brief has one (the title, the domain, the level, the equivalent
  * titles, the adjacent profiles, six missions and six must-haves at
  * most), else from the role criterion (its label, its definition) and
- * the brief's title. The role criterion's label joins the equivalent
- * titles when it names the job otherwise than the profile does, so the
- * guard looks for both names.
+ * the brief's title. With a profile, the profile alone names the job:
+ * the role criterion's label keeps the name the job had when it was
+ * first written, and a title the team corrected in the profile since
+ * must not come back as "the same job under another name" (to the model
+ * or to the guard). The team adds a synonym to the profile's equivalent
+ * titles.
  */
 export function triageRoleBrief(brief: TriageBriefSource): TriageRoleBrief {
   const role = roleCriterion(brief.criteria);
@@ -260,18 +308,11 @@ export function triageRoleBrief(brief: TriageBriefSource): TriageRoleBrief {
   const profile = brief.role_profile;
   if (profile) {
     const title = clip(profile.title, ROLE_TEXT_MAX) ?? roleLabel ?? briefTitle ?? "";
-    const equivalentTitles = clipList(profile.equivalentTitles, ROLE_LIST_MAX, ROLE_TEXT_MAX);
-    if (
-      roleLabel &&
-      !sameText(roleLabel, title) &&
-      !equivalentTitles.some((entry) => sameText(entry, roleLabel))
-    )
-      equivalentTitles.unshift(roleLabel);
     return {
       title,
       domain: clip(profile.domain, ROLE_TEXT_MAX),
       seniority: profile.seniority,
-      equivalentTitles: equivalentTitles.slice(0, ROLE_LIST_MAX),
+      equivalentTitles: clipList(profile.equivalentTitles, ROLE_LIST_MAX, ROLE_TEXT_MAX),
       adjacentProfiles: clipList(profile.adjacentProfiles, ROLE_LIST_MAX, ROLE_TEXT_MAX),
       missions: clipList(profile.missions, ROLE_MISSIONS_MAX, ROLE_TEXT_MAX),
       mustHaves: clipList(profile.mustHaves, ROLE_MUST_HAVES_MAX, ROLE_TEXT_MAX),
@@ -302,16 +343,16 @@ export function triageSystemPrompt(): string {
     'Answer with JSON only: {"verdicts":[{"ref":"c1","verdict":"yes|close|no|unknown","reason":"..."}]}, exactly one entry per card, with its ref exactly as given.',
     "role is the job: title is the job as the team names it; domain, missions, equivalentTitles and mustHaves say what it is; adjacentProfiles are the neighbouring backgrounds the team would still read; definition, when present, is the team's own definition of the job.",
     "Each card is one profile: headline (how the person presents themselves), current (the position held today: title | company | since when), previous (earlier positions, newest first: title | company | period), years (total years of experience as stated), education (the first degree), skills (the first ones listed). A field the card leaves out is not stated, never a lack.",
-    "Judge the job the person actually does or did: the missions, the context, the thread of the career. Never judge the wording of a title alone.",
+    "Judge the job the person actually does or did from the whole card: the headline, the positions and the thread of the career, the skills. Never judge the wording of a title alone.",
     '- The same job carries different names across companies, countries and languages: "Business Developer", "Chargé d\'affaires", "Account Executive" and "Ingénieur commercial" can all be the same job. The equivalent titles are examples, not a closed list.',
     '- A shared word does not make the same job: "Business Developer" is not "Développeur mobile"; "Chef de projet IT" is not "Directeur de projets industriels".',
     '- "yes": the current position, or the main thread of the career, is this job or the same job under another name.',
     '- "close": an adjacent background listed in role.adjacentProfiles, this job held earlier in the career, or the same function in a neighbouring domain: a profile a senior recruiter would still read in full.',
     '- "no": another job.',
-    '- "unknown": the card does not say enough to judge (no title, no position).',
+    '- "unknown": the card does not say enough to judge: no title, no position, or only generic titles (Consultant, Chef de projet, Chargé de mission, Ingénieur, Manager, a title specific to one company) that neither the headline, the other positions nor the skills tie to a job. Such a card is "unknown", never "no".',
     'Not judged here: the seniority, the years, the location, the languages, the availability, the nice-to-haves and the detail of the must-haves; later stages read the full profile for them. A junior or a very senior person who does this job is "yes".',
     'When you hesitate between "close" and "no", answer "close": a profile you keep is only read, one you drop is never seen.',
-    "reason: at most 25 words, in the language of the brief (the language of role.title and role.missions), naming the title or the mission that decides; a fact, never an opinion, no markdown.",
+    "reason: at most 15 words, in the language of the brief (the language of role.title and role.missions), naming the title or the mission that decides; a fact, never an opinion, no markdown.",
     "Never use, infer or mention age, date of birth, gender, origin, nationality, ethnicity, family situation, pregnancy, health, disability, religion, union membership, political opinion, sexual orientation, appearance or any other protected characteristic; never a career break, a gap or a period without a position.",
   ].join("\n");
 }
@@ -447,13 +488,34 @@ function foldTitle(text: string | null | undefined): string {
     .trim();
 }
 
-/** The phrases the guard looks for: the job's title and its equivalent titles, normalised, two characters or more, each once. */
+/**
+ * What a job ad adds to a title and no card carries: the gender markers
+ * ("H/F", "(F/H/X)", "m/w/d"), the feminine endings in brackets
+ * ("Chargé(e)", "Vendeur(se)") and the contract ("CDI", "CDD",
+ * "Intérim", "Alternance", "Freelance").
+ */
+const TITLE_MARKERS = [
+  /\(\s*[hfmwdx](?:\s*\/\s*[hfmwdx]){0,2}\s*\)/giu,
+  /(?<![\p{L}\p{N}])[hfmw](?:\s*\/\s*[hfmwdx]){1,2}(?![\p{L}\p{N}])/giu,
+  /\(\s*(?:e|es|ne|nes|le|les|se|ses|euse|euses|rice|rices|ère|ères)\s*\)/giu,
+  /(?<![\p{L}\p{N}])(?:cdi|cdd|int[eé]rim|alternance|freelance)(?![\p{L}\p{N}])/giu,
+];
+
+function titleCore(title: string): string {
+  return TITLE_MARKERS.reduce((text, pattern) => text.replace(pattern, " "), title);
+}
+
+/**
+ * The phrases the guard looks for: the job's title and its equivalent
+ * titles without what a job ad adds to them (titleCore), normalised,
+ * two characters or more, each once.
+ */
 export function triageRoleTerms(
   role: Pick<TriageRoleBrief, "title" | "equivalentTitles">,
 ): string[] {
   const out: string[] = [];
   for (const title of [role.title, ...role.equivalentTitles]) {
-    const term = foldTitle(title);
+    const term = foldTitle(titleCore(title));
     if (term.length >= ROLE_TERM_MIN && !out.includes(term)) out.push(term);
   }
   return out;

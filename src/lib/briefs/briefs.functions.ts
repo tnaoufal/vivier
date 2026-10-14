@@ -122,6 +122,8 @@ import {
   triageRoleTerms,
   triageSystemPrompt,
   type ModelTriageAnswer,
+  type TriageEntry,
+  type TriageOutcome,
   type TriageProfile,
 } from "./triage";
 
@@ -139,9 +141,22 @@ const ROLE_PROFILE_TOKENS = 1600;
 const CHALLENGE_TOKENS = 400;
 /** One line per candidate of the group. */
 const RANKING_TOKENS_PER_CANDIDATE = 120;
-/** A triage answer: the envelope, then one short verdict with its reason per card. */
-const TRIAGE_TOKENS_BASE = 400;
-const TRIAGE_TOKENS_PER_CARD = 70;
+/**
+ * A triage answer: the envelope, then one verdict per card with a reason
+ * of fifteen words at most (about 25 to 40 tokens in French, 60 to 80
+ * with the JSON around it, more when the model indents it); a budget
+ * below that cuts the JSON and fails the whole batch.
+ */
+const TRIAGE_TOKENS_BASE = 600;
+const TRIAGE_TOKENS_PER_CARD = 110;
+/**
+ * The most model calls one triage batch makes: the batch, then the
+ * halves of a part the model could not answer, down to the card that
+ * fails (six levels for forty cards, two calls each).
+ */
+const TRIAGE_CALLS_PER_BATCH = 16;
+/** The most unread searches of a brief one run takes away. */
+const UNREAD_SEARCHES_MAX = 10;
 /** The most rows one read of search_triage asks for (PostgREST's usual page). */
 const TRIAGE_PAGE = 1000;
 /** The most ids one query string names (planLots: the gateway refuses a URL past 16 KB). */
@@ -765,6 +780,42 @@ async function roleFromProfile(
   return role;
 }
 
+/**
+ * The member's earlier whole-pool searches of the brief that nothing was
+ * read of (no verdict, no result): the one left at the check of what the
+ * model wrote, for a new search on the job the team saved, or one
+ * stopped before its first batch landed. They go when the member runs a
+ * new search, so the list of analyses holds none that never started;
+ * a colleague's are left alone (their tab may be starting one). Best
+ * effort: a failure is logged and the new search stands.
+ */
+async function dropUnreadSearches(
+  client: ServiceClient,
+  orgId: string,
+  briefId: string,
+  userId: string,
+  keep: string,
+): Promise<void> {
+  const org = encodeURIComponent(orgId);
+  try {
+    const rows = await client.select<Pick<SearchRow, "id">>(
+      `searches?select=id&org_id=eq.${org}&brief_id=eq.${encodeURIComponent(briefId)}&ran_by=eq.${encodeURIComponent(userId)}&method=eq.triage&result_count=eq.0&id=neq.${encodeURIComponent(keep)}&order=created_at.desc&limit=${UNREAD_SEARCHES_MAX}`,
+    );
+    let dropped = 0;
+    for (const row of rows) {
+      const read = await client.count(
+        `search_triage?select=candidate_id&org_id=eq.${org}&search_id=eq.${encodeURIComponent(row.id)}&verdict=not.is.null`,
+      );
+      if (read > 0) continue;
+      await client.delete("searches", { id: row.id, org_id: orgId });
+      dropped += 1;
+    }
+    if (dropped) log("unread_searches_dropped", { briefId, dropped });
+  } catch (error) {
+    log("unread_searches_failed", { briefId, error: String(error).slice(0, 300) });
+  }
+}
+
 export const runSearch = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => briefInput.parse(data))
   .handler(async ({ data }): Promise<SearchResult> => {
@@ -824,9 +875,9 @@ export const runSearch = createServerFn({ method: "POST" })
     // candidate, in one statement) and the browser drives its triage,
     // then the promotion of the profiles kept into the results. Nothing
     // is retrieved, embedded or scored here. A brief that names no job
-    // (no role, no profile) has nothing to sort on and takes the path
-    // below.
-    if (modelConfigured() && (roleCriterion(brief.criteria) || brief.role_profile)) {
+    // has nothing to sort on, and one without criteria nothing to read
+    // the profiles kept against: both take the path below.
+    if (modelConfigured() && brief.criteria.length > 0 && triageRoleBrief(brief).title) {
       const inserted = await client.insert<Pick<SearchRow, "id" | "created_at">>("searches", [
         {
           org_id: member.orgId,
@@ -866,6 +917,7 @@ export const runSearch = createServerFn({ method: "POST" })
           );
         throw error;
       }
+      await dropUnreadSearches(client, member.orgId, brief.id, member.userId, saved.id);
       console.info(
         "[briefs]",
         JSON.stringify({
@@ -1045,14 +1097,34 @@ async function leaveSnapshot(
 }
 
 /**
+ * True for a failure a smaller batch may get past: the model answered
+ * no valid JSON (cut at its length, or turned away by a filter), or the
+ * call timed out or was refused for what it carried (400, 413). A
+ * failure of the provider (its rate, the key, a server error), of the
+ * setup or of the rate limit is the same for any batch: it is thrown
+ * as it is.
+ */
+function failedOnContent(error: unknown): boolean {
+  if (error instanceof AppError) return false;
+  const status =
+    typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
+  return typeof status !== "number" || status === 400 || status === 413;
+}
+
+/**
  * One batch of the triage: the profiles of the snapshot that no model
  * read yet, as compact cards (no name, no contact, no place, no link,
  * no photo, no summary, no CV text), in one call; the answer bound by
  * enforceTriage() (one verdict per card, an unanswered card unknown, a
  * reason naming a protected characteristic withheld, a "no" on a card
  * that carries the job's name read anyway) and written in one statement
- * (record_triage). A model failure throws: the browser sends the batch
- * once more at the end.
+ * (record_triage). A batch the model cannot answer is read again in
+ * halves, down to the card that fails, which is settled "unknown" and
+ * read in full (a batch that fails the same way on every try would
+ * otherwise stay unread for good); each part read is written at once.
+ * When both halves fail before any part went through, the model is
+ * failing, not a card: the call throws, what was written stays, and the
+ * browser sends the batch once more at the end.
  */
 export const triageCandidates = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => triageInput.parse(data))
@@ -1063,7 +1135,7 @@ export const triageCandidates = createServerFn({ method: "POST" })
     const client = db();
     const brief = await loadBrief(client, member.orgId, data.briefId);
     const search = await loadTriageSearch(client, member.orgId, brief.id, data.searchId);
-    // The job as the search's criteria and the brief's profile name it today.
+    // The job as the brief's profile names it today, else as the search's role criterion does.
     const role = triageRoleBrief({
       title: brief.title,
       criteria: search.criteria,
@@ -1111,32 +1183,91 @@ export const triageCandidates = createServerFn({ method: "POST" })
     if (!profiles.length) return answer();
 
     const entries = triageEntries(profiles);
-    const reply = await completeJson<ModelTriageAnswer>({
-      system: triageSystemPrompt(),
-      user: JSON.stringify(
-        triagePayload(
-          role,
-          entries.map((entry) => entry.card),
+    const terms = triageRoleTerms(role);
+    const outcomes = new Map<string, TriageOutcome>();
+    let calls = 0;
+    let answered = false;
+    let unanswered = 0;
+    let lastError: unknown = null;
+    /** The verdicts of a part in one statement; the model is null for a card no model answered. */
+    const write = async (
+      part: ReadonlyMap<string, TriageOutcome>,
+      model: string | null,
+    ): Promise<void> => {
+      await client.rpc<number | null>("record_triage", {
+        p_org: member.orgId,
+        p_search: search.id,
+        p_model: model,
+        p_rows: [...part].map(([candidateId, outcome]) => ({
+          candidate_id: candidateId,
+          verdict: outcome.verdict,
+          reason: outcome.reason,
+        })),
+      });
+      for (const [candidateId, outcome] of part) {
+        outcomes.set(candidateId, outcome);
+        settled.add(candidateId);
+      }
+    };
+    /** One call on a part of the batch (its cards keep their refs): true once its verdicts are written. */
+    const read = async (part: readonly TriageEntry[]): Promise<boolean> => {
+      if (calls >= TRIAGE_CALLS_PER_BATCH)
+        throw lastError instanceof Error ? lastError : new Error("triage_calls_exhausted");
+      calls += 1;
+      const reply = await completeJson<ModelTriageAnswer>({
+        system: triageSystemPrompt(),
+        user: JSON.stringify(
+          triagePayload(
+            role,
+            part.map((entry) => entry.card),
+          ),
         ),
-      ),
-      schema: triageAnswer,
-      temperature: 0,
-      maxTokens: TRIAGE_TOKENS_BASE + TRIAGE_TOKENS_PER_CARD * entries.length,
-      model: settings().llm.assessmentModel,
-    });
-    await recordUsage(member.orgId, "triage", reply.usage);
-    const outcomes = enforceTriage(entries, reply.value, triageRoleTerms(role));
-    await client.rpc<number | null>("record_triage", {
-      p_org: member.orgId,
-      p_search: search.id,
-      p_model: reply.usage.model,
-      p_rows: [...outcomes].map(([candidateId, outcome]) => ({
-        candidate_id: candidateId,
-        verdict: outcome.verdict,
-        reason: outcome.reason,
-      })),
-    });
-    for (const candidateId of outcomes.keys()) settled.add(candidateId);
+        schema: triageAnswer,
+        temperature: 0,
+        maxTokens: TRIAGE_TOKENS_BASE + TRIAGE_TOKENS_PER_CARD * part.length,
+        model: settings().llm.assessmentModel,
+      }).catch((error: unknown) => {
+        if (!failedOnContent(error)) throw error;
+        lastError = error;
+        log("triage_part_failed", {
+          searchId: search.id,
+          cards: part.length,
+          error: String(error).slice(0, 300),
+        });
+        return null;
+      });
+      if (!reply) return false;
+      answered = true;
+      await recordUsage(member.orgId, "triage", reply.usage);
+      await write(enforceTriage(part, reply.value, terms), reply.usage.model);
+      return true;
+    };
+    /** A part the model could not answer: one card is settled unknown, a larger part read again in halves. */
+    const recover = async (part: readonly TriageEntry[]): Promise<void> => {
+      const [only] = part;
+      if (part.length === 1 && only) {
+        await write(
+          new Map([[only.candidateId, { verdict: "unknown", reason: null, guarded: false }]]),
+          null,
+        );
+        unanswered += 1;
+        return;
+      }
+      const half = Math.ceil(part.length / 2);
+      const halves = [part.slice(0, half), part.slice(half)];
+      // Both halves in flight at once; a refusal of one is thrown once the other has landed.
+      const tries = await Promise.allSettled(halves.map((piece) => read(piece)));
+      const missed: TriageEntry[][] = [];
+      for (const [index, attempt] of tries.entries()) {
+        if (attempt.status === "rejected") throw attempt.reason;
+        const piece = halves[index];
+        if (!attempt.value && piece) missed.push(piece);
+      }
+      if (missed.length === halves.length && !answered)
+        throw lastError instanceof Error ? lastError : new Error("triage_failed");
+      for (const piece of missed) await recover(piece);
+    };
+    if (!(await read(entries))) await recover(entries);
     const tally = countTriage(outcomes.values());
     counts.yes = tally.yes;
     counts.close = tally.close;
@@ -1154,6 +1285,8 @@ export const triageCandidates = createServerFn({ method: "POST" })
         no: tally.no,
         unknown: tally.unknown,
         guarded: tally.guarded,
+        calls,
+        unanswered,
       }),
     );
     return answer();
@@ -1205,8 +1338,10 @@ async function readKeptTriage(
  * search's results, each scored by the deterministic pass and carrying
  * its triage verdict and reason, yes first, then close, then unknown,
  * then the score; only the ones not there yet, so running it twice
- * adds nothing, and a profile that left the pool since is left out.
- * No model call: the full reading comes next.
+ * adds nothing. A profile that left the pool since is left out, and
+ * out of the snapshot (as the triage does), so the profiles kept and
+ * the results stay the same set. No model call: the full reading comes
+ * next.
  */
 export const promoteTriage = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => searchInput.parse(data))
@@ -1235,6 +1370,12 @@ export const promoteTriage = createServerFn({ method: "POST" })
         });
       }
     }
+    // A profile kept that left the pool before its promotion leaves the
+    // snapshot too: its passing verdict would otherwise count among the
+    // kept for good, and the analysis would read as unfinished on every visit.
+    const added = new Set(entries.map((entry) => entry.candidateId));
+    const gone = fresh.filter((id) => !added.has(id));
+    if (gone.length) await leaveSnapshot(client, member.orgId, search.id, gone);
     entries.sort(triageOrder);
     for (let start = 0; start < entries.length; start += MERGE_CHUNK)
       await mergeResults(
@@ -1252,7 +1393,7 @@ export const promoteTriage = createServerFn({ method: "POST" })
         searchId: search.id,
         kept: kept.size,
         promoted: entries.length,
-        left: fresh.length - entries.length,
+        left: gone.length,
       }),
     );
     return {

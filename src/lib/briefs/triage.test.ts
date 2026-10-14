@@ -29,6 +29,7 @@ function profile(id: string, extra: Partial<TriageProfile> = {}): TriageProfile 
   return {
     id,
     full_name: null,
+    location: null,
     headline: null,
     years_experience: null,
     experiences: [],
@@ -78,31 +79,24 @@ const role: BriefCriterion = {
 describe("the constants", () => {
   it("bound a batch, a reason, the browser's pool and the payload", () => {
     expect(TRIAGE_BATCH_MAX).toBe(40);
-    expect(TRIAGE_REASON_MAX).toBe(160);
+    expect(TRIAGE_REASON_MAX).toBe(120);
     expect(TRIAGE_CONCURRENCY).toBe(4);
     expect(TRIAGE_PAYLOAD_MAX).toBe(16000);
   });
 
-  it("load no contact, no place, no link, no photo, no summary, no CV text", () => {
+  it("load no contact, no link, no photo, no summary, no CV text (the name and the place only to take them out)", () => {
     const columns = TRIAGE_PROFILE_COLUMNS.split(",");
     expect(columns).toEqual([
       "id",
       "full_name",
+      "location",
       "headline",
       "years_experience",
       "experiences",
       "education",
       "skills",
     ]);
-    for (const column of [
-      "email",
-      "phone",
-      "location",
-      "links",
-      "photo_path",
-      "summary",
-      "search_text",
-    ])
+    for (const column of ["email", "phone", "links", "photo_path", "summary", "search_text"])
       expect(columns).not.toContain(column);
   });
 });
@@ -237,6 +231,27 @@ describe("triageCard", () => {
     expect(many.skills[11]).toBe("skill 11");
   });
 
+  it("takes the person's place, the links and the degree's year out of every text", () => {
+    const placed = triageCard(
+      profile("p7", {
+        location: "Lyon (69), France",
+        headline: "Commercial B2B | Lyon | linkedin.com/in/jdupont https://jdupont.fr/cv",
+        experiences: [experience("Business Developer", "Acme France", "2020", null)],
+        education: [{ degree: "Master Commerce 2012", school: "IAE Lyon", year: "2012" }],
+        skills: ["ASP.NET/C#", "www.portfolio.example"],
+      }),
+      "c7",
+    );
+    const json = JSON.stringify(placed);
+    for (const leak of ["Lyon", "France", "linkedin", "jdupont", "https", "2012", "www."])
+      expect(json).not.toContain(leak);
+    expect(placed.headline).toBe("Commercial B2B | |");
+    expect(placed.current).toEqual({ title: "Business Developer", company: "Acme", since: "2020" });
+    expect(placed.education).toBe("Master Commerce — IAE");
+    // A skill written like a domain in capitals is not a link.
+    expect(placed.skills).toEqual(["ASP.NET/C#"]);
+  });
+
   it("answers an empty card for an empty profile", () => {
     expect(triageCard(profile("p6"), "c6")).toEqual({
       ref: "c6",
@@ -260,7 +275,7 @@ describe("triageEntries", () => {
 });
 
 describe("triageRoleBrief and triageRoleTerms", () => {
-  it("reads the role profile, six missions and six must-haves at most, the role's label among the titles", () => {
+  it("reads the role profile alone, six missions and six must-haves at most", () => {
     const brief = triageRoleBrief({
       title: "Business Developer H/F",
       criteria: [role],
@@ -271,22 +286,18 @@ describe("triageRoleBrief and triageRoleTerms", () => {
     expect(brief.seniority).toBe("confirmed");
     expect(brief.missions).toHaveLength(6);
     expect(brief.mustHaves).toHaveLength(6);
-    expect(brief.equivalentTitles).toEqual([
-      "Commercial grands comptes",
-      "Chargé d'affaires",
-      "Account Executive",
-      "Ingénieur commercial",
-    ]);
+    // The role's label (the name the job had before the team corrected the profile) is no equivalent title.
+    expect(brief.equivalentTitles).toEqual(roleProfile.equivalentTitles);
+    expect(JSON.stringify(brief)).not.toContain("Commercial grands comptes");
     expect(brief.adjacentProfiles).toEqual(["Account manager : fidélise plus qu'il ne conquiert"]);
     expect(brief.definition).toBeNull();
     expect(JSON.stringify(brief)).not.toContain("Ténacité");
-    // The same name as the profile's is not repeated.
-    const same = triageRoleBrief({
-      title: "x",
-      criteria: [{ ...role, label: "BUSINESS developer" }],
-      role_profile: roleProfile,
-    });
-    expect(same.equivalentTitles).toEqual(roleProfile.equivalentTitles);
+    // A profile without a title takes the role's label, then the brief's title.
+    const untitled = { ...roleProfile, title: "" };
+    expect(triageRoleBrief({ title: "x", criteria: [role], role_profile: untitled }).title).toBe(
+      "Commercial grands comptes",
+    );
+    expect(triageRoleBrief({ title: "x", criteria: [], role_profile: untitled }).title).toBe("x");
   });
 
   it("reads the role criterion and the brief's title when there is no profile", () => {
@@ -318,6 +329,20 @@ describe("triageRoleBrief and triageRoleTerms", () => {
         equivalentTitles: ["CHARGE D'AFFAIRES", "Ingénieur-commercial", "R", " RH ", ""],
       }),
     ).toEqual(["charge d'affaires", "ingenieur commercial", "rh"]);
+  });
+
+  it("leaves out the gender markers, the bracketed endings and the contract a job ad adds", () => {
+    const terms = triageRoleTerms({
+      title: "Comptable H/F",
+      equivalentTitles: [
+        "Chargé(e) d'affaires (F/H/X)",
+        "Business Developer - CDI",
+        "Vendeur(se) m/w/d",
+      ],
+    });
+    expect(terms).toEqual(["comptable", "charge d'affaires", "business developer", "vendeur"]);
+    const [entry] = triageEntries([profile("x", { headline: "Comptable confirmée" })]);
+    expect(entry && carriesRoleName(entry.card, terms)).toBe(true);
   });
 });
 
@@ -563,7 +588,10 @@ describe("triageSystemPrompt", () => {
     expect(prompt).toContain('"Business Developer" is not "Développeur mobile"');
     expect(prompt).toContain('"Chef de projet IT" is not "Directeur de projets industriels"');
     expect(prompt).toContain("adjacentProfiles");
-    expect(prompt).toContain("at most 25 words");
+    expect(prompt).toContain("at most 15 words");
+    // A thin card is read in full, never dropped.
+    expect(prompt).toContain("generic");
+    expect(prompt).toContain('never "no"');
     expect(prompt).toContain("protected characteristic");
     expect(prompt).toMatch(/Not judged here: the seniority, the years, the location/);
   });

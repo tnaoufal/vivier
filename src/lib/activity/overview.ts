@@ -6,7 +6,7 @@
  * stay in the database, they weigh megabytes); the
  * shortlist's counts come from its items' three small columns (the
  * status the team gave, the decision and the tier the model gave), so
- * the card can say "3 to present, 1 retained" without loading a board.
+ * the card can say "3 proposed (model), 1 retained" without loading a board.
  * The pure parts (one search per brief, the counts) are tested apart.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";

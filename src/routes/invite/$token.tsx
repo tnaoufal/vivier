@@ -1,8 +1,9 @@
 /**
  * The page an invitation link opens, outside the app shell (no
  * organisation is loaded here): one centred card with the organisation
- * and the role (a pill and its few words), a sign-in button when signed
- * out, the accept button when signed in. Accepting runs accept_invitation() in the database,
+ * and the role (a pill, what it may do behind an info icon), a sign-in
+ * button when signed out, the accept button when signed in. Accepting
+ * runs accept_invitation() in the database,
  * which checks the token, its expiry and that the address matches the
  * account; a refusal is a sentence in the card, never a toast.
  */
@@ -10,6 +11,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ShieldAlert, UserPlus } from "lucide-react";
 
+import { InfoTip } from "@/components/app-shell/info-tip";
 import { Pill } from "@/components/app-shell/pill";
 import { BrandIcon } from "@/components/brand-mark";
 import { PublicFrame } from "@/components/public-frame";
@@ -130,7 +132,8 @@ function InvitePage() {
           <Pill tone="primary" dot>
             {t(role.name)}
           </Pill>
-          <span className="text-meta text-muted-foreground">{t(role.help)}</span>
+          {/* What the role may do, on demand: the pill alone says which role it is. */}
+          <InfoTip label={t(role.name)}>{t(role.help)}</InfoTip>
         </div>
         {error ? (
           <p role="alert" className="fade-in mt-6 rounded-md border border-negative/30 bg-negative/8 px-3 py-2 text-sm text-negative">

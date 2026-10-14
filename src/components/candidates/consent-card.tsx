@@ -162,14 +162,15 @@ export function ConsentCard({
               disabled={!canEdit || busy}
             />
           </div>
-          <p className="text-meta text-muted-foreground">
-            {retentionDueAt
-              ? t("candidates.consent.retention", {
-                  date: formatDate(locale, retentionDueAt),
-                  months: retentionMonths,
-                })
-              : t("candidates.consent.retentionUnknown")}
-          </p>
+          {/* An unknown date is already said by the summary above: the rule shows only beside a known one. */}
+          {retentionDueAt ? (
+            <p className="text-meta text-muted-foreground">
+              {t("candidates.consent.retention", {
+                date: formatDate(locale, retentionDueAt),
+                months: retentionMonths,
+              })}
+            </p>
+          ) : null}
         </div>
       ) : null}
       <ConfirmDialog

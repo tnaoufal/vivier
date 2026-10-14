@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type {
   Assessment,
+  BriefCriterion,
   BriefRow,
   CriterionResult,
   MatchResult,
@@ -23,6 +24,7 @@ import {
   firstSentence,
   funnelOf,
   isBriefFilter,
+  jobChangedSince,
   latestPerBrief,
   matchesOf,
   mergeResults,
@@ -179,6 +181,7 @@ describe("analysisOfRow", () => {
     org_id: "o1",
     brief_id: "b1",
     created_at: "2026-10-03T10:00:00+00:00",
+    method: "triage",
     results: [
       result("a", assessed("fit", { tier: "A" })),
       result("b", assessed("no_fit")),
@@ -186,12 +189,13 @@ describe("analysisOfRow", () => {
     ],
   };
 
-  it("reads the brief, the search and what it counted off a realtime row", () => {
+  it("reads the brief, the search, its method and what it counted off a realtime row", () => {
     expect(analysisOfRow(row)).toEqual({
       briefId: "b1",
       analysis: {
         searchId: "s1",
         createdAt: "2026-10-03T10:00:00+00:00",
+        method: "triage",
         total: 3,
         assessed: 2,
         present: 1,
@@ -213,6 +217,7 @@ describe("analysisOfRow", () => {
       analysis: {
         searchId: "s1",
         createdAt: "2026-10-03T10:00:00+00:00",
+        method: "triage",
         total: 140,
         assessed: 96,
         present: 12,
@@ -224,10 +229,17 @@ describe("analysisOfRow", () => {
     expect(analysisOfRow({ ...row, result_count: 3, assessed_count: null })?.analysis).toEqual({
       searchId: "s1",
       createdAt: "2026-10-03T10:00:00+00:00",
+      method: "triage",
       total: 3,
       assessed: 2,
       present: 1,
     });
+  });
+
+  it("reads a missing or unknown method as the text path, and keeps a hybrid one", () => {
+    expect(analysisOfRow({ ...row, method: undefined })?.analysis.method).toBe("text");
+    expect(analysisOfRow({ ...row, method: "vector" })?.analysis.method).toBe("text");
+    expect(analysisOfRow({ ...row, method: "hybrid" })?.analysis.method).toBe("hybrid");
   });
 
   it("answers null when realtime left the results out, or the row has no brief", () => {
@@ -240,7 +252,7 @@ describe("analysisOfRow", () => {
 
 describe("withAnalysis", () => {
   function latest(searchId: string, createdAt: string, present: number): LatestAnalysis {
-    return { searchId, createdAt, total: 10, assessed: 10, present };
+    return { searchId, createdAt, method: "triage", total: 10, assessed: 10, present };
   }
   const known = new Map([["b1", latest("s2", "2026-10-03T10:00:00Z", 1)]]);
 
@@ -260,6 +272,49 @@ describe("withAnalysis", () => {
 
   it("keeps the newest when an older search is patched late", () => {
     expect(withAnalysis(known, "b1", latest("s1", "2026-10-02T10:00:00Z", 7))).toBe(known);
+  });
+});
+
+describe("jobChangedSince", () => {
+  function criterion(id: string, kind: BriefCriterion["kind"], value: string): BriefCriterion {
+    return { id, kind, label: id, value, required: kind === "role", weight: 3 };
+  }
+  const role = criterion("role", "role", "finance d'entreprise");
+  const skill = criterion("skill", "skill", "contrôle de gestion");
+
+  it("is false while the brief holds the criteria the search took and its profile defines the same role", () => {
+    expect(
+      jobChangedSince({ criteria: [role, skill], role_profile: profile("finance d'entreprise") }, [
+        role,
+        skill,
+      ]),
+    ).toBe(false);
+    expect(jobChangedSince({ criteria: [skill], role_profile: null }, [skill])).toBe(false);
+  });
+
+  it("is true once the team saved other criteria", () => {
+    expect(
+      jobChangedSince({ criteria: [role, { ...skill, value: "audit" }], role_profile: null }, [
+        role,
+        skill,
+      ]),
+    ).toBe(true);
+    expect(jobChangedSince({ criteria: [role], role_profile: null }, [role, skill])).toBe(true);
+  });
+
+  it("is true once the profile defines the role otherwise than the search did", () => {
+    expect(
+      jobChangedSince({ criteria: [role, skill], role_profile: profile("audit interne") }, [
+        role,
+        skill,
+      ]),
+    ).toBe(true);
+  });
+
+  it("ignores a profile without a role criterion to rewrite", () => {
+    expect(
+      jobChangedSince({ criteria: [skill], role_profile: profile("audit interne") }, [skill]),
+    ).toBe(false);
   });
 });
 

@@ -203,11 +203,14 @@ export function RoleProfileCard({
   canEdit,
   modelAvailable,
   onSaved,
+  onDirtyChange,
 }: {
   brief: BriefRow;
   canEdit: boolean;
   modelAvailable: ModelAvailability;
   onSaved: () => Promise<void> | void;
+  /** Told whether the editor holds typed changes not saved yet: a search reads the saved profile. */
+  onDirtyChange?: ((dirty: boolean) => void) | undefined;
 }) {
   const { t, locale } = useI18n();
   const profile = brief.role_profile;
@@ -219,25 +222,33 @@ export function RoleProfileCard({
   // A fresh row (a colleague's edit, the first analysis) closes an editor
   // that was not touched yet; typed changes stay until saved or cancelled.
   const touched = useRef(false);
+  // The same fact as `touched`, as state, for the page: its run button waits while it holds.
+  const [dirty, setDirty] = useState(false);
   useEffect(() => {
     if (!touched.current) setDraft(null);
   }, [brief.id, brief.updated_at]);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   const editing = draft !== null;
   const locked = !canEdit || busy || regenerating;
 
   function startEditing() {
     touched.current = false;
+    setDirty(false);
     setDraft(draftOf(profile ?? emptyRoleProfile(brief.title)));
   }
 
   function closeEditor() {
     touched.current = false;
+    setDirty(false);
     setDraft(null);
   }
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     touched.current = true;
+    setDirty(true);
     setDraft((current) => (current ? { ...current, [key]: value } : current));
   }
 

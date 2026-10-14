@@ -7,7 +7,7 @@ provider accounts. Work it in one block before the first real CV.
 
 - [ ] Create the project `vivier_prod` in `eu-west-1` (or Frankfurt); note the
       project ref, the URL and the publishable key.
-- [ ] Apply the six files of `supabase/migrations` in order (`supabase link`
+- [ ] Apply the seven files of `supabase/migrations` in order (`supabase link`
       then `supabase db push`, or the SQL editor): `20261013090000_vivier_init`,
       then evolution 2: `20261013180000_vivier_assessment` (status `rejected`,
       `documents.document_kind`, `similar_candidates()`),
@@ -21,18 +21,35 @@ provider accounts. Work it in one block before the first real CV.
       `shortlist_items.match`, no other column), then evolution 4:
       `20261014130000_vivier_photos` (`candidates.photo_path`,
       `organizations.show_photos` with its `UPDATE` grant, the private bucket
-      `photos` with its read and delete policies). All six are safe to re-run.
-      The dev project `vivier_dev` (ref `qtujdeolcdvlzwvpqpuv`, eu-west-1, free
-      tier) carries all six (checked on its schema on 2026-10-13:
-      `document_kind`, `shares.brief`, `phone_digits`, `similar_candidates()`,
+      `photos` with its read and delete policies), then evolution 5:
+      `20261015090000_vivier_triage` (`search_triage`, one row per active
+      candidate of a whole-pool search with the triage's verdict and reason,
+      read by members under RLS; `start_triage()`, `record_triage()` and
+      `merge_search_results()`, executable by the service role alone;
+      `searches.assessed_count`, `match_count` and `near_count`, filled from
+      the stored results; the method `triage` and the usage kind `triage`).
+      The evolution 2 and 3 files can be re-run; `vivier_init` and the
+      photos and triage files create policies and stop on a second run
+      (`policy … already exists`), so mark them applied rather than running
+      them again. The dev project `vivier_dev` (ref `qtujdeolcdvlzwvpqpuv`,
+      eu-west-1, free tier) carries all seven (checked on its schema on 2026-10-13: `document_kind`,
+      `shares.brief`, `phone_digits`, `similar_candidates()`,
       `searches.pool_size` exist and the quota function excludes `rejected`;
-      `briefs.role_profile` and `20261014130000` applied on 2026-10-14). The
-      five later files were applied outside the CLI, so
-      `supabase_migrations.schema_migrations` lists only `vivier_init`: run
-      `supabase migration repair --status applied 20261013180000
-      20261013190000 20261013200000 20261014090000 20261014130000` before a
-      `db push`, or let the push re-run them. Reset the dev database password
-      in the dashboard before using it from a machine.
+      `briefs.role_profile` and `20261014130000` applied on 2026-10-14;
+      `20261015090000` checked on 2026-10-14: the table, the three functions
+      granted to the service role only, the three counts and both checks).
+      Its `supabase_migrations.schema_migrations` does not match the files:
+      it lists `20261013090000` (`vivier_init`), then `20261014124056`
+      (`vivier_photos`) and evolution 5 in two parts, `20261014150558`
+      (`vivier_triage`) and `20261014162202` (`vivier_search_counts`),
+      recorded under the time they were applied; evolutions 2 and 3 were
+      applied outside the CLI and are not listed. Before a `db push`, run
+      `supabase migration repair --status reverted 20261014124056
+      20261014150558 20261014162202` (the push refuses remote versions it
+      has no file for), then `supabase migration repair --status applied
+      20261013180000 20261013190000 20261013200000 20261014090000
+      20261014130000 20261015090000`. Reset the dev database password in
+      the dashboard before using it from a machine.
 - [ ] Default privileges for `anon` and `authenticated` are revoked by the
       migration: every later table or RPC meant for the browser needs its own
       `GRANT` (the migration shows the pattern).
@@ -57,6 +74,19 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Secrets: `SUPABASE_SERVICE_ROLE_KEY`, `PROCESSOR_SHARED_SECRET`,
       `LLM_API_KEY`, `RESEND_API_KEY`.
 - [ ] Check `/status` shows every part green without any value.
+- [ ] Rate limits: the `VIVIER_RATE_LIMITER` binding (`wrangler.jsonc`, 60
+      calls a minute, mirrored by `RATE_LIMIT_POLICY` in
+      `src/lib/platform/rate-limit.server.ts`) counts per scope, per address
+      (an IPv6 by its /64) and per user, in each data centre. An analysis
+      spends three scopes: `search` (the search and the promotion), `triage`
+      (four calls in flight) and `assess` (the screening two in flight, then
+      the second opinion and the tiering). A refused analysis call waits 20,
+      40 then 65 seconds before it fails, and the end of its stage or
+      "Reprendre" sends it again, so nothing is lost; but recruiters behind
+      one office address share its bucket, and a very fast model can bring
+      four triage calls near sixty a minute. If teams report long pauses,
+      raise `simple.limit` in `wrangler.jsonc` and `RATE_LIMIT_POLICY`
+      together, and deploy.
 
 ## Railway (processor)
 
@@ -93,27 +123,34 @@ provider accounts. Work it in one block before the first real CV.
       Sign the data processing terms; confirm no training on API data.
 - [ ] Alternative: OpenAI (`LLM_BASE_URL=https://api.openai.com/v1`,
       `LLM_EMBEDDING_MODEL=text-embedding-3-small`, shortened to 1024 dimensions automatically).
-- [ ] The analysis is three passes on the assessment model (kind `assess`):
-      the screening (`assessCandidates`: one call per profile read, the five
-      dimensions with their evidence), the second opinion
-      (`challengeCandidates`: one more call per retained profile) and the
-      tiering (`rankCandidates`: one call per group of up to eight retained or
-      borderline profiles, then one for the A's of every group). They decide
-      which CVs a hiring team sees as to present, and the screening judges
-      first whether the candidate's métier is the job from what the person
-      did, not from the titles (a semantic judgement a small model gets wrong
-      more often): set `LLM_ASSESSMENT_MODEL=mistral-medium-latest` (or
-      `mistral-large-latest` when budget allows) on the Worker for those calls
-      alone and keep `LLM_MODEL=mistral-small-latest` for structuring,
-      criteria, the role profile and dossier drafts. Unset, `LLM_MODEL`
-      assesses too. Order of magnitude: an analysis of a 200-profile pool is
-      200 screening calls of about 9 000 characters (roughly 3 000 tokens in
-      and, with the dimensions and the lists, 1 500 to 2 500 out each), plus
-      one second-opinion call per retained profile (the same input, about 100
-      out) and one tiering call per group of eight (a few thousand characters
-      in, about 100 out per candidate): with thirty retained, some 235 calls,
-      roughly 0.7 M tokens in and 0.4 M out, the output now weighing as much
-      as the input in the bill. At Mistral's list prices at the time of
+- [ ] An analysis runs on the assessment model: the triage
+      (`triageCandidates`, kind `triage`: every active profile of the pool
+      sorted by métier, forty per call, from a card without name, contact
+      details, place, link or CV text), then three passes (kind `assess`) on
+      the profiles it kept: the screening (`assessCandidates`: one call per
+      profile kept, the five dimensions with their evidence), the second
+      opinion (`challengeCandidates`: one more call per retained profile)
+      and the tiering (`rankCandidates`: one call per group of up to eight
+      retained or borderline profiles, then one for the A's of every group).
+      They decide which CVs a hiring team sees, and the triage and the
+      screening both judge first whether the candidate's métier is the job
+      from what the person did, not from the titles (a semantic judgement a
+      small model gets wrong more often): set
+      `LLM_ASSESSMENT_MODEL=mistral-medium-latest` (or `mistral-large-latest`
+      when budget allows) on the Worker for those calls alone and keep
+      `LLM_MODEL=mistral-small-latest` for structuring, criteria, the role
+      profile and dossier drafts. Unset, `LLM_MODEL` does them too. What a
+      run costs: one triage call per 40 profiles (about 16 000 characters in
+      at most, 5 000 tokens out at most) plus one screening per profile kept
+      (about 9 000 characters, roughly 3 000 tokens in and, with the
+      dimensions and the lists, 1 500 to 2 500 out), then one second-opinion
+      call per retained profile (the same input, about 100 out) and one
+      tiering call per group of eight (a few thousand characters in, about
+      100 out per candidate). A pool of 1 000 profiles of which 150 are kept
+      and thirty retained is some 215 calls (25 of them the triage), roughly
+      0.7 M tokens in and 0.4 M out, the output weighing as much as the
+      input in the bill: the cost follows the profiles kept, not the size of
+      the pool. At Mistral's list prices at the time of
       writing that is a few euros at most with `mistral-medium-latest` and
       several with `mistral-large-latest` (check the current price list before
       deciding); `ai_usage.model` says which model answered each call. The
@@ -128,10 +165,11 @@ provider accounts. Work it in one block before the first real CV.
       to the sender's confirmed address (`EMAIL_REPLY_TO` is the fallback).
 - [ ] Without `LLM_API_KEY` the brief page says no model is set up, the role
       profile and the criteria are typed by hand and every analysis runs on
-      text only, without screening, second opinion or tiering (shown on the
-      page); with a key, proposals, derived criteria and the role profile
-      (`brief`), hybrid retrieval (`embed`), the three passes (`assess`) and
-      dossier drafts (`summary`) record `ai_usage` rows.
+      text only, without triage, screening, second opinion or tiering (shown
+      on the page); with a key, proposals, derived criteria and the role
+      profile (`brief`), hybrid retrieval (`embed`), the triage (`triage`),
+      the three passes (`assess`) and dossier drafts (`summary`) record
+      `ai_usage` rows.
 
 ## Legal
 

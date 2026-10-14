@@ -4,9 +4,8 @@
  * initials), the title, an introduction, then the options as rows of
  * one sheet: the CVs, when the link expires and, when this deployment
  * has a model, whether it drafts the syntheses (what that means behind
- * an info icon). A few words say the dossier shows no photo. The
- * buttons are a component of their own so the dialog can keep them
- * below the scrolling box.
+ * an info icon). The buttons are a component of their own so the
+ * dialog can keep them below the scrolling box.
  */
 import type { ReactNode } from "react";
 import { Users } from "lucide-react";
@@ -234,7 +233,6 @@ export function ContentStep({
             </OptionRow>
           ) : null}
         </div>
-        <p className="text-meta text-muted-foreground">{t("shares.content.noPhotos")}</p>
       </section>
     </div>
   );

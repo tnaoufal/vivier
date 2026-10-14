@@ -18,8 +18,10 @@ import {
   FileText,
   ListChecks,
   Plus,
+  RefreshCw,
   Share2,
   Sparkles,
+  TriangleAlert,
   Upload,
   Users,
 } from "lucide-react";
@@ -170,14 +172,9 @@ function BriefCard({ item }: { item: BriefOverview }) {
           <span className="mr-1 text-meta text-muted-foreground">
             {t("dashboard.briefs.shortlist")}
           </span>
-          <Pill
-            tone={shortlist.present > 0 ? "primary" : "neutral"}
-            icon={<Sparkles />}
-            title={t("dashboard.briefs.present.help")}
-          >
+          {/* The proposal is the model's: the pill's own words say so, not a hover title. */}
+          <Pill tone={shortlist.present > 0 ? "primary" : "neutral"} icon={<Sparkles />}>
             {present}
-            {/* The proposal is the model's: said in words, not only by the icon. */}
-            <span className="sr-only">, {t("dashboard.briefs.present.help")}</span>
           </Pill>
           <Pill tone={shortlist.retained > 0 ? "positive" : "neutral"} icon={<Check />}>
             {retained}
@@ -272,9 +269,17 @@ function DashboardPage() {
       />
 
       {error ? (
-        <p className="mb-4 text-sm text-negative" role="alert">
-          {t("dashboard.statsUnread")}
-        </p>
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2" role="alert">
+          <p className="text-sm text-negative">{t("dashboard.statsUnread")}</p>
+          <Button
+            type="button"
+            variant="outline"
+            icon={<RefreshCw />}
+            onClick={() => void refresh()}
+          >
+            {t("common.retry")}
+          </Button>
+        </div>
       ) : null}
 
       <StatGrid>
@@ -335,9 +340,35 @@ function DashboardPage() {
           {loading && !data ? (
             <BriefCardsSkeleton />
           ) : briefs === null ? (
-            <p className="text-sm text-muted-foreground">{t("common.error")}</p>
+            <EmptyState
+              compact
+              icon={<TriangleAlert />}
+              title={t("dashboard.briefs.error")}
+              action={
+                <Button
+                  type="button"
+                  variant="outline"
+                  icon={<RefreshCw />}
+                  onClick={() => void refresh()}
+                >
+                  {t("common.retry")}
+                </Button>
+              }
+            />
           ) : briefs.length === 0 ? (
-            <EmptyState compact icon={<Briefcase />} title={t("dashboard.briefs.empty")} />
+            <EmptyState
+              compact
+              icon={<Briefcase />}
+              title={t("dashboard.briefs.empty")}
+              action={
+                // While the pool is empty the "to begin" card already holds this step.
+                can("member") && !poolEmpty ? (
+                  <Button asChild variant="outline" icon={<Plus />}>
+                    <Link to={NEW_BRIEF_PATH}>{t("shell.dashboard.briefCta")}</Link>
+                  </Button>
+                ) : undefined
+              }
+            />
           ) : (
             <ul className="stagger space-y-4">
               {briefs.map((item) => (
@@ -361,7 +392,28 @@ function DashboardPage() {
             rows={data?.rows ?? []}
             names={names}
             loading={loading}
-            emptyState={<EmptyState compact icon={<Activity />} title={t("activity.empty")} />}
+            emptyState={
+              // A failed first read is never shown as "no activity".
+              error && !data ? (
+                <EmptyState
+                  compact
+                  icon={<TriangleAlert />}
+                  title={t("activity.loadError")}
+                  action={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      icon={<RefreshCw />}
+                      onClick={() => void refresh()}
+                    >
+                      {t("common.retry")}
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState compact icon={<Activity />} title={t("activity.empty")} />
+              )
+            }
           />
         </Section>
       </div>

@@ -1,22 +1,26 @@
 /**
  * The band at the top of the "Correspondances" tab: one sheet that says
  * where the analysis stands, in the state it is in. Idle, the headline
- * counts the matches ("12 profils correspondent"), the line under it how
- * many profiles were analysed and when, the pills on the right split
- * the matches by tier; a quiet row of text buttons shows how the
- * profiles were chosen (the funnel), the near profiles, and the earlier
- * analyses. Running, it shows the four steps, the bar of the current
- * one with how far it is and the time left when known, one live
- * sentence and the way to stop. Waiting for the team's check, one
- * sentence and the two ways forward. An interrupted analysis says how
- * many profiles are left, with "Reprendre"; one stored before the whole
- * pool was read says how many it read, the reason behind an info icon;
- * one no model could read says it ranked on the text. With no match
- * once everything ran, the funnel's figures and the requirement most
- * often missing stand in the band.
+ * counts the matches ("12 profils correspondent"); one line of figures
+ * under it says how the pool narrowed (the profiles analysed, the ones
+ * the triage kept, the ones read in depth while some are left to read)
+ * and when, the method behind an info icon; the pills on the right split
+ * the matches by tier; the earlier analyses sit behind a quiet button.
+ * Running, it shows the four steps, the bar of the current one with how
+ * far it is and the time left when known, one live sentence and the way
+ * to stop. Waiting for the team's check, one line and the way to the
+ * role (the header's "Lancer la recherche" then starts the analysis). An
+ * interrupted analysis says how many profiles are left, with "Reprendre",
+ * or that another session drives it; one stored before the whole pool
+ * was read says how many it read, the reason behind an info icon; one no
+ * model could read says how many profiles it ranked out of the pool and
+ * how many are shown. With no match once everything ran, the requirement
+ * most often missing and the way back to the role; an empty pool says
+ * so, with the way to import CVs.
  */
 import { useId, type ReactNode } from "react";
-import { Briefcase, ChevronDown, Play, Sparkles, Square, TriangleAlert } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Briefcase, Play, Sparkles, Square, TriangleAlert, Upload, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { InfoTip } from "@/components/app-shell/info-tip";
@@ -31,7 +35,6 @@ import type { AssessmentTier } from "@/lib/db/types";
 import { formatDateTime, useI18n, type TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-import { AnalysisFunnel } from "./analysis-funnel";
 import { AnalysisStepper } from "./analysis-stepper";
 import { PreviousAnalysesMenu } from "./previous-analyses-menu";
 import type { AnalysisController } from "./use-analysis";
@@ -43,62 +46,20 @@ const TIER_TONES: Record<AssessmentTier, PillTone> = {
   C: "neutral",
 };
 
-/** A quiet text button of the band's last row; `expanded` makes it a toggle. */
-function QuietButton({
-  label,
-  expanded,
-  controls,
-  onClick,
-}: {
-  label: string;
-  expanded: boolean;
-  controls: string;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      onClick={onClick}
-      aria-expanded={expanded}
-      aria-controls={expanded ? controls : undefined}
-      className={cn("px-3", expanded ? "text-ink" : "text-muted-foreground hover:text-ink")}
-    >
-      {label}
-      <ChevronDown
-        aria-hidden="true"
-        className={cn("transition-transform duration-base ease-out-soft", expanded && "rotate-180")}
-      />
-    </Button>
-  );
-}
-
 export function AnalysisBand({
   analysis,
   canEdit,
   modelAvailable,
-  funnelOpen,
-  onFunnelToggle,
-  nearOpen,
-  nearId,
-  onNearToggle,
   onCheckRole,
 }: {
   analysis: AnalysisController;
   canEdit: boolean;
   modelAvailable: boolean | null;
-  funnelOpen: boolean;
-  onFunnelToggle: () => void;
-  nearOpen: boolean;
-  /** The id of the near list the toggle controls. */
-  nearId: string;
-  onNearToggle: () => void;
   /** Shows the "Le poste" tab, where the team checks what the model wrote. */
   onCheckRole: () => void;
 }) {
   const { t, locale } = useI18n();
   const headingId = useId();
-  const funnelId = useId();
   const { view, progress, band, funnel } = analysis;
   const count = (value: number) => formatCount(locale, value);
 
@@ -226,22 +187,23 @@ export function AnalysisBand({
     return <EmptyState compact icon={<Sparkles />} title={t("briefs.analysis.empty")} />;
   }
 
+  // One way forward: the role, checked on its tab. The header's "Lancer
+  // la recherche" then starts this search, or a new one on what the team changed.
   if (band === "needsCheck") {
     return shell(
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 id={headingId} className="min-w-0 text-body text-ink">
           {t("briefs.analysis.check")}
         </h2>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Button type="button" variant="outline" icon={<Briefcase />} onClick={onCheckRole}>
-            {t("briefs.analysis.check.open")}
-          </Button>
-          {canEdit ? (
-            <Button type="button" icon={<Sparkles />} onClick={analysis.resume}>
-              {t("briefs.analysis.start")}
-            </Button>
-          ) : null}
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          icon={<Briefcase />}
+          onClick={onCheckRole}
+          className="shrink-0 self-start sm:self-auto"
+        >
+          {t("briefs.analysis.check.open")}
+        </Button>
       </div>,
     );
   }
@@ -259,15 +221,26 @@ export function AnalysisBand({
 
   if (band === "textOnly") {
     const noModel = modelAvailable === false;
+    // Past FULL_POOL_MAX the text path ranks only the profiles the retrieval
+    // returns: the headline says out of how many, so the others are never hidden.
+    const pool = view.poolSize;
+    const partial = pool !== null && view.results.length < pool;
+    // The list shows the head of the ranking: the line says so when it is not all of it.
+    const shown = analysis.ranking.length;
     return shell(
       <>
         <div className="min-w-0">
-          <h2 id={headingId} className="font-display text-2xl text-ink sm:text-3xl">
-            {plural(view.results.length, {
-              none: "briefs.analysis.ranked.none",
-              one: "briefs.analysis.ranked.one",
-              many: "briefs.analysis.ranked.many",
-            })}
+          <h2 id={headingId} className="font-display text-2xl text-ink tabular-nums sm:text-3xl">
+            {partial && pool !== null
+              ? t("briefs.analysis.ranked.partial", {
+                  read: count(view.results.length),
+                  total: count(pool),
+                })
+              : plural(view.results.length, {
+                  none: "briefs.analysis.ranked.none",
+                  one: "briefs.analysis.ranked.one",
+                  many: "briefs.analysis.ranked.many",
+                })}
           </h2>
           <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
             <span>
@@ -290,6 +263,14 @@ export function AnalysisBand({
                   : "briefs.analysis.textOnly.noCriteria.tip",
               )}
             </InfoTip>
+            {shown < view.results.length ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="tabular-nums">
+                  {t("briefs.analysis.ranked.top", { count: count(shown) })}
+                </span>
+              </>
+            ) : null}
             <span aria-hidden="true">·</span>
             <span>{date}</span>
           </p>
@@ -299,29 +280,74 @@ export function AnalysisBand({
     );
   }
 
+  const wholePool = view.method === "triage";
+  // A pool with no active profile when the search ran: nothing was analysed, so nothing "does not match".
+  if (band === "done" && wholePool && funnel.analysed === 0) {
+    return (
+      <EmptyState
+        compact
+        icon={<Users />}
+        title={t("briefs.analysis.emptyPool")}
+        action={
+          canEdit || searches.length > 1 ? (
+            <>
+              {canEdit ? (
+                <Button asChild variant="outline" icon={<Upload />}>
+                  <Link to="/app/candidates">{t("candidates.import")}</Link>
+                </Button>
+              ) : null}
+              {previous}
+            </>
+          ) : undefined
+        }
+      />
+    );
+  }
+
   const matches = analysis.matches.length;
   const zero = band === "done" && matches === 0;
   const tiers = tierCounts(view.results);
-  const near = analysis.near.length;
   const legacy = band === "legacy";
   const missing = analysis.mostMissing;
-  const missingLine = missing ? (
-    <p className="text-sm text-ink">
-      {t("briefs.analysis.missing", {
-        label:
-          missing.kind === "role"
-            ? `${t(kindKey(missing.kind))} · ${missing.label}`
-            : missing.label,
-      })}
-    </p>
-  ) : null;
-  const sub = legacy
-    ? date
-    : `${plural(funnel.analysed, {
-        none: "briefs.analysis.of.none",
-        one: "briefs.analysis.of.one",
-        many: "briefs.analysis.of.many",
-      })} · ${date}`;
+  // How the pool narrowed, each figure once: the profiles analysed, the
+  // ones the triage kept (a whole-pool analysis), the ones read in depth
+  // while some kept are still to read (then the figure differs).
+  const figures: { key: string; text: string }[] = legacy
+    ? []
+    : [
+        {
+          key: "analysed",
+          text: plural(funnel.analysed, {
+            none: "briefs.analysis.analysed.none",
+            one: "briefs.analysis.analysed.one",
+            many: "briefs.analysis.analysed.many",
+          }),
+        },
+        ...(wholePool
+          ? [
+              {
+                key: "kept",
+                text: plural(funnel.kept, {
+                  none: "briefs.analysis.kept.none",
+                  one: "briefs.analysis.kept.one",
+                  many: "briefs.analysis.kept.many",
+                }),
+              },
+            ]
+          : []),
+        ...(funnel.assessed < funnel.kept
+          ? [
+              {
+                key: "assessed",
+                text: plural(funnel.assessed, {
+                  none: "briefs.analysis.assessed.none",
+                  one: "briefs.analysis.assessed.one",
+                  many: "briefs.analysis.assessed.many",
+                }),
+              },
+            ]
+          : []),
+      ];
 
   return shell(
     <>
@@ -339,13 +365,23 @@ export function AnalysisBand({
               none:
                 band === "incomplete"
                   ? "briefs.analysis.matches.noneYet"
-                  : "briefs.analysis.matches.none",
+                  : "briefs.search.line.present.none",
               one: "briefs.analysis.matches.one",
               many: "briefs.analysis.matches.many",
             })}
           </h2>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="text-sm text-muted-foreground tabular-nums">{sub}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground tabular-nums">
+            {[...figures, { key: "date", text: date }].map((figure, index) => (
+              <span key={figure.key} className="inline-flex items-center gap-x-2">
+                {index > 0 ? <span aria-hidden="true">·</span> : null}
+                <span>{figure.text}</span>
+              </span>
+            ))}
+            {wholePool && !legacy ? (
+              <InfoTip label={t("briefs.analysis.method.topic")}>
+                {t("briefs.analysis.method.tip")}
+              </InfoTip>
+            ) : null}
             {/* The matches are the model's reading: a person retains them. */}
             {funnel.assessed > 0 ? <Pill size="sm">{t("briefs.results.why")}</Pill> : null}
           </div>
@@ -377,11 +413,13 @@ export function AnalysisBand({
       {band === "incomplete" ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="flex min-w-0 items-center gap-2 text-sm text-ink">
-            <TriangleAlert
-              aria-hidden="true"
-              className="size-4 shrink-0 text-caution-foreground dark:text-caution"
-            />
-            <span className="min-w-0">
+            {analysis.elsewhere ? null : (
+              <TriangleAlert
+                aria-hidden="true"
+                className="size-4 shrink-0 text-caution-foreground dark:text-caution"
+              />
+            )}
+            <span className="min-w-0 tabular-nums">
               {plural(analysis.remaining, {
                 none: "briefs.analysis.left.none",
                 one: "briefs.analysis.left.one",
@@ -389,7 +427,12 @@ export function AnalysisBand({
               })}
             </span>
           </p>
-          {analysis.canResume ? (
+          {/* Driven by another tab or a colleague: resuming here would send its profiles twice. */}
+          {analysis.elsewhere ? (
+            <p className="text-meta text-muted-foreground" role="status">
+              {t("briefs.analysis.elsewhere")}
+            </p>
+          ) : analysis.canResume ? (
             <Button
               type="button"
               variant="outline"
@@ -423,37 +466,34 @@ export function AnalysisBand({
         </p>
       ) : null}
 
-      {zero ? <AnalysisFunnel funnel={funnel} footer={missingLine} /> : null}
-
-      {(!zero && !legacy) || near > 0 || searches.length > 1 ? (
-        <div className="-mb-2 -ml-3 flex flex-wrap items-center gap-x-1">
-          {!zero && !legacy ? (
-            <QuietButton
-              label={t("briefs.analysis.how")}
-              expanded={funnelOpen}
-              controls={funnelId}
-              onClick={onFunnelToggle}
-            />
-          ) : null}
-          {near > 0 ? (
-            <QuietButton
-              label={
-                near === 1
-                  ? t("briefs.analysis.near.one")
-                  : t("briefs.analysis.near.many", { count: count(near) })
-              }
-              expanded={nearOpen}
-              controls={nearId}
-              onClick={onNearToggle}
-            />
-          ) : null}
-          {previous}
+      {/* Nothing matches once everything ran: what was most often missing, and the way back to the job. */}
+      {zero ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {missing ? (
+            <p className="min-w-0 text-sm text-ink">
+              {t("briefs.analysis.missing", {
+                label:
+                  missing.kind === "role"
+                    ? `${t(kindKey(missing.kind))} · ${missing.label}`
+                    : missing.label,
+              })}
+            </p>
+          ) : (
+            <span aria-hidden="true" />
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            icon={<Briefcase />}
+            onClick={onCheckRole}
+            className="shrink-0 self-start sm:self-auto"
+          >
+            {t("briefs.analysis.reviewRole")}
+          </Button>
         </div>
       ) : null}
 
-      {funnelOpen && !zero && !legacy ? (
-        <AnalysisFunnel id={funnelId} funnel={funnel} className="border-t border-border pt-5" />
-      ) : null}
+      {searches.length > 1 ? <div className="-mb-2 -ml-3 flex flex-wrap">{previous}</div> : null}
     </>,
   );
 }

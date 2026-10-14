@@ -2,18 +2,19 @@
  * Pure helpers behind what the briefs pages show, kept apart from the
  * analysis itself (assessment.ts and its rules are the frozen part):
  * the muted line of a brief card, the status filter of the list, the
- * newest analysis of each brief and what it counted (kept current from
- * the realtime rows themselves), and what the brief page's
+ * newest analysis of each brief, its method and what it counted (kept
+ * current from the realtime rows themselves), and what the brief page's
  * "Correspondances" tab reads off an analysis: the state its band is in,
- * the four figures of its funnel, the matches and the near profiles in
- * their order, the one line each row shows, the split by tier, the step
- * a running stage belongs to, the time left, and the turn each row
- * takes when a list unfolds (a batch that lands rises in one row after
- * the other, a row already on screen never moves again). Tested in
- * presentation.test.ts.
+ * the figures of its funnel, the matches and the near profiles in their
+ * order, the one line each row shows, the split by tier, the step a
+ * running stage belongs to, the time left, the turn each row takes when
+ * a list unfolds (a batch that lands rises in one row after the other, a
+ * row already on screen never moves again), and whether the job a search
+ * rests on is still the brief's. Tested in presentation.test.ts.
  */
 import type {
   AssessmentTier,
+  BriefCriterion,
   BriefRow,
   BriefStatus,
   MatchResult,
@@ -21,6 +22,8 @@ import type {
 } from "@/lib/db/types";
 
 import { compareTiered, decisionOf, tierOf } from "./assessment";
+import { protectedCriterion, roleCriterion, sameCriteria } from "./criteria";
+import { roleDefinitionOf } from "./role-profile";
 import type { AnalysisStep } from "./stages";
 
 /** The first non-empty line of a text, trimmed; "" when there is none. */
@@ -100,10 +103,16 @@ export function digestResults(results: readonly MatchResult[]): AnalysisDigest {
   return { total: results.length, assessed, present };
 }
 
-/** The newest analysis of a brief as its card says it: when it ran and what it counted. */
+/** The newest analysis of a brief as its card says it: when it ran, how (the whole pool, the closest profiles, the text alone) and what it counted. */
 export interface LatestAnalysis extends AnalysisDigest {
   searchId: string;
   createdAt: string;
+  method: SearchMethod;
+}
+
+/** The method a row names; a row without one (or with an unknown one) reads as the text path, the oldest. */
+function methodColumn(value: unknown): SearchMethod {
+  return value === "triage" || value === "hybrid" ? value : "text";
 }
 
 /** A count column of a row: a finite number, never below zero; null when the row does not carry it. */
@@ -117,9 +126,10 @@ function countColumn(value: unknown): number | null {
  * when it ran and what it counted. The summary columns the database
  * keeps (result_count, assessed_count, match_count) are read first, so
  * a row whose results realtime could not carry still counts; a row
- * without them is counted from its results. Null when the row lacks its
- * id, its brief or its date, or carries neither, so the caller reads
- * the analyses again instead.
+ * without them is counted from its results. The method travels with
+ * them, so a card can tell an analysis a model reads from a ranking on
+ * the text. Null when the row lacks its id, its brief or its date, or
+ * carries neither, so the caller reads the analyses again instead.
  */
 export function analysisOfRow(
   row: Readonly<Record<string, unknown>>,
@@ -129,16 +139,17 @@ export function analysisOfRow(
   const createdAt = row["created_at"];
   if (typeof id !== "string" || typeof briefId !== "string" || typeof createdAt !== "string")
     return null;
+  const method = methodColumn(row["method"]);
   const total = countColumn(row["result_count"]);
   const assessed = countColumn(row["assessed_count"]);
   const present = countColumn(row["match_count"]);
   if (total !== null && assessed !== null && present !== null)
-    return { briefId, analysis: { searchId: id, createdAt, total, assessed, present } };
+    return { briefId, analysis: { searchId: id, createdAt, method, total, assessed, present } };
   const results: unknown = row["results"];
   if (!Array.isArray(results)) return null;
   return {
     briefId,
-    analysis: { searchId: id, createdAt, ...digestResults(results as MatchResult[]) },
+    analysis: { searchId: id, createdAt, method, ...digestResults(results as MatchResult[]) },
   };
 }
 
@@ -301,6 +312,30 @@ export function mergeResults(
     return next ?? entry;
   });
   return [...merged, ...updated.values()];
+}
+
+/**
+ * True when the job a search rests on is no longer the brief's: the
+ * criteria saved since differ from the ones the search took, or the
+ * role profile now defines the role otherwise than the search's role
+ * criterion (the next search rewrites that definition from the profile,
+ * as runSearch does, unless the profile defines nothing or something
+ * protected). A search the team checked and changed is run again; one
+ * they left as it was starts as it is.
+ */
+export function jobChangedSince(
+  brief: Pick<BriefRow, "criteria" | "role_profile">,
+  searchCriteria: readonly BriefCriterion[],
+): boolean {
+  if (!sameCriteria(brief.criteria, searchCriteria)) return true;
+  const role = roleCriterion(searchCriteria);
+  if (!role || !brief.role_profile) return false;
+  const definition = roleDefinitionOf(brief.role_profile);
+  return (
+    definition.length > 0 &&
+    definition !== role.value &&
+    !protectedCriterion(role.label, definition, "role")
+  );
 }
 
 /** The most rows the deterministic ranking shows when no model reads the profiles. */

@@ -93,9 +93,10 @@ the policies, the `cvs` bucket, the functions and the realtime
 publication; the `20261013180000`, `…190000` and `…200000` files are
 evolution 2 (rejected documents and similar profiles, the dossier's brief
 snapshot and the dedup columns, the pool size of an analysis),
-`20261014090000` evolution 3 (`briefs.role_profile`) and `20261014130000`
+`20261014090000` evolution 3 (`briefs.role_profile`), `20261014130000`
 evolution 4 (`candidates.photo_path`, `organizations.show_photos`, the
-`photos` bucket). Then enable
+`photos` bucket) and `20261015090000` evolution 5 (`search_triage` and its
+three functions, the summary counts of `searches`). Then enable
 Email and Google in Auth and add `http://localhost:5173/**` to the
 redirect allow list. Nothing is set up by hand in the dashboard beyond
 Auth and the secrets.
@@ -399,7 +400,9 @@ pass fills the gap) or `unavailable`.
 A brief (`/app/briefs/new`) is a title and free text. The list of briefs
 shows each one with its status, the domain of its role profile (else the
 first line of the need), its criteria count and what its newest analysis
-found (`readLatestAnalyses()`: profiles ranked, to present), behind a
+found (`readLatestAnalyses()`, read off the counts of its row, never its
+results: the matches once a model read profiles, else the profiles
+ranked), behind a
 status filter with counts; the dashboard shows the open briefs the same
 way, with what the team retained. Its **criteria** are
 rows of `briefs.criteria`: a kind (`role`, `skill`, `experience`,
@@ -476,19 +479,29 @@ judged the métier.
 **Nothing is read before the team has looked at the job.** When the
 search had to write the understanding of the job itself (the profile
 derived from the text, the criteria derived, or the role derived from the
-title), `runSearch` answers `needsCheck` and the browser shows the
-deterministic ranking with one sentence ("The model wrote the role
-profile from the brief. Check the role and its missions, then start
-reading the profiles.") and the button that starts the reading. A role
-only copied from a profile the brief already had opens no gate.
+title), `runSearch` answers `needsCheck`: the band reads "Lecture du
+poste rédigée par le modèle" with the way to "Le poste", and nothing is
+sorted or read until the team presses "Lancer la recherche" (that same
+search when the job is unchanged, a new one on what they saved; a
+member's earlier whole-pool searches of the brief that nothing was read
+of are deleted when they run a new one). A role only copied from a
+profile the brief already had opens no gate.
 
-An **analysis** (`runSearch`, members, rate scope `search`) reads the
-pool, then the browser drives three stages on its results
+An **analysis** (`runSearch`, members, rate scope `search`) takes the
+pool, then the browser drives the stages on it
 (`src/lib/briefs/stages.ts`, pure: what each stage still has to send is
-read off the stored results, so "resume" picks up where an analysis
+read off what is stored, so "Reprendre" picks up where an analysis
 stopped):
 
-1. **The pool**. Up to 200 active candidates (`FULL_POOL_MAX`) the whole
+1. **The pool**. With a model, criteria and a job to name (the role
+   profile's title, else the role criterion's label, else the brief's
+   title), **every active profile is read**: `runSearch` stores the
+   search (`searches.method = 'triage'`, no results yet) and a snapshot
+   of the pool (`start_triage()`: one `search_triage` row per active
+   candidate, verdict null, in one statement, so `searches.pool_size` and
+   the rows to read are the same set); nothing is retrieved, embedded or
+   scored. Without a model, or for a brief without criteria, the **text
+   path** stays: up to 200 active candidates (`FULL_POOL_MAX`) the whole
    pool is read, newest first, so no profile is left out by a ranking.
    Above that, **retrieval** in the database (`search_candidates()`,
    SECURITY INVOKER so the caller's RLS applies): full text over
@@ -498,9 +511,47 @@ stopped):
    rank fusion** (`1/(60 + rank)` from each list), the 120 best rows
    returned (`RETRIEVAL_LIMIT`) and the rest not looked at. `searches.method`
    records `hybrid` or `text` and `searches.pool_size` how many active
-   profiles the pool held, so the page says "pool of 1 240 profiles: only
-   the 120 closest were read" instead of claiming every profile was.
-2. **Deterministic verdicts** in the server (`src/lib/briefs/matching.ts`,
+   profiles the pool held, so the page says how many it ranked out of
+   the pool instead of claiming every profile was read.
+2. **The triage by métier** (`triageCandidates`, members, rate scope
+   `triage`, `src/lib/briefs/triage.ts`, pure, tested), whole-pool
+   searches only: forty profiles a call (`TRIAGE_BATCH_MAX`), four calls
+   in flight (`TRIAGE_CONCURRENCY`), the way a senior recruiter briefs a
+   sourcer. Each profile is a compact **card** (`triageCard()`): the
+   headline, the position held today, four earlier ones with their
+   periods, the total years, the first degree without its year, twelve
+   skills; never the name, the contact details, the place, a link, the
+   photo, the summary or the CV text, and the name, e-mail, phone, place
+   and links are taken out of the card's texts too. The cards of a call
+   shrink one level at a time (the skills first, then the degree, the
+   earlier companies, the earlier positions; the headline and the current
+   position last, since they decide the métier) until the message stays
+   under 16 000 characters (`triagePayload()`). The job is the role
+   profile (title, domain, level, equivalent titles, adjacent profiles,
+   six missions, six must-haves), else the role criterion and the brief's
+   title (`triageRoleBrief()`). The model (`LLM_ASSESSMENT_MODEL`,
+   temperature 0) answers one verdict per card with a reason of fifteen
+   words at most: `yes` (the position held today or the thread of the
+   career is this job, under any name), `close` (an adjacent profile the
+   role profile lists, the job held earlier, the same function in a
+   neighbouring domain), `no` (another job), `unknown` (no title, or only
+   generic ones nothing on the card ties to a job). A shared word does
+   not make the same job; the seniority, the years, the place and the
+   detail of the must-haves are left to the full reading; between
+   `close` and `no` it answers `close`. **Rules bind the answer** (`enforceTriage()`):
+   a card left unanswered, or a verdict outside the four, is `unknown`; a
+   reason that names a protected characteristic or a career break is
+   withheld; and **the guard** turns a `no` into `close` when the card's
+   current title or headline carries the job's title or one of its
+   equivalent titles as whole words (`carriesRoleName()`, without what a
+   job ad adds: "H/F", "CDI", "(e)"), so a lazy answer never drops a
+   profile that names the job. The verdicts of a call are written in one
+   statement (`record_triage()`); a call the model cannot answer is read
+   again in halves down to the card that fails, which is settled
+   `unknown`; a candidate archived since leaves the snapshot. Only `no`
+   is set aside: the profile keeps its verdict and reason in
+   `search_triage`, and the page counts it.
+3. **Deterministic verdicts** in the server (`src/lib/briefs/matching.ts`,
    pure, tested): one verdict per criterion, `match`, `partial`, `missing`
    or `not_stated`, each with the evidence it rests on (the skill, the
    language and its level, the years, a snippet of the CV). `missing` is
@@ -513,14 +564,22 @@ stopped):
    criterion's weight; the score is 0..100 over the criteria that could
    be evaluated, `coverage` their share, `blocked` true when a required
    one is missing. Ranking: not blocked first, then score, then coverage.
-   The whole analysis is stored as a `searches` row (query, criteria at
-   run time, results, method, pool size, who ran it) and previous
-   analyses reopen from their stored results, the three stages included.
-3. **The screening** (`assessCandidates`, members, rate scope `assess`),
+   On the text path `runSearch` scores the profiles read; for a
+   whole-pool search **the promotion** (`promoteTriage`, rate scope
+   `search`, no model call) scores the profiles the triage kept (`yes`,
+   `close`, `unknown`) and brings them into the results with their
+   verdict and reason, `yes` first, then `close`, then `unknown`, then
+   the score; a profile already there is never added twice. The whole
+   analysis is stored as a `searches` row (query, criteria at run time,
+   results, method, pool size, who ran it, and the counts the lists read:
+   `result_count`, `assessed_count`, `match_count`, `near_count`) and
+   previous analyses reopen from what is stored, their stages included.
+4. **The screening** (`assessCandidates`, members, rate scope `assess`),
    with a model and criteria only: does this CV answer this brief? Six
-   candidates a batch (`ASSESS_BATCH_MAX`), one batch after the other,
-   the cards updated as batches return. Each candidate is one JSON call
-   (`assessmentSystemPrompt`, `LLM_ASSESSMENT_MODEL`, temperature 0) with
+   candidates a batch (`ASSESS_BATCH_MAX`), two batches in flight
+   (`READ_CONCURRENCY`), the rows updated as batches return. Each
+   candidate is one JSON call (`assessmentSystemPrompt`,
+   `LLM_ASSESSMENT_MODEL`, temperature 0) with
    the brief (the role first and apart, its definition the profile's; the
    profile compact: domain, level, years, missions, equivalent titles,
    adjacent profiles, context, must-haves, success factors; then the
@@ -580,7 +639,7 @@ stopped):
    found verbatim, else 60 % of its tokens of four letters or more found
    as words of one text. A `yes` without a quote, or with one found
    nowhere, becomes `partial`, the quote kept and marked unverified
-   ("quote not found in the CV" on the card); a `no` without a grounded
+   ("quote not found in the CV" in the drawer); a `no` without a grounded
    quote becomes `unknown`, unless the deterministic pass found the
    requirement missing with evidence of its own, which is then shown; a
    `yes` on a required criterion the deterministic pass contradicts
@@ -591,7 +650,7 @@ stopped):
    list, the wider words in a personal construction such as "sa famille"
    or "née en 1975", the phrases of a career break or a leave, the job's
    own collocations such as "politique commerciale" or "race condition"
-   taken out first) is withheld and counted (`withheld`), and the card
+   taken out first) is withheld and counted (`withheld`), and the drawer
    says the reading shown is incomplete by that much. The **composite
    score** (`src/lib/briefs/scoring.ts`) replaces the model's: role 0.40,
    seniority 0.15, context 0.15, the mean of trajectory and achievements
@@ -599,7 +658,7 @@ stopped):
    1, `partial` 0.5, `no` 0, weighted 1..3 as the brief says, `unknown`
    left out, 50 when nothing is evaluable); a dimension the model did not
    score is neutral; the model's own score is kept apart as `modelScore`,
-   advisory, and the card says what the composite is made of. **The
+   advisory, and the drawer says what the composite is made of. **The
    gates** then bound the decision and the score, the role first: a role
    at `no` forces `no_fit` and caps the score at 25, whatever the other
    requirements and whether or not it is still required; at `partial` the
@@ -618,11 +677,11 @@ stopped):
    criterion has no métier judged, so nothing in it is presented before
    the team looks. `fit` needs 75 (`FIT_MIN_SCORE`), `borderline` 45,
    below that `no_fit`; the model's own stricter decision is never
-   raised. The assessment is written into the same `searches.results`
+   raised. The assessment is merged into the same `searches.results`
    entry (with the model that answered) and carried to the brief's
    shortlist items that still hold an unassessed match. One failed
-   candidate leaves that card unread and "resume" picks it up.
-4. **The second opinion** (`challengeCandidates`, retained profiles only,
+   candidate stays unread and "Reprendre" picks it up.
+5. **The second opinion** (`challengeCandidates`, retained profiles only,
    six a batch, `CHALLENGE_BATCH_MAX`): one more call per `fit`, with the
    same brief, the same redacted profile and the first reading (decision,
    score, summary, the rows with their labels, the dimension scores and
@@ -639,10 +698,9 @@ stopped):
    decision to `borderline` (a `no_fit` is never raised), caps the score
    at 69, appends the reason to the concerns and stores the challenge; a
    doubt without a quote, or with one the profile does not hold, is an
-   opinion and is stored as confirmed, changing nothing. The card shows
-   the doubt under its own heading, or "Second opinion: no major
-   reservation".
-5. **The comparative tiers** (`rankCandidates`, `src/lib/briefs/ranking.ts`):
+   opinion and is stored as confirmed, changing nothing. The drawer puts
+   the doubt first among the reservations ("Seconde lecture : …").
+6. **The comparative tiers** (`rankCandidates`, `src/lib/briefs/ranking.ts`):
    the retained and borderline results, best score first, in groups of
    up to eight (`RANK_GROUP_MAX`; a last group of one takes one from the
    group before it, since one candidate cannot be compared, and fewer
@@ -667,58 +725,82 @@ stopped):
    of every group (eight at most, `finalRankGroup`), so the order of what
    is presented is one comparison and not several.
 
-The progress line names the stage ("Reading the profiles", "Second
-opinion", "Tiering", "Final tiering") with its count; the person may
-interrupt at any batch, and leaving the page stops the loop. What came
-back is stored: each stage re-reads the `searches` row before writing,
-so one browser's batches add up; two people on the same search is
-last-write-wins between batches, and the loser's entries resume.
-"Resume" reads the stored search and sends what each stage lacks:
-results without an assessment, retained ones without a second opinion,
-retained or borderline ones without a tier; a candidate gone from the
-pool since the search is settled and never sent again. The three stages
-use `LLM_ASSESSMENT_MODEL` (see "Model"), and each call is one `ai_usage`
-row of kind `assess`.
+**While it runs**, the band shows the four steps ("Tri du vivier",
+"Lecture approfondie", "Seconde lecture", "Classement"; the promotion
+closes the first, the final comparison belongs to the last), the bar of
+the current one with "{done} sur {total} profils" and the time left once
+known, and one live count (the profiles kept so far, then the likely
+matches); "Interrompre" stops at the next batch, and leaving the page
+stops the loop. A batch that fails is sent once more at the end of its
+stage; an error no retry fixes (rights, setup, the session) stops the
+loop and says why; a call the rate limit refused waits 20, 40 then 65
+seconds before it counts as failed. What came back is stored: every
+write-back is one statement (`merge_search_results()`: the row locked,
+each entry of the batch replacing the entry of the same candidate, the
+others appended, the counts recomputed), so batches in flight together
+add up and two people on the same entry is last-write-wins on that entry
+alone. "Reprendre" reads the stored search and sends what each stage
+lacks: the profiles of the snapshot without a verdict, the kept ones not
+yet in the results, results without an assessment, retained ones without
+a second opinion, retained or borderline ones without a tier; a
+candidate gone from the pool since the search is settled and never sent
+again. An analysis another tab or a colleague is driving (it moved in
+the last ninety seconds) reads "En cours dans une autre session" and is
+followed, not resumed a second time. The triage and the three stages use
+`LLM_ASSESSMENT_MODEL` (see "Model"); a triage call is one `ai_usage`
+row of kind `triage`, every other call one of kind `assess`.
 
-The brief page groups the results: **to present** (`fit` at tier A, or
-`fit` the tiering has not reached; the one group open), **to dig into**
-(`borderline`, and `fit` at B), **set aside** (`no_fit`: never deleted,
-only out of the way, the first requirement at `no` named on each card,
-the role first, else the model's reading with its score), **not
-analysed**; the last three collapsed with their counts, opened by the
-person; each group sorted by tier, then composite score, then
-deterministic score. A
-card carries the tier and the decision as pills, the fit ring, the five
-dimensions as a row of small meters with the weight each carries in the
-composite (green from 80, amber from 60; the note on hover, the evidence
-when expanded, an unverified quote marked), the requirement rows with
-their evidence (the role first, as "Métier · Business Developer"), the
-model's reading introduced as the model's, with the composite's make-up
-and the model's own score, the strengths and reservations, the interview
-points behind a toggle, the second opinion, the tiering's line in muted
-text, and the count of withheld sentences; a card to dig into names its
-main reservation (an adjacent métier with its evidence, a must-have not
-stated or met in part, the second opinion's doubt, the first concern).
-Without a model, or when the brief has no criteria, the panel says so and
-shows the deterministic ranking alone. The `why` sentences of analyses
-stored before evolution 2 (`ai_usage` kind `explain`) are still read
-where present; nothing writes them any more.
+**The brief page** (`/app/briefs/:briefId`) has two tabs kept in the
+URL (`?tab=matches|brief`): "Correspondances", with the count of matches
+in its name, and "Le poste" (the brief, its role profile and its
+criteria in one column); both stay mounted, so a criterion being typed
+survives a look at the matches, and "Lancer la recherche" is held while
+either editor has unsaved edits. The matches tab is the analysis band
+(the count of matches as its headline; "1 240 profils analysés · 86
+retenus au tri" and the date under it; the method behind an info icon;
+the matches split by tier; the earlier analyses behind a quiet button),
+then **the matches alone** (`fit`), one compact row each, tier then
+score: the rank, the photo or the initials, the name and the position
+held today, one line (the tiering's note, else the first sentence of the
+reading), the tier, the score as a small ring, and the shortlist button
+beside the row. Right under them a quiet toggle opens **the near
+profiles** (`borderline`), each row with its main reservation (the
+second opinion's doubt, else the first concern). A profile set aside
+(`no_fit`, or `no` at the triage) is a figure of the band, never a row.
+A row opens **the drawer**, which walks its list with two buttons and the
+arrow keys and stays on its person when a batch reorders the list: the
+tier, the decision and the score; why this profile (the reading's
+summary and the tiering's note, marked as the model's); the five
+dimensions with their notes, the composite's make-up and the model's own
+score; the strengths and the reservations side by side, the second
+opinion's doubt first; the requirements with their evidence (the role
+first, an unverified quote marked, what the CV does not state "Non
+renseigné"); the interview points; the count of withheld sentences; and
+the triage's verdict and reason, small and muted. Without a model, or
+when the brief has no criteria, the band says "Texte seul" and the tab
+lists the head of the deterministic ranking (20 rows, `TEXT_RANKING_MAX`)
+with each row's count of requirements met; an analysis stored before
+evolution 5 opens as it was read, the band saying how many profiles of
+the pool it read. The `why` sentences of analyses stored before
+evolution 2 (`ai_usage` kind `explain`) are still read where present;
+nothing writes them any more.
 
-**Strict presentation.** What the page presents is what the team could
-send as it is, and nothing else. A profile is in "to present" only when
-the model read its métier as the role with a quote found in the CV and
-scored that dimension 70 or more (`ROLE_DIMENSION_FIT_MIN`), every
-required requirement is met with a quote found in the CV, the composite
-reaches 75 (`FIT_MIN_SCORE`), the second opinion raised no grounded doubt
-and the tiering, when it ran, put it at A. Everything the rules can only
-hold back goes to "to dig into" (an adjacent métier, a métier under 70,
-a composite between 45 and 74, a must-have not stated or met in part, a
-doubt with evidence, a tier B), and a role at `no`, a must-have at `no`
-or a composite under 45 to "set aside". So a pool with no match reads
-"0 profil correspond à ce brief" once every stage ran, with how many
-profiles were read and the requirement most often missing; while a stage
-still runs, the group shows its progress instead; and the method line
-counts "0 à présenter". The thresholds are the exported constants of
+**Strict presentation.** What the page lists is what the team could
+send as it is, and nothing else. A profile is a match only when the model
+read its métier as the role with a quote found in the CV and scored that
+dimension 70 or more (`ROLE_DIMENSION_FIT_MIN`), every required
+requirement is met with a quote found in the CV, the composite reaches
+75 (`FIT_MIN_SCORE`) and the second opinion raised no grounded doubt; the
+tiering orders the matches (A before B) and sends a match it puts at C
+to the near profiles. Everything the rules can only hold back is a near
+profile (an adjacent métier, a métier under 70, a composite between 45
+and 74, a must-have not stated or met in part, a doubt with evidence, a
+tier C), and a role at `no`, a must-have at `no` or a composite under 45
+is set aside, counted and not listed. So a pool with no match reads "0
+correspondance" once every stage ran, with how many profiles were
+analysed, the requirement most often missing and the way back to the
+role; while profiles are still to read it reads "Aucune correspondance
+pour l'instant". The thresholds are the exported constants of
 `src/lib/briefs/assessment.ts`, each tested at its boundary in
 `assessment.test.ts`.
 
@@ -747,7 +829,11 @@ prose rewords those lists and adds no fact to them; an assessment without
 a reading falls back on the requirement table as before, and a share
 made before the questions existed has none.
 
-**What an analysis costs.** Per profile read, one `assess` call of about
+**What an analysis costs.** The triage is one call per forty profiles of
+the pool, about 16 000 characters in at most and a budget of 600 tokens
+plus 110 per card out (5 000 for forty), on `LLM_ASSESSMENT_MODEL`; a
+call the model cannot answer is read again in halves, sixteen calls at
+most. Then, per profile the triage kept, one `assess` call of about
 9 000 characters in and a budget of 1 800 to 3 200 tokens out, growing
 with the number of criteria (the five dimensions, the three lists and one
 row per criterion). A retained profile takes a second call (the same
@@ -757,7 +843,10 @@ profiles takes one tiering call (a few thousand characters of sheets,
 call. So a presented profile is three to four calls (its screening, its
 second opinion, its group's tiering, the final comparison when there
 were several groups), a borderline one its screening and a share of its
-group's call, a set-aside one a single call. The role profile is one
+group's call, a set-aside one a single call, and a profile the triage set
+aside a fortieth of a call: a pool of 1 000 profiles of which 150 are
+kept is 25 triage calls and 150 screenings before the second opinions
+and the tiering. The role profile is one
 `brief` call per brief (1 600 tokens out), written once and again on
 request.
 
@@ -877,10 +966,12 @@ conventions, plus one the Worker alone reads (`LLM_ASSESSMENT_MODEL`):
   Anthropic through a gateway, Groq, Together, OpenRouter and a local Ollama
   expose the same chat and embeddings calls.
 - **The assessment may use a stronger model**: `LLM_ASSESSMENT_MODEL` names
-  another chat model of the same endpoint for `assessCandidates` only
-  (`completeJson({ model })`); unset, `LLM_MODEL` assesses too. The
-  assessment is where the product's worth sits (does this CV answer this
-  brief?), so when budget allows set it to a stronger model such as
+  another chat model of the same endpoint for the triage and the three
+  passes of an analysis only (`triageCandidates`, `assessCandidates`,
+  `challengeCandidates`, `rankCandidates`; `completeJson({ model })`);
+  unset, `LLM_MODEL` does them too. The assessment is where the
+  product's worth sits (does this CV answer this brief?), so when budget
+  allows set it to a stronger model such as
   `mistral-medium-latest` and keep `mistral-small-latest` for structuring,
   criteria and summaries; `ai_usage.model` records which one answered.
 - **Embeddings are 1024 wide** (`EMBEDDING_DIMENSIONS`, the width of every
@@ -890,22 +981,28 @@ conventions, plus one the Worker alone reads (`LLM_ASSESSMENT_MODEL`):
 - **Every answer is JSON**, validated with a zod schema, one retry quoting
   the validation error, then an error, never a partial object.
 - **Usage is recorded** in `ai_usage` per organisation and kind
-  (`structure`, `embed`, `ocr`, `brief`, `assess`, `summary`; `explain` for
-  rows written before evolution 2) with the model and the tokens;
-  administrators read it. An analysis costs one `assess` call per profile
-  read, so a pool of 200 is 200 calls of about 9 000 characters each.
+  (`structure`, `embed`, `ocr`, `brief`, `triage`, `assess`, `summary`;
+  `explain` for rows written before evolution 2) with the model and the
+  tokens; administrators read it. An analysis costs one `triage` call per
+  forty profiles of the pool and one `assess` call per profile it kept,
+  then the second opinions and the tiering ("What an analysis costs").
 - **Rate limits**: every server function that calls the model, sends an
   email, creates a share, pokes the processor, runs a search or assesses a
   batch is behind `enforceRateLimit(scope)` (scopes `model`, `email`,
-  `share`, `processor`, `search`, `assess`): 60 calls per minute per client
-  and per scope (the address, an IPv6 by its /64, and the user id as a
-  second bucket), so an analysis of 200 profiles (34 batches) fits in its
-  scope. A throttled call answers `RATE:limited` and the page says to try
-  again in a minute.
+  `share`, `processor`, `search`, `triage`, `assess`): 60 calls per minute
+  per client and per scope (the address, an IPv6 by its /64, and the user
+  id as a second bucket). An analysis spends three scopes: `search` (the
+  search and the promotion), `triage` (four calls in flight) and `assess`
+  (two in flight; the second opinion and the tiering share it). A
+  throttled call answers `RATE:limited`: the analysis waits 20, 40 then 65
+  seconds before it counts the call as failed, and the end of its stage
+  or "Reprendre" sends it again; elsewhere the page says to try again in
+  a minute. People behind one office address share that address's
+  bucket.
 - **Without a key** `modelConfigured()` is false: criteria are typed in,
   analyses run on text with the deterministic verdicts alone (no
-  assessment, no derived criteria), dossiers are written by hand from the
-  verdicts, the processor structures by heuristics and sets nothing aside.
+  triage, no assessment, no derived criteria), dossiers are written by
+  hand from the verdicts, the processor structures by heuristics and sets nothing aside.
   Nothing is made up.
 
 ## Email
@@ -952,7 +1049,8 @@ processor for candidate data. What the product does:
 - **Never extracted**: age, date of birth, gender, nationality or origin,
   family situation, health, religion, union membership, political
   opinions. Not as fields, not as criteria, not in assessments or dossiers;
-  the assessment payload carries no name, e-mail or phone either.
+  the triage card carries no name, contact detail, place, link or CV text,
+  and the assessment payload no name, e-mail or phone.
 - **The photo**: the one thing kept that a CV carries beyond its text, as
   a file for identification in the interface only (`photos` bucket,
   `candidates.photo_path`): never sent to the model, never on a dossier,

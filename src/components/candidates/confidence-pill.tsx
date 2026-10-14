@@ -4,7 +4,9 @@
  * at all), "to check" in between, "uncertain" below. Never a verdict on
  * the candidate, only on the reading. A small pill with the icon in its
  * leading slot: the mark says it before the colour does, and the pill
- * stays under the text it qualifies, never a second title.
+ * stays under the text it qualifies, never a second title. What it
+ * means is said once per page, behind the info icon of the profile's
+ * head (profile-header.tsx), never in a hover title.
  */
 import { CircleAlert, CircleHelp } from "lucide-react";
 
@@ -18,12 +20,7 @@ export function ConfidenceHint({ value }: { value: number | null | undefined }) 
   if (tone === "none") return null;
   const caution = tone === "caution";
   return (
-    <Pill
-      tone={tone}
-      size="sm"
-      icon={caution ? <CircleHelp /> : <CircleAlert />}
-      title={caution ? t("candidates.confidence.help.check") : t("candidates.confidence.help.unsure")}
-    >
+    <Pill tone={tone} size="sm" icon={caution ? <CircleHelp /> : <CircleAlert />}>
       {caution ? t("candidates.review") : t("candidates.confidence.unsure")}
     </Pill>
   );

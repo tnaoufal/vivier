@@ -92,9 +92,8 @@ export function SendStep({
             {t("common.copy")}
           </Button>
         </div>
-        <p className="text-meta text-muted-foreground">{t("shares.send.linkOnce")}</p>
         <p className="text-meta text-muted-foreground">
-          {t("shares.send.expires", { date: formatDate(locale, share.expiresAt) })}
+          {t("shares.send.linkOnce", { date: formatDate(locale, share.expiresAt) })}
         </p>
       </div>
 

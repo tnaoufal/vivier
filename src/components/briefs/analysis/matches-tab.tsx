@@ -1,22 +1,25 @@
 /**
  * The "Correspondances" tab of a brief, top to bottom and nothing else:
  * the analysis band; the matches alone, as compact rows in tier then
- * rank order (or, for an analysis no model could read, the ranking on
- * the text, 20 rows at most); the near profiles under their own small
- * heading when the band's toggle shows them; and the drawer of the row
- * opened, which walks the list it was opened from and follows its
- * person when a batch reorders the list. A profile set aside by the
- * analysis is only counted in the funnel.
+ * rank order (or, for an analysis no model could read, the head of the
+ * ranking on the text, 20 rows at most); right under them the toggle of
+ * the near profiles and, when it is open, their rows, so the list opens
+ * where its control is; and the drawer of the row opened, which walks
+ * the list it was opened from and follows its person when a batch
+ * reorders the list. A profile set aside by the analysis is only
+ * counted in the band's figures.
  */
 import { useEffect, useId, useState } from "react";
 
 import { requirementTally, reservationLine, synthesisLine } from "@/lib/briefs/presentation";
+import { formatCount } from "@/lib/candidates/format";
 import type { MatchResult } from "@/lib/db/types";
-import { useT } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n";
 
 import { AnalysisBand } from "./analysis-band";
 import { MatchDrawer } from "./match-drawer";
 import { MatchList, MatchListSkeleton } from "./match-list";
+import { QuietButton } from "./quiet-button";
 import type { AnalysisController } from "./use-analysis";
 
 type ListName = "main" | "near";
@@ -34,10 +37,9 @@ export function MatchesTab({
   modelAvailable: boolean | null;
   onCheckRole: () => void;
 }) {
-  const t = useT();
+  const { t, locale } = useI18n();
   const nearId = useId();
-  const nearHeadingId = useId();
-  const [funnelOpen, setFunnelOpen] = useState(false);
+  const nearToggleId = useId();
   const [nearOpen, setNearOpen] = useState(false);
   // The drawer follows a person, not a place: a batch that reorders the list keeps it on them.
   const [drawer, setDrawer] = useState<{ list: ListName; candidateId: string } | null>(null);
@@ -46,7 +48,6 @@ export function MatchesTab({
 
   // Another analysis on screen starts closed.
   useEffect(() => {
-    setFunnelOpen(false);
     setNearOpen(false);
     setDrawer(null);
   }, [viewId]);
@@ -80,11 +81,6 @@ export function MatchesTab({
         analysis={analysis}
         canEdit={canEdit}
         modelAvailable={modelAvailable}
-        funnelOpen={funnelOpen}
-        onFunnelToggle={() => setFunnelOpen((value) => !value)}
-        nearOpen={nearOpen && near.length > 0}
-        nearId={nearId}
-        onNearToggle={() => setNearOpen((value) => !value)}
         onCheckRole={onCheckRole}
       />
 
@@ -104,23 +100,39 @@ export function MatchesTab({
         />
       ) : null}
 
-      {view && rowsShown && nearOpen && near.length ? (
-        <section id={nearId} aria-labelledby={nearHeadingId} className="space-y-3">
-          <h2 id={nearHeadingId} className="label-caps">
-            {t("briefs.near.title")}
-          </h2>
-          <MatchList
-            listKey={`${view.id}:near`}
-            results={near}
-            lineOf={reservationLine}
-            candidateOf={analysis.candidateOf}
-            addedIds={analysis.addedIds}
-            canAdd={canAdd}
-            muted
-            onOpen={(index) => openRow("near", index)}
-            onAdd={analysis.add}
-          />
-        </section>
+      {!opening && view && rowsShown && near.length ? (
+        // The toggle sits under the matches, so the near profiles open right below it, never off screen.
+        <div className="-mt-3 space-y-3">
+          <div className="-ml-3">
+            <QuietButton
+              id={nearToggleId}
+              label={
+                near.length === 1
+                  ? t("briefs.analysis.near.one")
+                  : t("briefs.analysis.near.many", { count: formatCount(locale, near.length) })
+              }
+              expanded={nearOpen}
+              controls={nearId}
+              onClick={() => setNearOpen((value) => !value)}
+            />
+          </div>
+          {nearOpen ? (
+            // Named by its toggle, which already says what the list holds and how many.
+            <section id={nearId} aria-labelledby={nearToggleId}>
+              <MatchList
+                listKey={`${view.id}:near`}
+                results={near}
+                lineOf={reservationLine}
+                candidateOf={analysis.candidateOf}
+                addedIds={analysis.addedIds}
+                canAdd={canAdd}
+                muted
+                onOpen={(index) => openRow("near", index)}
+                onAdd={analysis.add}
+              />
+            </section>
+          ) : null}
+        </div>
       ) : null}
 
       <MatchDrawer

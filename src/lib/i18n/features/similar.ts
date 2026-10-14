@@ -9,7 +9,7 @@ const fr = {
   "similar.title": "Profils similaires",
   "similar.subtitle": "Proches de {name}",
   "similar.help":
-    "Par le sens du parcours si les deux fiches ont un vecteur, sinon par les mots du titre et des compétences. Un calcul, pas un avis.",
+    "Calcul sur le parcours, ou à défaut sur le titre et les compétences : pas un avis.",
   "similar.method.embedding": "Sens du parcours",
   "similar.method.skills": "Compétences",
   "similar.empty.title": "Aucun profil proche",
@@ -21,8 +21,7 @@ const en = {
   "similar.button": "Similar profiles",
   "similar.title": "Similar profiles",
   "similar.subtitle": "Close to {name}",
-  "similar.help":
-    "By the meaning of the career when both profiles have a vector, else by the words of the headline and skills. A calculation, not an opinion.",
+  "similar.help": "Computed from the career, else from the headline and skills: not an opinion.",
   "similar.method.embedding": "Career meaning",
   "similar.method.skills": "Skills",
   "similar.empty.title": "No close profile",

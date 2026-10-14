@@ -1,14 +1,13 @@
 /**
  * The read-only plan card: the plan's name, then two meters (seats
  * taken against the limit, CVs processed this month against the
- * quota), each a bar whose tone turns to caution near the limit and
- * negative at it, with one line under it saying what is left. Counters
- * come from the database functions; one that could not be read shows a
- * dash with the reason on hover and as its text for assistive
- * technologies, an empty track and no hint: never a zero.
+ * quota), each its label, "used / limit" and a bar whose tone turns to
+ * caution near the limit and negative at it; one line under the bar
+ * only when the limit is reached. Counters come from the database
+ * functions; one that could not be read shows a dash with the reason on
+ * hover and as its text for assistive technologies, an empty track and
+ * no hint: never a zero.
  */
-import type { ReactNode } from "react";
-
 import { Pill } from "@/components/app-shell/pill";
 import { ProgressBar } from "@/components/app-shell/progress-bar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,26 +16,25 @@ import { useT } from "@/lib/i18n";
 import { seatsLeft, usageTone } from "@/lib/team/seats";
 import { cn } from "@/lib/utils";
 
-/** One meter: a label, "used / limit", the bar and what is left; built only from a count that was read. */
+/** One meter: a label, "used / limit", the bar and, at the limit, one line; built only from a count that was read. */
 function Usage({
   label,
   used,
   limit,
   loading,
-  text,
-  hint,
+  full,
 }: {
   label: string;
   used: number | null;
   limit: number;
   loading: boolean;
-  /** The "used / limit" sentence for a count that was read, also the bar's label. */
-  text: (used: number) => string;
-  /** What is left, for a count that was read. */
-  hint: (used: number) => ReactNode;
+  /** The line under the bar once nothing is left. */
+  full: string;
 }) {
   const t = useT();
   const unread = !loading && used === null;
+  // The label beside it says what is counted: the value is the figure alone.
+  const text = (count: number) => t("shell.org.usage", { used: count, limit });
   return (
     <div className="min-w-0">
       <div className="flex items-baseline justify-between gap-3">
@@ -61,8 +59,8 @@ function Usage({
           <div aria-hidden="true" className="h-1.5 w-full rounded-full bg-muted" />
         ) : (
           <>
-            <ProgressBar value={used} max={limit} size="md" tone={usageTone(used, limit)} label={text(used)} />
-            <p className="mt-1.5 text-meta text-muted-foreground">{hint(used)}</p>
+            <ProgressBar value={used} max={limit} size="md" tone={usageTone(used, limit)} label={`${label}, ${text(used)}`} />
+            {seatsLeft(used, limit) === 0 ? <p className="mt-1.5 text-meta text-muted-foreground">{full}</p> : null}
           </>
         )}
       </dd>
@@ -102,26 +100,14 @@ export function PlanCard({
           used={seatsUsed}
           limit={org.seat_limit}
           loading={loading}
-          text={(used) => t("shell.org.seats", { used, limit: org.seat_limit })}
-          hint={(used) => {
-            const free = seatsLeft(used, org.seat_limit);
-            return free === 0 ? t("members.plan.seats.full") : free === 1 ? t("members.seatsLeft.one") : t("members.seatsLeft.many", { count: free });
-          }}
+          full={t("members.plan.seats.full")}
         />
         <Usage
           label={t("settings.plan.cvs")}
           used={cvsProcessed}
           limit={org.cv_quota_month}
           loading={loading}
-          text={(used) => t("shell.org.quota", { used, limit: org.cv_quota_month })}
-          hint={(used) => {
-            const free = seatsLeft(used, org.cv_quota_month);
-            return free === 0
-              ? t("members.plan.cvs.left.none")
-              : free === 1
-                ? t("members.plan.cvs.left.one")
-                : t("members.plan.cvs.left.many", { count: free });
-          }}
+          full={t("members.plan.cvs.left.none")}
         />
       </dl>
       {unread ? <p className="mt-4 text-meta text-caution-foreground dark:text-caution">{t("settings.plan.unread")}</p> : null}

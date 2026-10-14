@@ -284,37 +284,37 @@ export function UploadDialog({
     setStopRequested(true);
   }
 
-  /** "12 fichiers refusés : 10 ne sont pas des PDF, 2 dépassent 25 Mo." in one sentence, whatever the number. */
-  function refusedSentence(groups: RejectedGroup[]): string | null {
+  /** "10 ne sont pas des PDF, 2 dépassent 25 Mo": the refusals grouped by reason. */
+  function refusedReasons(groups: RejectedGroup[]): string | null {
     if (!groups.length) return null;
-    const reasons = groups
+    return groups
       .map((group) =>
         group.count === 1
           ? t(`candidates.upload.refused.${group.reason}.one`)
           : t(`candidates.upload.refused.${group.reason}.many`, { count: formatCount(locale, group.count) }),
       )
       .join(", ");
-    const count = countRefused(groups);
-    return count === 1
-      ? t("candidates.upload.refused.one", { reasons })
-      : t("candidates.upload.refused.many", { count: formatCount(locale, count), reasons });
   }
 
-  const refusedText = refusedSentence(refused);
-  // Under the description: what the month has left, or that it could not be read; nothing while it loads.
-  const quotaLine = quotaUse.loading
-    ? null
+  const reasons = refusedReasons(refused);
+  // Before any file is accepted no counter shows: the sentence carries the count. Once the counters
+  // show it ("Refusés"), the line under them names the reasons only.
+  const refusedText =
+    reasons === null
+      ? null
+      : refusedCount === 1
+        ? t("candidates.upload.refused.one", { reasons })
+        : t("candidates.upload.refused.many", { count: formatCount(locale, refusedCount), reasons });
+  const refusedReasonsText = reasons === null ? null : t("candidates.upload.refused.reasons", { reasons });
+  // The one line under the title: the file rule, then what the month has left (the queue counted)
+  // or that it could not be read; the file rule alone while the quota loads.
+  const metaLine = quotaUse.loading
+    ? t("candidates.upload.text")
     : quotaUse.error
       ? t("candidates.upload.quota.unknown", { quota: formatCount(locale, quota) })
-      : room === null || quotaRead === null
-        ? null
-        : quotaRead.pending > 0
-          ? t("candidates.upload.quota.lineQueued", {
-              remaining: formatCount(locale, room),
-              quota: formatCount(locale, quota),
-              pending: formatCount(locale, quotaRead.pending),
-            })
-          : t("candidates.upload.quota.line", { remaining: formatCount(locale, room), quota: formatCount(locale, quota) });
+      : room === null
+        ? t("candidates.upload.text")
+        : t("candidates.upload.quota.line", { remaining: formatCount(locale, room), quota: formatCount(locale, quota) });
   // How many of the chosen files are past the month's quota (an upper bound: the items are the accepted
   // files, a retry replaces its failures one for one): derived here so it appears as soon as both the
   // selection and the quota are known, whichever came first.
@@ -351,17 +351,14 @@ export function UploadDialog({
       >
         <DialogHeader>
           <DialogTitle className="truncate">{title}</DialogTitle>
-          <DialogDescription className="text-sm">{t("candidates.upload.text")}</DialogDescription>
-          {quotaLine ? (
-            <p
-              className={cn(
-                "text-meta tabular-nums",
-                room === 0 ? "text-caution-foreground dark:text-caution" : "text-muted-foreground",
-              )}
-            >
-              {quotaLine}
-            </p>
-          ) : null}
+          <DialogDescription
+            className={cn(
+              "text-meta tabular-nums",
+              room === 0 ? "text-caution-foreground dark:text-caution" : "text-muted-foreground",
+            )}
+          >
+            {metaLine}
+          </DialogDescription>
         </DialogHeader>
 
         {/* Scrolls only when a short screen cannot hold the whole dialog; the lists scroll on their own. */}
@@ -458,7 +455,7 @@ export function UploadDialog({
               {beyondText ? (
                 <p className="text-meta text-caution-foreground dark:text-caution">{beyondText}</p>
               ) : null}
-              {refusedText ? <p className="text-meta text-muted-foreground">{refusedText}</p> : null}
+              {refusedReasonsText ? <p className="text-meta text-muted-foreground">{refusedReasonsText}</p> : null}
               {running ? <p className="text-meta text-muted-foreground">{t("candidates.upload.keepOpen")}</p> : null}
 
               {lotItems.length ? (

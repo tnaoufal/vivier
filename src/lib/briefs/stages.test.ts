@@ -12,6 +12,7 @@ import {
   groupsOf,
   pendingChallenges,
   pendingCount,
+  pendingProfiles,
   pendingRanks,
   pendingReads,
   rankable,
@@ -144,6 +145,33 @@ describe("pendingCount and batchesOf", () => {
       ["g"],
     ]);
     expect(batchesOf([], 6)).toEqual([]);
+  });
+});
+
+describe("pendingProfiles", () => {
+  it("counts each profile left once, never the tiered companions of an untiered one", () => {
+    // u1 and u2 to read; f1 to challenge and to tier; f2 and b1 to tier.
+    expect(pendingProfiles(results, none)).toBe(5);
+    // A retained profile neither challenged nor tiered, with one tiered peer: one profile, three calls.
+    const fresh = [
+      result("f", assessed("fit", 80)),
+      result("t", assessed("fit", 90, { challenge: confirmed, tier: "A" })),
+    ];
+    expect(pendingCount(fresh, none)).toBe(3);
+    expect(pendingProfiles(fresh, none)).toBe(1);
+    // One untiered among eight tiered: one profile, a group of eight.
+    const tiered = [
+      ...Array.from({ length: 8 }, (_, index) =>
+        result(`t${index}`, assessed("fit", 90 - index, { challenge: confirmed, tier: "B" })),
+      ),
+      result("x", assessed("borderline", 50)),
+    ];
+    expect(pendingCount(tiered, none)).toBe(RANK_GROUP_MAX);
+    expect(pendingProfiles(tiered, none)).toBe(1);
+    // An untiered one alone (nothing to compare it with) and the settled ones are not left.
+    expect(pendingProfiles([result("b", assessed("borderline", 50))], none)).toBe(0);
+    expect(pendingProfiles(fresh, new Set(["f"]))).toBe(0);
+    expect(pendingProfiles([], none)).toBe(0);
   });
 });
 

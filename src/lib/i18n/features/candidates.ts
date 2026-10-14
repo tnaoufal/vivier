@@ -68,7 +68,7 @@ const fr = {
   // upload
   "candidates.upload.title": "Importer des CV",
   "candidates.upload.titleFor": "Ajouter un CV à {name}",
-  "candidates.upload.text": "PDF, 25 Mo par fichier, 10 000 fichiers au plus.",
+  "candidates.upload.text": "PDF · 25 Mo",
   "candidates.upload.drop": "Déposez vos PDF ici",
   "candidates.upload.browse": "Choisir des fichiers",
   "candidates.upload.progress": "{done} / {total}",
@@ -92,6 +92,7 @@ const fr = {
   "candidates.upload.error.insert": "Le fichier a été envoyé mais n'a pas pu être enregistré.",
   "candidates.upload.refused.one": "1 fichier refusé : {reasons}.",
   "candidates.upload.refused.many": "{count} fichiers refusés : {reasons}.",
+  "candidates.upload.refused.reasons": "Refusés : {reasons}",
   "candidates.upload.refused.not_pdf.one": "1 n'est pas un PDF",
   "candidates.upload.refused.not_pdf.many": "{count} ne sont pas des PDF",
   "candidates.upload.refused.empty.one": "1 est vide",
@@ -114,10 +115,8 @@ const fr = {
   "candidates.upload.queuedUnreached":
     "En file, mais le service ne répond pas : lecture dès son retour.",
   "candidates.upload.again": "Nouvel import",
-  "candidates.upload.quota.line": "Quota : {remaining} / {quota} CV restants ce mois.",
-  "candidates.upload.quota.lineQueued":
-    "Quota : {remaining} / {quota} CV restants ce mois, file comprise ({pending}).",
-  "candidates.upload.quota.unknown": "Quota : {quota} CV par mois, usage non lu.",
+  "candidates.upload.quota.line": "PDF · 25 Mo · {remaining} / {quota} CV libres ce mois",
+  "candidates.upload.quota.unknown": "PDF · 25 Mo · {quota} CV par mois, usage non lu",
   "candidates.upload.quota.beyond.one": "1 fichier au plus attendra le quota.",
   "candidates.upload.quota.beyond.many": "{count} fichiers au plus attendront le quota.",
 
@@ -193,8 +192,7 @@ const fr = {
   "candidates.consent.given": "Consentement donné",
   "candidates.consent.withdrawn": "Consentement retiré",
   "candidates.confidence.unsure": "Incertain",
-  "candidates.confidence.help.check": "Le modèle a lu ce champ avec une confiance moyenne : vérifiez-le sur le CV.",
-  "candidates.confidence.help.unsure": "Le modèle a lu ce champ avec une faible confiance : il peut être faux.",
+  "candidates.confidence.help.check": "Lecture du modèle incertaine : à vérifier sur le CV.",
 
   // documents
   "candidates.documents.title": "Documents",
@@ -243,7 +241,6 @@ const fr = {
   "candidates.consent.givenAt": "Donné le {date}.",
   "candidates.consent.lastContact": "Dernier contact",
   "candidates.consent.retention": "Conservation : {months} mois après le dernier contact.",
-  "candidates.consent.retentionUnknown": "Date de suppression non lue.",
   "candidates.consent.withdrawTitle": "Retirer le consentement ?",
   "candidates.consent.withdrawText":
     "Profil et fichiers supprimés dans l'heure, sans retour possible.",
@@ -261,7 +258,9 @@ const fr = {
   "candidates.export.photoFailed": "Exporté sans la photo.",
   "candidates.erase": "Effacer définitivement",
   "candidates.erase.title": "Effacer {name} définitivement ?",
-  "candidates.erase.text": "Le profil, ses {count} CV, ses commentaires et sa place dans les shortlists sont supprimés. Aucun retour possible.",
+  "candidates.erase.text.none": "Profil, commentaires et places en shortlist supprimés. Définitif.",
+  "candidates.erase.text.one": "Profil, 1 CV, commentaires et places en shortlist supprimés. Définitif.",
+  "candidates.erase.text.many": "Profil, {count} CV, commentaires et places en shortlist supprimés. Définitif.",
   "candidates.erase.typeName": "Tapez le nom pour confirmer : {name}",
   "candidates.erase.done": "Candidat effacé.",
 } as const;
@@ -332,7 +331,7 @@ const en = {
 
   "candidates.upload.title": "Upload CVs",
   "candidates.upload.titleFor": "Add a CV to {name}",
-  "candidates.upload.text": "PDF, 25 MB per file, 10,000 files at most.",
+  "candidates.upload.text": "PDF · 25 MB",
   "candidates.upload.drop": "Drop your PDFs here",
   "candidates.upload.browse": "Choose files",
   "candidates.upload.progress": "{done} / {total}",
@@ -356,6 +355,7 @@ const en = {
   "candidates.upload.error.insert": "The file was uploaded but could not be recorded.",
   "candidates.upload.refused.one": "1 file refused: {reasons}.",
   "candidates.upload.refused.many": "{count} files refused: {reasons}.",
+  "candidates.upload.refused.reasons": "Refused: {reasons}",
   "candidates.upload.refused.not_pdf.one": "1 is not a PDF",
   "candidates.upload.refused.not_pdf.many": "{count} are not PDFs",
   "candidates.upload.refused.empty.one": "1 is empty",
@@ -378,10 +378,8 @@ const en = {
   "candidates.upload.queuedUnreached":
     "Queued, but the service did not answer: read once it is back.",
   "candidates.upload.again": "New import",
-  "candidates.upload.quota.line": "Quota: {remaining} / {quota} CVs left this month.",
-  "candidates.upload.quota.lineQueued":
-    "Quota: {remaining} / {quota} CVs left this month, queue included ({pending}).",
-  "candidates.upload.quota.unknown": "Quota: {quota} CVs a month, use not read.",
+  "candidates.upload.quota.line": "PDF · 25 MB · {remaining} / {quota} CVs free this month",
+  "candidates.upload.quota.unknown": "PDF · 25 MB · {quota} CVs a month, use not read",
   "candidates.upload.quota.beyond.one": "Up to 1 file will wait for the quota.",
   "candidates.upload.quota.beyond.many": "Up to {count} files will wait for the quota.",
 
@@ -454,8 +452,7 @@ const en = {
   "candidates.consent.given": "Consent given",
   "candidates.consent.withdrawn": "Consent withdrawn",
   "candidates.confidence.unsure": "Uncertain",
-  "candidates.confidence.help.check": "The model read this field with middling confidence: check it on the CV.",
-  "candidates.confidence.help.unsure": "The model read this field with low confidence: it may be wrong.",
+  "candidates.confidence.help.check": "Uncertain model reading: check it on the CV.",
 
   "candidates.documents.title": "Documents",
   "candidates.documents.empty": "No CV for this profile.",
@@ -501,7 +498,6 @@ const en = {
   "candidates.consent.givenAt": "Given on {date}.",
   "candidates.consent.lastContact": "Last contact",
   "candidates.consent.retention": "Kept {months} months after the last contact.",
-  "candidates.consent.retentionUnknown": "Deletion date not read.",
   "candidates.consent.withdrawTitle": "Withdraw consent?",
   "candidates.consent.withdrawText": "Profile and files deleted within the hour, for good.",
   "candidates.consent.withdrawn.note": "Deleted at the next hourly purge.",
@@ -517,7 +513,9 @@ const en = {
   "candidates.export.photoFailed": "Exported without the photo.",
   "candidates.erase": "Erase permanently",
   "candidates.erase.title": "Erase {name} permanently?",
-  "candidates.erase.text": "The profile, its {count} CVs, its comments and its shortlist entries are deleted. There is no way back.",
+  "candidates.erase.text.none": "Profile, comments and shortlist entries deleted. This is final.",
+  "candidates.erase.text.one": "Profile, 1 CV, comments and shortlist entries deleted. This is final.",
+  "candidates.erase.text.many": "Profile, {count} CVs, comments and shortlist entries deleted. This is final.",
   "candidates.erase.typeName": "Type the name to confirm: {name}",
   "candidates.erase.done": "Candidate erased.",
 } as const satisfies Record<keyof typeof fr, string>;

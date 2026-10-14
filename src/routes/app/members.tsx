@@ -12,7 +12,6 @@ import { RefreshCw, TriangleAlert, UserPlus } from "lucide-react";
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
-import { Pill } from "@/components/app-shell/pill";
 import { Section } from "@/components/app-shell/section";
 import { InviteForm } from "@/components/team/invite-form";
 import { InvitationsList } from "@/components/team/invitations-list";
@@ -27,7 +26,7 @@ import { useQuery } from "@/lib/data/use-query";
 import type { InvitationRow, OrgRole } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
 import { memberName, useCurrentOrg, useOrg } from "@/lib/org/org-context";
-import { seatsAvailable, seatsLeft } from "@/lib/team/seats";
+import { seatsAvailable } from "@/lib/team/seats";
 import {
   changeMemberRole,
   errorSays,
@@ -99,7 +98,6 @@ function MembersPage() {
 
   const seatsUsed = data?.seatsUsed ?? null;
   const seatsFull = seatsUsed !== null && !seatsAvailable(seatsUsed, org.seat_limit);
-  const free = seatsUsed === null ? null : seatsLeft(seatsUsed, org.seat_limit);
 
   async function handleRoleChange(member: TeamMember, next: OrgRole) {
     if (next === member.role || busyUserId) return;
@@ -168,21 +166,13 @@ function MembersPage() {
   const members = data?.members ?? [];
   const invitations = data?.invitations ?? [];
   const ready = !(loading && !data);
-  const seatsText =
-    free === null ? null : free === 0 ? t("members.seatsLeft.none") : free === 1 ? t("members.seatsLeft.one") : t("members.seatsLeft.many", { count: free });
 
   return (
     <>
+      {/* No seat pill here: the plan card beside the lists carries the seats, said once. */}
       <PageHeader
         eyebrow={org.name}
         title={t("nav.members")}
-        meta={
-          ready && seatsUsed !== null ? (
-            <Pill tone={seatsFull ? "caution" : "neutral"} dot {...(seatsText ? { title: seatsText } : {})}>
-              {t("shell.org.seats", { used: seatsUsed, limit: org.seat_limit })}
-            </Pill>
-          ) : null
-        }
         actions={
           <Button asChild variant="outline" icon={<UserPlus />} className="lg:hidden">
             <a href={`#${INVITE_ANCHOR}`}>{t("members.invite.jump")}</a>
@@ -204,7 +194,7 @@ function MembersPage() {
           />
         ) : (
           <div className="space-y-8">
-            <Section title={t("nav.members")} count={ready ? members.length : undefined}>
+            <Section title={t("members.list")} count={ready ? members.length : undefined}>
               {!ready ? (
                 <ListSkeleton />
               ) : (

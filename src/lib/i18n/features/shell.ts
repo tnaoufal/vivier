@@ -21,8 +21,7 @@ const fr = {
   "shell.org.plan.trial": "Essai",
   "shell.org.plan.team": "Équipe",
   "shell.org.plan.business": "Entreprise",
-  "shell.org.seats": "{used} / {limit} sièges",
-  "shell.org.quota": "{used} / {limit} CV ce mois",
+  "shell.org.usage": "{used} / {limit}",
 
   // landing page
   "landing.hero": "Trouvez, en équipe, les bons profils dans votre vivier.",
@@ -56,8 +55,7 @@ const en = {
   "shell.org.plan.trial": "Trial",
   "shell.org.plan.team": "Team",
   "shell.org.plan.business": "Business",
-  "shell.org.seats": "{used} / {limit} seats",
-  "shell.org.quota": "{used} / {limit} CVs this month",
+  "shell.org.usage": "{used} / {limit}",
 
   "landing.hero": "Find the right profiles in your talent pool, as a team.",
   "landing.lead": "Upload your CVs, describe the role, decide together.",

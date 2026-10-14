@@ -8,14 +8,18 @@
  * kept; the full reading, READ_CONCURRENCY batches at once; the second
  * opinion; the tiering, then the final comparison), merging each answer
  * into the view as it lands; the way to stop it, to resume it from what
- * is stored, to start it once the team checked what the model wrote, and
- * to open an earlier analysis; the candidates the rows show; the brief's
- * shortlist. A batch that fails is sent once more at the end of its
- * stage; an error that no retry fixes (rights, setup, the session) stops
- * the loop and says why; a rate limit waits once. A candidate gone from
- * the pool since the search is settled: never sent again, never keeping
- * an analysis from being complete. Leaving the page stops the loop;
- * nothing stored is lost.
+ * is stored, and to open an earlier analysis; the candidates the rows
+ * show; the brief's shortlist. Once the team checked what the model
+ * wrote, "Lancer la recherche" starts the search on screen when the job
+ * is unchanged, or runs a new one on what they saved. A batch that fails
+ * is sent once more at the end of its stage; an error that no retry
+ * fixes (rights, setup, the session) stops the loop and says why; a rate
+ * limit waits, longer each time, before the call counts as failed. A
+ * candidate gone from the pool since the search is settled: never sent
+ * again, never keeping an analysis from being complete. An analysis
+ * another tab or a colleague is driving (its triage moves, its row
+ * changes) is followed, not resumed a second time. Leaving the page
+ * stops the loop; nothing stored is lost.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -35,6 +39,7 @@ import { rankResults } from "@/lib/briefs/matching";
 import {
   bandStateOf,
   funnelOf,
+  jobChangedSince,
   matchesOf,
   mergeResults,
   nearOf,
@@ -104,15 +109,36 @@ export interface RunProgress {
 /** The candidate of a row: undefined while it is being read, null when it was erased. */
 export type RowCandidate = ResultCandidate | null | undefined;
 
-/** How long the loop waits before sending again a call the rate limit refused. */
-const RATE_PAUSE_MS = 20_000;
+/**
+ * How long the loop waits before each new try of a call the rate limit
+ * refused: the limiter counts over a minute, so the waits grow past it;
+ * still refused after the last one (about two minutes), the call fails
+ * like a model error and the end of its stage, or a resume, sends it again.
+ */
+const RATE_PAUSES_MS = [20_000, 40_000, 65_000] as const;
+/** A random part added to each wait, so the lanes of one run (or the tabs of one office) do not come back together. */
+const RATE_JITTER_MS = 3_000;
 /** The most ids one read of candidates names (the gateway refuses a URL past 16 KB). */
 const CANDIDATE_LOT = 100;
+/** How often the triage of an analysis this page is not driving is read again. */
+const TRIAGE_POLL_MS = 15_000;
+/**
+ * How long an analysis reads as driven elsewhere after it last moved:
+ * longer than the slowest call of a stage (a tiering call), short enough
+ * that the calls a closed tab left in flight hold "Reprendre" briefly.
+ */
+const ELSEWHERE_QUIET_MS = 90_000;
+/** How long the writes of a loop of this page may still echo back (realtime, the last reads) once it ended. */
+const OWN_ECHO_MS = 5_000;
 
-function pause(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
+/** Waits `ms`, or less once `stop` says the loop ended (checked every second). */
+async function pause(ms: number, stop: () => boolean = () => false): Promise<void> {
+  const end = Date.now() + ms;
+  while (!stop() && Date.now() < end) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, Math.min(1_000, Math.max(0, end - Date.now())));
+    });
+  }
 }
 
 export interface AnalysisController {
@@ -134,6 +160,8 @@ export interface AnalysisController {
   funnel: Funnel;
   /** Profiles left: unread by the triage, plus what the stages after it still have to send. */
   remaining: number;
+  /** True while another tab or a colleague drives the analysis on screen: it moves without this page. */
+  elsewhere: boolean;
   matches: MatchResult[];
   near: MatchResult[];
   /** The deterministic ranking a text-only analysis shows, TEXT_RANKING_MAX at most. */
@@ -145,8 +173,9 @@ export interface AnalysisController {
   addedIds: ReadonlySet<string>;
   canRun: boolean;
   canResume: boolean;
+  /** A new search, or the start of the one on screen once the team checked the job and changed nothing. */
   run: () => Promise<void>;
-  /** Sends what the analysis on screen still lacks (also the start after the team's check). */
+  /** Sends what the analysis on screen still lacks. */
   resume: () => void;
   stop: () => void;
   open: (searchId: string) => void;
@@ -162,7 +191,7 @@ export function useAnalysis({
 }: {
   brief: BriefRow;
   canEdit: boolean;
-  /** True while the criteria editor holds unsaved rows: a search reads the saved brief. */
+  /** True while the criteria or the role profile hold unsaved edits: a search reads the saved brief. */
   criteriaDirty: boolean;
   /** Null while unknown, then whether the deployment has a model. */
   modelAvailable: boolean | null;
@@ -183,6 +212,13 @@ export function useAnalysis({
   // The search whose understanding of the job the model wrote and the team has not checked yet.
   const [checkFor, setCheckFor] = useState<string | null>(null);
   const [triage, setTriage] = useState<{ searchId: string; state: TriageState } | null>(null);
+  const triageRef = useRef(triage);
+  triageRef.current = triage;
+  // The analysis seen moving while this page was not driving it, cleared once it stays still ELSEWHERE_QUIET_MS.
+  const [elsewhere, setElsewhere] = useState<string | null>(null);
+  const elsewhereTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The loops of this page still landing their calls (a stopped one finishes the calls in flight): their writes are not someone else's.
+  const ownLoops = useRef(0);
   // The whole-pool searches this page promoted: a profile kept by the
   // triage that left the pool before its promotion never enters the
   // results, and must not keep the analysis "incomplete" forever.
@@ -396,21 +432,44 @@ export function useAnalysis({
     if (latest) void load(latest.id, false);
   }, [autoOpened, load, searches.data, searches.loading, view]);
 
+  /** Notes that the analysis given moved without this page: "Reprendre" waits until it stays still. */
+  const sawActivity = useCallback((searchId: string) => {
+    if (ownLoops.current > 0) return;
+    setElsewhere(searchId);
+    if (elsewhereTimer.current) clearTimeout(elsewhereTimer.current);
+    elsewhereTimer.current = setTimeout(() => {
+      elsewhereTimer.current = null;
+      setElsewhere(null);
+    }, ELSEWHERE_QUIET_MS);
+  }, []);
+  useEffect(
+    () => () => {
+      if (elsewhereTimer.current) clearTimeout(elsewhereTimer.current);
+    },
+    [],
+  );
+
   useEffect(() => {
     const refreshList = debounce(() => {
       void refreshSearches();
     }, 400);
     // A colleague's batches land in the row shown: read it again, unless
     // this page is the one writing (its own answers are already on screen).
+    // Written while this page is not driving it, the analysis is driven
+    // elsewhere: "Reprendre" would send its profiles a second time.
     const reread = debounce(() => {
       const id = viewRef.current?.id;
       if (id && !runningRef.current) void load(id, true);
     }, 800);
     return subscribeToTable("searches", `brief_id=eq.${briefId}`, (change) => {
       refreshList();
-      if (change.eventType === "UPDATE" && change.new["id"] === viewRef.current?.id) reread();
+      const id = viewRef.current?.id;
+      if (change.eventType === "UPDATE" && id !== undefined && change.new["id"] === id) {
+        if (!runningRef.current) sawActivity(id);
+        reread();
+      }
     });
-  }, [briefId, load, refreshSearches]);
+  }, [briefId, load, refreshSearches, sawActivity]);
 
   useEffect(() => {
     if (!shortlistId) return undefined;
@@ -452,6 +511,39 @@ export function useAnalysis({
     },
     [orgId],
   );
+
+  // A triage this page is not driving is read again now and then: the
+  // verdicts are not broadcast, and another tab or a colleague may be
+  // driving it. Its counts then move on screen, and a move means it is
+  // driven elsewhere.
+  const viewId = view?.id ?? null;
+  const triageOpen = wholePool && !running && triageState !== null && triageState.pending > 0;
+  useEffect(() => {
+    if (!triageOpen || viewId === null) return undefined;
+    const searchId = viewId;
+    const timer = setInterval(() => {
+      // A tab out of sight waits: it reads again when it is looked at.
+      if (document.visibilityState === "hidden") return;
+      void (async () => {
+        try {
+          const state = await readTriageState(await requireSupabase(), orgId, searchId);
+          if (viewRef.current?.id !== searchId || runningRef.current) return;
+          const before = triageRef.current;
+          if (
+            before?.searchId === searchId &&
+            before.state.read === state.read &&
+            before.state.pending === state.pending
+          )
+            return;
+          if (before?.searchId === searchId) sawActivity(searchId);
+          setTriage({ searchId, state });
+        } catch (error) {
+          console.error(error);
+        }
+      })();
+    }, TRIAGE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [orgId, sawActivity, triageOpen, viewId]);
 
   /**
    * Drives the stages on `start`: for a whole-pool search, the triage of
@@ -496,10 +588,13 @@ export function useAnalysis({
         );
       };
       /**
-       * One call to the server: null when it failed. A rate limit waits
-       * once and tries again; an error with a code (rights, setup, the
-       * session, the search gone) stops the whole loop and says why; any
-       * other (the model, the network) only fails this call.
+       * One call to the server: null when it failed. A rate limit waits,
+       * longer each time, and tries again, then fails this call only (a
+       * refusal is never the end of the analysis: the limiter counts per
+       * minute, and an office behind one address shares it); an error
+       * with another code (rights, setup, the session, the search gone)
+       * stops the whole loop and says why; any other (the model, the
+       * network) only fails this call.
        */
       const attempt = async <R>(send: () => Promise<R>): Promise<R | null> => {
         for (let round = 0; ; round += 1) {
@@ -508,9 +603,15 @@ export function useAnalysis({
             return await send();
           } catch (error) {
             const code = appErrorCode(error);
-            if (code === "RATE:limited" && round === 0) {
-              await pause(RATE_PAUSE_MS);
-              continue;
+            if (code === "RATE:limited") {
+              const wait = RATE_PAUSES_MS[round];
+              if (wait !== undefined) {
+                await pause(wait + Math.floor(Math.random() * RATE_JITTER_MS), stopped);
+                continue;
+              }
+              // Still refused after about two minutes: the end of the stage, or a resume, sends it again.
+              console.error(error);
+              return null;
             }
             console.error(error);
             if (code !== null && !fatal) {
@@ -553,6 +654,7 @@ export function useAnalysis({
 
       // The profiles the triage could not read in this run, even sent twice.
       let triageLeft = 0;
+      ownLoops.current += 1;
       try {
         const supabase = await requireSupabase();
         if (start.method === "triage") {
@@ -696,6 +798,9 @@ export function useAnalysis({
         // Stopped or done, the counts on screen are read again once the calls in flight have landed.
         void refreshSearches();
         if (start.method === "triage") void refreshTriage(start.id);
+        setTimeout(() => {
+          ownLoops.current -= 1;
+        }, OWN_ECHO_MS);
       }
     },
     [briefId, locale, orgId, readPeople, refreshSearches, refreshTriage, t],
@@ -703,6 +808,20 @@ export function useAnalysis({
 
   const run = useCallback(async () => {
     if (!canEdit || criteriaDirty || runningRef.current) return;
+    // The team checked what the model wrote for the search on screen:
+    // left as it was, that search starts; changed, a new search takes
+    // what they saved (a search reads the criteria it was run with).
+    const checked = viewRef.current;
+    if (
+      checked !== null &&
+      checkFor === checked.id &&
+      modelAvailable !== false &&
+      !jobChangedSince(brief, checked.criteria)
+    ) {
+      onStarted?.();
+      void analyse(checked);
+      return;
+    }
     // An analysis still being opened gives way to the new one.
     loadSeq.current += 1;
     setOpening(null);
@@ -757,8 +876,10 @@ export function useAnalysis({
     }
   }, [
     analyse,
+    brief,
     briefId,
     canEdit,
+    checkFor,
     criteriaDirty,
     locale,
     modelAvailable,
@@ -770,9 +891,25 @@ export function useAnalysis({
 
   const resume = useCallback(() => {
     const current = viewRef.current;
-    if (!canEdit || !current || runningRef.current || modelAvailable === false) return;
+    if (!canEdit || criteriaDirty || !current || runningRef.current || modelAvailable === false)
+      return;
+    // Driven elsewhere: resuming it here would send its profiles a second time.
+    if (elsewhere === current.id) return;
+    // Nothing of it was read and the team changed the job since it ran
+    // (the check of the model's draft, seen again after a reload): a new
+    // search takes what they saved.
+    const read = triageRef.current;
+    const untouched =
+      current.method === "triage" &&
+      current.results.length === 0 &&
+      read?.searchId === current.id &&
+      read.state.read === 0;
+    if (untouched && jobChangedSince(brief, current.criteria)) {
+      void run();
+      return;
+    }
     void analyse(current);
-  }, [analyse, canEdit, modelAvailable]);
+  }, [analyse, brief, canEdit, criteriaDirty, elsewhere, modelAvailable, run]);
 
   const add = useCallback(
     async (result: MatchResult) => {
@@ -820,6 +957,7 @@ export function useAnalysis({
     band,
     funnel,
     remaining: triagePending + stagePending,
+    elsewhere: view !== null && elsewhere === view.id,
     matches,
     near,
     ranking,
@@ -828,7 +966,13 @@ export function useAnalysis({
     shortlistId,
     addedIds,
     canRun: canEdit && !criteriaDirty && !running,
-    canResume: canEdit && modelAvailable !== false && !running && band === "incomplete",
+    canResume:
+      canEdit &&
+      !criteriaDirty &&
+      modelAvailable !== false &&
+      !running &&
+      band === "incomplete" &&
+      !(view !== null && elsewhere === view.id),
     run,
     resume,
     stop,

@@ -148,13 +148,37 @@ export function finalRankGroup(
   return best.length < RANK_GROUP_MIN ? [] : [best];
 }
 
-/** How many candidates the three stages still have to send, for the "resume" button and the method line. */
+/**
+ * How many candidates the three stages still have to send, a candidate
+ * once per stage and per group: whether anything is left. A number shown
+ * as profiles reads pendingProfiles().
+ */
 export function pendingCount(results: readonly MatchResult[], skip: ReadonlySet<string>): number {
   return (
     pendingReads(results, skip).length +
     pendingChallenges(results, skip).length +
     pendingRanks(results, skip).reduce((sum, group) => sum + group.length, 0)
   );
+}
+
+/**
+ * How many distinct profiles the three stages still have to settle, for
+ * the band and the end of a run: a retained profile neither challenged
+ * nor tiered counts once, and the tiered companions an untiered one is
+ * compared with do not count.
+ */
+export function pendingProfiles(
+  results: readonly MatchResult[],
+  skip: ReadonlySet<string>,
+): number {
+  const ids = new Set<string>([
+    ...pendingReads(results, skip),
+    ...pendingChallenges(results, skip),
+  ]);
+  if (pendingRanks(results, skip).length)
+    for (const result of rankable(results, skip))
+      if (tierOf(result) === null) ids.add(result.candidateId);
+  return ids.size;
 }
 
 /** The ids in batches of `size`. */
