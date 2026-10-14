@@ -1,8 +1,10 @@
 /**
  * The state of the share dialog, as a pure reducer: the three steps
  * (content, review, send), the choices of the first step, the edits of
- * the second, the link and the recipients of the third. Nothing here
- * talks to the network; the dialog dispatches what the server answered.
+ * the second (the headline, the synthesis, and the three lists of
+ * points: strengths, attention, the interview questions), the link and
+ * the recipients of the third. Nothing here talks to the network; the
+ * dialog dispatches what the server answered.
  */
 import type { ShareBrief, ShareItem } from "@/lib/db/types";
 
@@ -11,7 +13,8 @@ import { DEFAULT_EXPIRY_DAYS, type ExpiryDays } from "./state";
 
 export type Step = "content" | "review" | "send";
 export const STEPS: readonly Step[] = ["content", "review", "send"];
-export type ListField = "strengths" | "attention";
+/** The lists of a sheet the review step edits point by point. */
+export type ListField = "strengths" | "attention" | "questions";
 
 export const TITLE_MAX = 200;
 export const INTRO_MAX = 8000;
@@ -130,7 +133,9 @@ function updateList(list: string[], at: number, value: string | null): string[] 
 }
 
 function withList(item: ShareItem, field: ListField, list: string[]): ShareItem {
-  return field === "strengths" ? { ...item, strengths: list } : { ...item, attention: list };
+  if (field === "strengths") return { ...item, strengths: list };
+  if (field === "attention") return { ...item, attention: list };
+  return { ...item, questions: list };
 }
 
 export function dialogReducer(state: DialogState, action: DialogAction): DialogState {

@@ -4,10 +4,12 @@
  * profile; for the role, the job's definition in a few lines), whether
  * it is required (a profile that does not meet it is set aside by the
  * analysis), and its weight as three buttons. A row that becomes the
- * role starts required and essential. A row about a protected
- * characteristic says under itself that it will not be saved (the
- * clean-up leaves it out). The editor wraps the row in the list item
- * that carries the hairline.
+ * role starts required and essential. When the brief has a role profile,
+ * the role's definition is the profile's: shown read-only with a word
+ * saying so, since the team edits the profile, not the row. A row about
+ * a protected characteristic says under itself that it will not be
+ * saved (the clean-up leaves it out). The editor wraps the row in the
+ * list item that carries the hairline.
  */
 import { Check, X } from "lucide-react";
 
@@ -35,12 +37,15 @@ export function CriterionRow({
   criterion,
   canEdit,
   disabled = false,
+  roleDefinition = null,
   onChange,
   onRemove,
 }: {
   criterion: BriefCriterion;
   canEdit: boolean;
   disabled?: boolean;
+  /** For the role row of a brief with a profile: the definition read off the profile, shown instead of the editable value. */
+  roleDefinition?: string | null;
   onChange: (next: BriefCriterion) => void;
   onRemove: () => void;
 }) {
@@ -82,7 +87,12 @@ export function CriterionRow({
           disabled={locked}
           className="sm:flex-1"
         />
-        {isRole ? (
+        {isRole && roleDefinition ? (
+          <div className="min-w-0 space-y-1 sm:flex-1">
+            <p className="text-[15px] leading-6 text-ink">{roleDefinition}</p>
+            <p className="text-[13px] leading-5 text-muted-foreground">{t("briefs.criteria.role.fromProfile")}</p>
+          </div>
+        ) : isRole ? (
           <Textarea
             value={criterion.value}
             onChange={(event) => onChange({ ...criterion, value: event.target.value })}

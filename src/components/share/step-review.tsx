@@ -2,11 +2,12 @@
  * Second step of the share dialog: every sheet of the dossier, with the
  * assessment the shortlist holds read only (the score, the reading, the
  * requirement table with its evidence) and the prose editable (headline,
- * synthesis, strengths, points of attention), after a sentence saying
- * where the words come from and that the person sending them answers
- * for them. "Create the link" stores the share; it sits in a footer of
- * its own that the dialog keeps below the scrolling sheets, so the
- * primary action never hides at the end of thirty of them.
+ * synthesis, strengths, points of attention, the points the interview
+ * should verify), after a sentence saying where the words come from and
+ * that the person sending them answers for them. "Create the link"
+ * stores the share; it sits in a footer of its own that the dialog
+ * keeps below the scrolling sheets, so the primary action never hides
+ * at the end of thirty of them.
  */
 import { FileText, Trash2 } from "lucide-react";
 
@@ -20,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ShareItem } from "@/lib/db/types";
 import { useT } from "@/lib/i18n";
 import { canCreate, type DialogAction, type DialogState } from "@/lib/shares/dialog-state";
-import { HEADLINE_MAX, SUMMARY_MAX } from "@/lib/shares/draft";
+import { HEADLINE_MAX, QUESTIONS_MAX, SUMMARY_MAX } from "@/lib/shares/draft";
 
 import { DecisionPill, factsLine, metLabel, metSentence, requirementRowsOf, scoreLabel, type Translate } from "./assessment-bits";
 import { PointsEditor } from "./points-editor";
@@ -156,6 +157,17 @@ export function ReviewStep({ state, dispatch }: { state: DialogState; dispatch: 
                     onRemove={(at) => dispatch({ type: "removePoint", index, field: "attention", at })}
                   />
                 </div>
+                <PointsEditor
+                  id={`${id}-question`}
+                  label={t("shares.review.questions")}
+                  help={t("shares.review.questions.help")}
+                  points={item.questions}
+                  max={QUESTIONS_MAX}
+                  disabled={busy}
+                  onChange={(at, value) => dispatch({ type: "setPoint", index, field: "questions", at, value })}
+                  onAdd={() => dispatch({ type: "addPoint", index, field: "questions" })}
+                  onRemove={(at) => dispatch({ type: "removePoint", index, field: "questions", at })}
+                />
               </li>
             );
           })}

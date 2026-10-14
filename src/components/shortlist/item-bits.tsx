@@ -1,14 +1,15 @@
 /**
  * Small pieces shared by the card and the drawer of a shortlist item:
- * the deterministic score line, the four verdict counts, the vote
- * buttons, the decision trace ("Retained by Ana · 2 h ago") and a
- * comment body with its mentions highlighted. Each shows only what was
- * read: no score means "no score", an unknown decider is named as such.
+ * the deterministic score line, the four verdict counts, the tier the
+ * comparative pass proposed, the vote buttons, the decision trace
+ * ("Retained by Ana · 2 h ago") and a comment body with its mentions
+ * highlighted. Each shows only what was read: no score means "no
+ * score", an unknown decider is named as such, a tier is a proposal.
  */
 import { ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { Pill, type PillTone } from "@/components/app-shell/pill";
-import type { CriterionVerdict, MatchResult, ShortlistItemStatus } from "@/lib/db/types";
+import type { AssessmentTier, CriterionVerdict, MatchResult, ShortlistItemStatus } from "@/lib/db/types";
 import { formatDateTime, formatRelative, useI18n } from "@/lib/i18n";
 import { renderMentions, type MentionMember } from "@/lib/shortlists/mentions";
 import {
@@ -54,6 +55,52 @@ export function ScoreLine({ match, className }: { match: MatchResult | null; cla
         </Pill>
       ) : null}
     </span>
+  );
+}
+
+const TIER_TONES: Record<AssessmentTier, PillTone> = { A: "positive", B: "caution", C: "negative" };
+
+const TIER_KEYS: Record<AssessmentTier, "shortlists.tier.A" | "shortlists.tier.B" | "shortlists.tier.C"> = {
+  A: "shortlists.tier.A",
+  B: "shortlists.tier.B",
+  C: "shortlists.tier.C",
+};
+
+/**
+ * The tier the comparative pass proposed, as a small pill with a dot:
+ * the letter alone when `compact` (under the ring of a card, where the
+ * full label would push the name aside; the label stays for assistive
+ * technologies and on hover), else the letter and its meaning. The hover
+ * also carries the pass's line on this rank when there is one. A tier
+ * is a proposal and the help says so.
+ */
+export function TierPill({
+  tier,
+  note = null,
+  compact = false,
+  className,
+}: {
+  tier: AssessmentTier;
+  /** The comparative pass's line on this rank among the others, shown on hover. */
+  note?: string | null | undefined;
+  compact?: boolean;
+  className?: string;
+}) {
+  const { t } = useI18n();
+  const label = t(TIER_KEYS[tier]);
+  const help = t("shortlists.tier.help");
+  const title = note ? `${label} · ${note} · ${help}` : `${label} · ${help}`;
+  return (
+    <Pill tone={TIER_TONES[tier]} dot title={title} {...(className ? { className } : {})}>
+      {compact ? (
+        <>
+          <span aria-hidden="true">{tier}</span>
+          <span className="sr-only">{label}</span>
+        </>
+      ) : (
+        label
+      )}
+    </Pill>
   );
 }
 

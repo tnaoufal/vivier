@@ -189,7 +189,8 @@ function requirementOf(value: unknown): ShareRequirement | null {
 /**
  * The stored items, guarded (the column is JSON), with the CV link only
  * when CVs are included. A share created before the dossier holds none
- * of the facts, the score, the decision or the requirement table: they
+ * of the facts, the score, the decision or the requirement table, and
+ * one created before the recruiter's reading holds no question: they
  * read as empty and null, and the page says so rather than inventing.
  */
 export function itemsOf(row: Pick<TokenShareRow, "items" | "include_cvs">): ShareItem[] {
@@ -210,6 +211,7 @@ export function itemsOf(row: Pick<TokenShareRow, "items" | "include_cvs">): Shar
       summary: typeof stored["summary"] === "string" ? stored["summary"] : "",
       strengths: strings(stored["strengths"]),
       attention: strings(stored["attention"]),
+      questions: strings(stored["questions"]),
       score: cleanScore(stored["score"]),
       decision: isDecision(stored["decision"]) ? stored["decision"] : null,
       requirements: Array.isArray(stored["requirements"])

@@ -3,8 +3,9 @@
  * without a sign-in, at the level of a senior consultant's presentation:
  * a cover with what was looked for, an overview of the profiles, then
  * one sheet per candidate (the requirement table with its evidence, the
- * synthesis, strengths and points of attention, the practical facts,
- * the CV) and an honest footer. A white sheet with dark ink on any theme
+ * synthesis, strengths and points of attention, the points to verify in
+ * an interview when the analysis named some, the practical facts, the
+ * CV) and an honest footer. A white sheet with dark ink on any theme
  * (`share-sheet` in styles.css), printable on A4 with one sheet per
  * page: the PDF a reader keeps is the browser's print of this page. The
  * sentences speak the sharing organisation's language, not the reader's
@@ -236,10 +237,13 @@ function Overview({ items, t }: { items: ShareItem[]; t: Translate }) {
 // one sheet per candidate
 // ---------------------------------------------------------------------
 
-function Points({ title, points, empty }: { title: string; points: string[]; empty: string }) {
+/** A titled list of points; the `empty` sentence when there is none, or nothing at all when the caller gives no sentence. */
+function Points({ title, points, empty, help }: { title: string; points: string[]; empty?: string | undefined; help?: string | undefined }) {
+  if (!points.length && !empty) return null;
   return (
     <section>
       <h3 className="label-caps">{title}</h3>
+      {help ? <p className="mt-1 text-[13px] leading-5 text-muted-foreground">{help}</p> : null}
       {points.length ? (
         <ul className="mt-2 list-disc space-y-1 pl-5 text-[15px] leading-6 text-foreground">
           {points.map((point, index) => (
@@ -301,6 +305,9 @@ function Sheet({ item, index, count, token, t }: { item: ShareItem; index: numbe
         <Points title={t("shares.page.strengths")} points={item.strengths} empty={t("shares.page.strengths.none")} />
         <Points title={t("shares.page.attention")} points={item.attention} empty={t("shares.page.attention.none")} />
       </div>
+
+      {/* Only when the analysis named some: a sheet without questions says nothing rather than "none". */}
+      <Points title={t("shares.page.questions")} points={item.questions} help={t("shares.page.questions.help")} />
 
       <div className="grid gap-8 sm:grid-cols-2">
         <section>

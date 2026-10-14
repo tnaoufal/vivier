@@ -254,6 +254,8 @@ export interface RequirementAssessment {
   met: RequirementMet;
   /** A short quote or fact from the profile; null when nothing in the CV speaks to it. */
   evidence: string | null;
+  /** True when the evidence was not found in what the model was given: a "yes" so marked is read as "partial". */
+  evidenceUnverified?: boolean;
 }
 
 /** The model's expert reading of a candidate against the whole brief. */
@@ -267,6 +269,8 @@ export interface DimensionScore {
   note: string;
   /** A quote or fact from the profile; null when nothing speaks to it. */
   evidence: string | null;
+  /** True when the evidence was not found in what the model was given: the score is then neutral at most. */
+  evidenceUnverified?: boolean;
 }
 
 export type AssessmentDimension = "role" | "seniority" | "context" | "trajectory" | "achievements";
@@ -306,6 +310,8 @@ export interface Assessment {
   rankNote?: string | null;
   /** Set by the second-opinion pass on retained profiles. */
   challenge?: AssessmentChallenge;
+  /** How many of the model's sentences the filter withheld (a protected characteristic, a period without a position): the reading shown is incomplete by that much. */
+  withheld?: number;
 }
 
 /** The structured understanding of the job, derived from the brief and edited by the team (briefs.role_profile). */
@@ -338,6 +344,8 @@ export interface RoleProfile {
   successFactors: string[];
   /** Points to verify in an interview with every candidate. */
   questions: string[];
+  /** What the brief does not state and the model had to assume (the exact métier, the level, the scope): for the team to confirm before a CV is read. */
+  assumptions: string[];
   /** Which model wrote it, and when; edits by the team keep these. */
   model: string | null;
   createdAt: string;

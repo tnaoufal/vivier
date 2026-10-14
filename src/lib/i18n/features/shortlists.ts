@@ -1,9 +1,12 @@
 /**
  * Words of the shortlists: the list of the organisation's shortlists, the
  * board of one shortlist (to review, retained, dismissed), the card of a
- * candidate on it, the detail drawer (match, note, votes, comments with
- * mentions, history). Decision traces name the person and the moment:
- * {name} and {when} are filled from decided_by / decided_at, never guessed.
+ * candidate on it, the detail drawer (match, the recruiter's reading
+ * with its tier, dimensions, strengths, reservations and interview
+ * questions, note, votes, comments with mentions, history). Decision
+ * traces name the person and the moment: {name} and {when} are filled
+ * from decided_by / decided_at, never guessed; a tier is always said to
+ * be a proposal.
  */
 const fr = {
   // list
@@ -124,6 +127,24 @@ const fr = {
   "shortlists.drawer.evidence.none": "Rien dans le profil ne le dit.",
   "shortlists.drawer.criterion.unknown": "Critère retiré du brief",
   "shortlists.drawer.required": "obligatoire",
+
+  // the recruiter's reading
+  "shortlists.tier.A": "A · À présenter",
+  "shortlists.tier.B": "B · À creuser",
+  "shortlists.tier.C": "C · Non présenté",
+  "shortlists.tier.help": "Niveau proposé par la lecture comparée des profils retenus ; la décision reste celle de l'équipe.",
+  "shortlists.reading.dimensions": "Lecture par dimension",
+  "shortlists.reading.dimension": "{label} : {score} sur 100",
+  "shortlists.dimension.role": "Métier",
+  "shortlists.dimension.seniority": "Séniorité",
+  "shortlists.dimension.context": "Contexte",
+  "shortlists.dimension.trajectory": "Trajectoire",
+  "shortlists.dimension.achievements": "Réalisations",
+  "shortlists.reading.rank": "Parmi les retenus",
+  "shortlists.reading.strengths": "Points forts",
+  "shortlists.reading.concerns": "Réserves",
+  "shortlists.reading.challenge": "Contre-expertise",
+  "shortlists.reading.questions": "Pour l'entretien",
   "shortlists.note.title": "Note de l'équipe",
   "shortlists.note.placeholder": "Une note partagée, enregistrée quand vous quittez le champ.",
   "shortlists.note.empty": "Aucune note.",
@@ -245,6 +266,23 @@ const en = {
   "shortlists.drawer.evidence.none": "Nothing in the profile says so.",
   "shortlists.drawer.criterion.unknown": "Criterion removed from the brief",
   "shortlists.drawer.required": "required",
+
+  "shortlists.tier.A": "A · Present",
+  "shortlists.tier.B": "B · Look deeper",
+  "shortlists.tier.C": "C · Not presented",
+  "shortlists.tier.help": "Tier proposed by the comparative reading of the retained profiles; the decision remains the team's.",
+  "shortlists.reading.dimensions": "Reading by dimension",
+  "shortlists.reading.dimension": "{label}: {score} out of 100",
+  "shortlists.dimension.role": "Role",
+  "shortlists.dimension.seniority": "Seniority",
+  "shortlists.dimension.context": "Context",
+  "shortlists.dimension.trajectory": "Trajectory",
+  "shortlists.dimension.achievements": "Achievements",
+  "shortlists.reading.rank": "Among the retained",
+  "shortlists.reading.strengths": "Strengths",
+  "shortlists.reading.concerns": "Reservations",
+  "shortlists.reading.challenge": "Second opinion",
+  "shortlists.reading.questions": "For the interview",
   "shortlists.note.title": "Team note",
   "shortlists.note.placeholder": "A shared note, saved when you leave the field.",
   "shortlists.note.empty": "No note.",

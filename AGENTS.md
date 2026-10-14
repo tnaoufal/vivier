@@ -21,7 +21,8 @@ stack and nothing else.
   mismatch; a field the model did not read is absent, never invented.
 - No sensitive inference: age, date of birth, gender, origin, photo,
   family, health, religion, union, politics are never extracted, stored or
-  used as criteria.
+  used as criteria; a career break, a gap or a period without a position
+  is never read, scored or mentioned either (such sentences are withheld).
 - Access is decided by `memberships.role` through RLS
   (`supabase/migrations`) and, in server functions, by `requireMember()`
   reading the access token the browser sends: never by anything else. The

@@ -24,6 +24,7 @@ const dossier = {
   languages: ["Anglais (C1)"],
   score: 68.2,
   decision: "borderline",
+  questions: ["Rôle sur les mises en production", 7, "Niveau d'anglais à l'oral"],
   requirements: [
     { label: "Node.js en production", required: true, met: "yes", evidence: "API Node depuis 2018" },
     { label: "Anglais courant", required: "yes", met: "partial", evidence: "" },
@@ -43,6 +44,7 @@ describe("itemsOf", () => {
       availability: null,
       skills: [],
       languages: [],
+      questions: [],
       score: null,
       decision: null,
       requirements: [],
@@ -52,6 +54,7 @@ describe("itemsOf", () => {
   it("reads the dossier's fields, guarded, and drops the rows it cannot read", () => {
     const [item] = itemsOf({ items: json([dossier]), include_cvs: true });
     expect(item?.location).toBe("Lyon");
+    expect(item?.questions).toEqual(["Rôle sur les mises en production", "Niveau d'anglais à l'oral"]);
     expect(item?.yearsExperience).toBe(8);
     expect(item?.availability).toBe("Un mois");
     expect(item?.skills).toEqual(["Node.js", "PostgreSQL"]);

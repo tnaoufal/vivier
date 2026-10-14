@@ -44,6 +44,7 @@ import {
   plainDraft,
   POINT_MAX,
   POINTS_MAX,
+  QUESTIONS_MAX,
   REQUIREMENT_LABEL_MAX,
   REQUIREMENTS_MAX,
   SHARE_ITEMS_MAX,
@@ -111,6 +112,8 @@ const itemInput = z.object({
   summary: z.string().max(SUMMARY_MAX),
   strengths: z.array(z.string().max(POINT_MAX)).max(POINTS_MAX),
   attention: z.array(z.string().max(POINT_MAX)).max(POINTS_MAX),
+  // Defaulted, so a dialog opened before the questions existed still creates its link.
+  questions: z.array(z.string().max(POINT_MAX)).max(QUESTIONS_MAX).default([]),
   score: z.number().min(0).max(100).nullable(),
   decision: z.enum(DECISIONS).nullable(),
   requirements: z.array(requirementInput).max(REQUIREMENTS_MAX),

@@ -1,18 +1,25 @@
 /**
  * Server functions of the briefs: what the deployment can do (a model
  * or not), the criteria a model proposes from a brief's text (the role,
- * the job itself, always first), the search of the talent pool for a
- * brief (a brief without a role criterion gets one first, derived from
- * its title and text; then the whole pool up to FULL_POOL_MAX active
- * candidates, else the hybrid retrieval; then the deterministic
- * verdicts, stored as a searches row), and the expert assessment of a
- * few results at a time (one model call per candidate, enforced by
- * assessment.ts, written back into the same row and carried to the
- * brief's shortlist items that still hold an unassessed match, so the
- * board and the dossier show what the brief page shows). Every handler
- * reads the caller from the access token through requireMember() and
- * works only on the organisation it verified. Nothing here decides: the
- * model proposes, the row keeps its reading, a person retains.
+ * the job itself, always first), the role profile (the understanding of
+ * the job a senior recruiter writes before reading a CV: derived once
+ * at the first analysis, regenerated on request, edited by the team in
+ * the browser), the search of the talent pool for a brief (the profile
+ * first when the brief has none, then the criteria when it has none,
+ * then the role criterion built from the profile or derived from the
+ * title, and refreshed from the profile the team edited since; then
+ * the whole pool up to FULL_POOL_MAX active candidates,
+ * else the hybrid retrieval; then the deterministic verdicts, stored as
+ * a searches row), and the three passes the browser drives on its
+ * results: the screening of a few candidates at a time (one model call
+ * per candidate, enforced by assessment.ts, written back into the same
+ * row and carried to the brief's shortlist items that still hold an
+ * unassessed match), the second opinion on the retained ones (one call
+ * per candidate, applyChallenge), and the comparative tiering of a
+ * group (one call per group, applyRanking). Every handler reads the
+ * caller from the access token through requireMember() and works only
+ * on the organisation it verified. Nothing here decides: the model
+ * proposes, the row keeps its reading, a person retains.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -23,6 +30,7 @@ import type {
   BriefRow,
   CriterionKind,
   MatchResult,
+  RoleProfile,
   SearchMethod,
   SearchRow,
   ShortlistItemRow,
@@ -34,7 +42,14 @@ import { settings } from "@/lib/platform/settings.server";
 import { db, requireMember, type ServiceClient } from "@/lib/platform/supabase.server";
 import { recordUsage } from "@/lib/platform/usage.server";
 
-import { ASSESS_BATCH_MAX, enforceAssessment, type ModelAssessmentAnswer } from "./assessment";
+import {
+  applyChallenge,
+  ASSESS_BATCH_MAX,
+  enforceAssessment,
+  type EnforceOptions,
+  type ModelAssessmentAnswer,
+  type ModelChallengeAnswer,
+} from "./assessment";
 import {
   countProtected,
   isCriterionKind,
@@ -52,21 +67,56 @@ import { rankResults, scoreCandidate } from "./matching";
 import {
   assessmentPayload,
   assessmentSystemPrompt,
+  challengePayload,
+  challengeSystemPrompt,
   EXTRACTION_MAX,
   extractionSystemPrompt,
   extractionUserPrompt,
   FULL_POOL_MAX,
+  payloadTexts,
   queryTextOf,
   RETRIEVAL_LIMIT,
   roleDefinitionPrompt,
   textQueryOf,
   type AssessmentProfile,
+  type BriefText,
 } from "./prompts";
+import {
+  applyRanking,
+  RANK_GROUP_MAX,
+  RANK_GROUP_MIN,
+  rankingPayload,
+  rankingSheets,
+  rankingSystemPrompt,
+  type ModelRankingAnswer,
+} from "./ranking";
+import {
+  cleanRoleProfile,
+  guardRoleProfile,
+  parseRoleProfile,
+  roleDefinitionOf,
+  roleProfileAnswer,
+  roleProfileSystemPrompt,
+  roleProfileUserPrompt,
+  statesMaximumYears,
+  type RoleProfileAnswer,
+} from "./role-profile";
+import { CHALLENGE_BATCH_MAX } from "./stages";
 
-/** The answer's budget grows with the requirements: six of them make about 900 tokens. */
-const ASSESSMENT_TOKENS_BASE = 600;
-const ASSESSMENT_TOKENS_PER_REQUIREMENT = 50;
-const ASSESSMENT_TOKENS_MAX = 2000;
+/**
+ * The answer's budget grows with the requirements: the five dimensions
+ * (score, note and evidence each), the three lists, the summary and one
+ * row per criterion keyed by its UUID make about 2000 tokens on six
+ * criteria and close to 3000 on twelve; a budget below that cuts the
+ * JSON and fails the candidate.
+ */
+const ASSESSMENT_TOKENS_BASE = 1800;
+const ASSESSMENT_TOKENS_PER_REQUIREMENT = 80;
+const ASSESSMENT_TOKENS_MAX = 3200;
+const ROLE_PROFILE_TOKENS = 1600;
+const CHALLENGE_TOKENS = 400;
+/** One line per candidate of the group. */
+const RANKING_TOKENS_PER_CANDIDATE = 120;
 
 const orgInput = z.object({
   accessToken: z.string().min(1).max(4096),
@@ -82,7 +132,20 @@ const assessInput = briefInput.extend({
   candidateIds: z.array(z.uuid()).min(1).max(ASSESS_BATCH_MAX),
 });
 
-type LoadedBrief = Pick<BriefRow, "id" | "title" | "description"> & { criteria: BriefCriterion[] };
+const challengeInput = briefInput.extend({
+  searchId: z.uuid(),
+  candidateIds: z.array(z.uuid()).min(1).max(CHALLENGE_BATCH_MAX),
+});
+
+const rankInput = briefInput.extend({
+  searchId: z.uuid(),
+  candidateIds: z.array(z.uuid()).min(RANK_GROUP_MIN).max(RANK_GROUP_MAX),
+});
+
+type LoadedBrief = Pick<BriefRow, "id" | "title" | "description"> & {
+  criteria: BriefCriterion[];
+  role_profile: RoleProfile | null;
+};
 
 function log(event: string, details: Record<string, unknown>): void {
   console.warn("[briefs]", JSON.stringify({ event, ...details }));
@@ -100,20 +163,49 @@ function criteriaOf(raw: unknown, where: Record<string, string>): BriefCriterion
   return parseCriteria(raw);
 }
 
-/** The brief of the organisation, criteria parsed, or NOT_FOUND. */
-async function loadBrief(client: ServiceClient, orgId: string, briefId: string): Promise<LoadedBrief> {
-  const rows = await client.select<Pick<BriefRow, "id" | "title" | "description" | "criteria">>(
-    `briefs?select=id,title,description,criteria&org_id=eq.${encodeURIComponent(orgId)}&id=eq.${encodeURIComponent(briefId)}&limit=1`,
+/** The brief of the organisation, criteria and role profile parsed, or NOT_FOUND. */
+async function loadBrief(
+  client: ServiceClient,
+  orgId: string,
+  briefId: string,
+): Promise<LoadedBrief> {
+  const rows = await client.select<
+    Pick<BriefRow, "id" | "title" | "description" | "criteria" | "role_profile">
+  >(
+    `briefs?select=id,title,description,criteria,role_profile&org_id=eq.${encodeURIComponent(orgId)}&id=eq.${encodeURIComponent(briefId)}&limit=1`,
   );
   const row = rows[0];
   if (!row) throw new AppError("NOT_FOUND");
-  return { id: row.id, title: row.title, description: row.description, criteria: criteriaOf(row.criteria, { briefId: row.id }) };
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    criteria: criteriaOf(row.criteria, { briefId: row.id }),
+    role_profile: parseRoleProfile(row.role_profile),
+  };
+}
+
+/** The brief as the payloads read it: text, criteria (the search's when given) and the role profile. */
+function briefTextOf(
+  brief: LoadedBrief,
+  criteria: readonly BriefCriterion[] = brief.criteria,
+): BriefText {
+  return {
+    title: brief.title,
+    description: brief.description,
+    criteria: [...criteria],
+    roleProfile: brief.role_profile,
+  };
 }
 
 type LoadedSearch = Pick<SearchRow, "id" | "brief_id" | "criteria" | "results">;
 
 /** One search of the organisation with its stored results and the criteria of the time, or NOT_FOUND. */
-async function loadSearch(client: ServiceClient, orgId: string, searchId: string): Promise<LoadedSearch> {
+async function loadSearch(
+  client: ServiceClient,
+  orgId: string,
+  searchId: string,
+): Promise<LoadedSearch> {
   const rows = await client.select<LoadedSearch>(
     `searches?select=id,brief_id,criteria,results&org_id=eq.${encodeURIComponent(orgId)}&id=eq.${encodeURIComponent(searchId)}&limit=1`,
   );
@@ -149,7 +241,13 @@ export const briefCapabilities = createServerFn({ method: "POST" })
 
 /** What the extraction schema lets through; named so the handler reads a typed value. */
 interface ExtractionAnswer {
-  criteria: { kind: string; label: string; value: string; required?: boolean | undefined; weight?: number | undefined }[];
+  criteria: {
+    kind: string;
+    label: string;
+    value: string;
+    required?: boolean | undefined;
+    weight?: number | undefined;
+  }[];
   warnings?: string[] | undefined;
 }
 
@@ -181,13 +279,15 @@ export interface ExtractionResult {
  * One extraction call: the model's proposals cleaned, capped, and
  * stripped of protected characteristics, the role first and once (the
  * job itself, required and essential whatever the model said of it: the
- * team may untick it in the editor).
+ * team may untick it in the editor). The brief's role profile, when it
+ * has one, goes with the text so the must-haves come back required.
  */
 async function proposeCriteria(orgId: string, brief: LoadedBrief): Promise<ExtractionResult> {
   const answer = await completeJson<ExtractionAnswer>({
     system: extractionSystemPrompt(),
-    user: extractionUserPrompt(brief),
+    user: extractionUserPrompt(brief, brief.role_profile),
     schema: extractionAnswer,
+    temperature: 0,
     maxTokens: 2000,
   });
   await recordUsage(orgId, "brief", answer.usage);
@@ -238,6 +338,94 @@ export const extractCriteria = createServerFn({ method: "POST" })
   });
 
 // ---------------------------------------------------------------------
+// the role profile
+// ---------------------------------------------------------------------
+
+/** The job as the team names it: the title, else the first line of the text. */
+function jobTitleOf(brief: Pick<BriefRow, "title" | "description">): string {
+  return brief.title.trim() || brief.description.trim().split("\n")[0]?.trim() || "";
+}
+
+/**
+ * One call, at temperature 0 so the same brief gives the same profile,
+ * that writes the role profile from the brief's text, cleaned and
+ * guarded (a field naming a protected characteristic is dropped and the
+ * log says so; a maximum of years the brief did not state is dropped
+ * too), and saved into the brief through the service client. Throws
+ * when the model does not answer: the caller decides whether the search
+ * goes on without it.
+ */
+async function writeRoleProfile(
+  client: ServiceClient,
+  orgId: string,
+  brief: LoadedBrief,
+): Promise<RoleProfile> {
+  const answer = await completeJson<RoleProfileAnswer>({
+    system: roleProfileSystemPrompt(),
+    user: roleProfileUserPrompt(brief),
+    schema: roleProfileAnswer,
+    temperature: 0,
+    maxTokens: ROLE_PROFILE_TOKENS,
+  });
+  await recordUsage(orgId, "brief", answer.usage);
+  // A ceiling on years the brief did not write is the model's, and a proxy for age: only the brief's own maximum is kept.
+  const cleaned = cleanRoleProfile(
+    { ...answer.value, yearsMax: statesMaximumYears(brief) ? answer.value.yearsMax : null },
+    {
+      title: jobTitleOf(brief),
+      model: answer.usage.model,
+      createdAt: new Date().toISOString(),
+    },
+  );
+  const { profile, dropped } = guardRoleProfile(cleaned);
+  if (dropped > 0) log("role_profile_protected", { briefId: brief.id, dropped });
+  await client.patch("briefs", { id: brief.id, org_id: orgId }, { role_profile: profile });
+  return profile;
+}
+
+/** The profile of a brief that has none, or null when the model did not answer (logged; the search runs without it). */
+async function deriveRoleProfile(
+  client: ServiceClient,
+  orgId: string,
+  brief: LoadedBrief,
+): Promise<RoleProfile | null> {
+  if (!jobTitleOf(brief)) return null;
+  try {
+    return await writeRoleProfile(client, orgId, brief);
+  } catch (error) {
+    log("role_profile_failed", { briefId: brief.id, error: String(error).slice(0, 300) });
+    return null;
+  }
+}
+
+export interface RoleProfileResult {
+  roleProfile: RoleProfile;
+}
+
+/** The "regenerate" button: the profile written again from the brief's text and saved; the team edits it from there. */
+export const regenerateRoleProfile = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => briefInput.parse(data))
+  .handler(async ({ data }): Promise<RoleProfileResult> => {
+    const member = await requireMember(data.accessToken, data.orgId, "member");
+    await enforceRateLimit("model", { userKey: member.userId });
+    if (!modelConfigured()) throw new AppError("SETUP:model");
+    const client = db();
+    const brief = await loadBrief(client, member.orgId, data.briefId);
+    if (!jobTitleOf(brief)) throw new AppError("INPUT:invalid");
+    const roleProfile = await writeRoleProfile(client, member.orgId, brief);
+    console.info(
+      "[briefs]",
+      JSON.stringify({
+        event: "role_profile",
+        orgId: member.orgId,
+        briefId: brief.id,
+        model: roleProfile.model,
+      }),
+    );
+    return { roleProfile };
+  });
+
+// ---------------------------------------------------------------------
 // the search
 // ---------------------------------------------------------------------
 
@@ -272,6 +460,17 @@ export interface SearchResult {
    * the role alone for a brief written before the role existed.
    */
   criteriaDerived: boolean;
+  /** True when the role profile was written from the brief's text and saved before the search (the team checks it). */
+  roleProfileDerived: boolean;
+  /**
+   * True when the model wrote the understanding of the job this search
+   * rests on (the profile, the criteria, or the role's definition from
+   * the text) and nobody has checked it yet: the browser then shows the
+   * deterministic ranking and waits for the team before any profile is
+   * read. False when the role was only copied from a profile the brief
+   * already had.
+   */
+  needsCheck: boolean;
   /** Active candidates in the pool at run time: above FULL_POOL_MAX only the retrieved rows were read, and the panel says so. */
   poolSize: number;
   createdAt: string;
@@ -292,18 +491,28 @@ async function embedQuery(orgId: string, text: string): Promise<number[] | null>
 
 /** How many active candidates the organisation holds: the pool the search reads whole, or samples. */
 async function poolSizeOf(client: ServiceClient, orgId: string): Promise<number> {
-  return client.count(`candidates?select=id&org_id=eq.${encodeURIComponent(orgId)}&status=eq.active`);
+  return client.count(
+    `candidates?select=id&org_id=eq.${encodeURIComponent(orgId)}&status=eq.active`,
+  );
 }
 
 /** The active profiles of the organisation, newest first, `limit` at most. */
-async function loadPool(client: ServiceClient, orgId: string, limit: number): Promise<ProfileRow[]> {
+async function loadPool(
+  client: ServiceClient,
+  orgId: string,
+  limit: number,
+): Promise<ProfileRow[]> {
   return client.select<ProfileRow>(
     `candidates?select=${PROFILE_COLUMNS}&org_id=eq.${encodeURIComponent(orgId)}&status=eq.active&order=updated_at.desc&limit=${limit}`,
   );
 }
 
 /** The active profiles among `ids`, by id; one archived or erased since is absent. */
-async function loadProfiles(client: ServiceClient, orgId: string, ids: readonly string[]): Promise<Map<string, ProfileRow>> {
+async function loadProfiles(
+  client: ServiceClient,
+  orgId: string,
+  ids: readonly string[],
+): Promise<Map<string, ProfileRow>> {
   const profiles = new Map<string, ProfileRow>();
   if (!ids.length) return profiles;
   const org = encodeURIComponent(orgId);
@@ -323,7 +532,11 @@ async function loadProfiles(client: ServiceClient, orgId: string, ids: readonly 
  * the editor shows them (the person checks them: a toast says so). A
  * failure leaves the brief as it is and the search runs on text alone.
  */
-async function deriveCriteria(client: ServiceClient, orgId: string, brief: LoadedBrief): Promise<BriefCriterion[] | null> {
+async function deriveCriteria(
+  client: ServiceClient,
+  orgId: string,
+  brief: LoadedBrief,
+): Promise<BriefCriterion[] | null> {
   try {
     const proposed = await proposeCriteria(orgId, brief);
     if (!proposed.criteria.length) return null;
@@ -353,7 +566,11 @@ const roleAnswer = z.object({
  * characteristic is never written, since the parser would drop it on
  * the next read and every run would derive it again.
  */
-async function deriveRole(client: ServiceClient, orgId: string, brief: LoadedBrief): Promise<BriefCriterion | null> {
+async function deriveRole(
+  client: ServiceClient,
+  orgId: string,
+  brief: LoadedBrief,
+): Promise<BriefCriterion | null> {
   if (!brief.title.trim() && !brief.description.trim()) return null;
   const fallback = roleFromTitle(brief);
   let role = fallback;
@@ -364,13 +581,15 @@ async function deriveRole(client: ServiceClient, orgId: string, brief: LoadedBri
         system: prompt.system,
         user: prompt.user,
         schema: roleAnswer,
+        temperature: 0,
         maxTokens: 600,
       });
       await recordUsage(orgId, "brief", answer.usage);
       const label = answer.value.label.trim().slice(0, LABEL_MAX) || fallback?.label || "";
       const value = answer.value.value.trim().slice(0, VALUE_MAX) || fallback?.value || "";
       if (!label || !value) log("role_empty", { briefId: brief.id });
-      else if (protectedCriterion(label, value, "role")) log("role_protected", { briefId: brief.id });
+      else if (protectedCriterion(label, value, "role"))
+        log("role_protected", { briefId: brief.id });
       else role = roleCriterionOf(label, value);
     } catch (error) {
       log("role_failed", { briefId: brief.id, error: String(error).slice(0, 300) });
@@ -382,7 +601,73 @@ async function deriveRole(client: ServiceClient, orgId: string, brief: LoadedBri
   }
   // The search runs with the role either way; a save that fails is logged and tried again on the next run.
   try {
-    await client.patch("briefs", { id: brief.id, org_id: orgId }, { criteria: [role, ...brief.criteria] });
+    await client.patch(
+      "briefs",
+      { id: brief.id, org_id: orgId },
+      { criteria: [role, ...brief.criteria] },
+    );
+  } catch (error) {
+    log("role_save_failed", { briefId: brief.id, error: String(error).slice(0, 300) });
+  }
+  return role;
+}
+
+/**
+ * The role criterion's definition kept in step with the profile the
+ * team edits: when the brief has both and the profile names something
+ * else than the criterion's stored value, the value is rewritten from
+ * the profile (the label, the job as the team names it, stays) before
+ * the search, so the stored search carries the definition the payloads
+ * and the full-text query read. A save that fails is logged; the
+ * payloads read the profile either way.
+ */
+async function refreshRoleFromProfile(
+  client: ServiceClient,
+  orgId: string,
+  brief: LoadedBrief,
+  profile: RoleProfile,
+): Promise<BriefCriterion[]> {
+  const role = roleCriterion(brief.criteria);
+  const definition = roleDefinitionOf(profile);
+  if (!role || !definition || definition === role.value) return brief.criteria;
+  if (protectedCriterion(role.label, definition, "role")) return brief.criteria;
+  const criteria = brief.criteria.map((criterion) =>
+    criterion === role ? { ...criterion, value: definition } : criterion,
+  );
+  try {
+    await client.patch("briefs", { id: brief.id, org_id: orgId }, { criteria });
+    log("role_refreshed", { briefId: brief.id });
+  } catch (error) {
+    log("role_save_failed", { briefId: brief.id, error: String(error).slice(0, 300) });
+  }
+  return criteria;
+}
+
+/**
+ * The role criterion of a brief that has a profile but no role yet: the
+ * job as the profile names it (else the brief's title) and the
+ * definition read off the profile (domain, missions, equivalent
+ * titles), saved in front of the criteria like a derived one. Null when
+ * the profile names nothing (its fields were dropped by the guard, or
+ * the team emptied them): the title then stands, as before.
+ */
+async function roleFromProfile(
+  client: ServiceClient,
+  orgId: string,
+  brief: LoadedBrief,
+  profile: RoleProfile,
+): Promise<BriefCriterion | null> {
+  const label = profile.title.trim() || jobTitleOf(brief);
+  const value = roleDefinitionOf(profile) || label;
+  if (!label || !value || protectedCriterion(label, value, "role"))
+    return deriveRole(client, orgId, brief);
+  const role = roleCriterionOf(label, value);
+  try {
+    await client.patch(
+      "briefs",
+      { id: brief.id, org_id: orgId },
+      { criteria: [role, ...brief.criteria] },
+    );
   } catch (error) {
     log("role_save_failed", { briefId: brief.id, error: String(error).slice(0, 300) });
   }
@@ -397,24 +682,49 @@ export const runSearch = createServerFn({ method: "POST" })
     const client = db();
     const loaded = await loadBrief(client, member.orgId, data.briefId);
 
-    let criteriaDerived = false;
+    // The understanding of the job comes first: a brief without a role
+    // profile gets one from its text, so the criteria and every screening
+    // read the job as a senior recruiter would brief it.
+    let roleProfileDerived = false;
+    // What the model wrote about the job and nobody checked: the browser waits for the team before a profile is read.
+    let needsCheck = false;
     let brief = loaded;
-    if (!loaded.criteria.length && modelConfigured()) {
-      const derived = await deriveCriteria(client, member.orgId, loaded);
+    if (!loaded.role_profile && modelConfigured()) {
+      const profile = await deriveRoleProfile(client, member.orgId, loaded);
+      if (profile) {
+        brief = { ...loaded, role_profile: profile };
+        roleProfileDerived = true;
+        needsCheck = true;
+      }
+    }
+    let criteriaDerived = false;
+    if (!brief.criteria.length && modelConfigured()) {
+      const derived = await deriveCriteria(client, member.orgId, brief);
       if (derived) {
-        brief = { ...loaded, criteria: derived };
+        brief = { ...brief, criteria: derived };
         criteriaDerived = true;
+        needsCheck = true;
       }
     }
     // The job itself is the first requirement: a brief that has none yet
     // (written before the role existed, or derived without one) gets it
-    // before anything is read.
+    // before anything is read: from the profile when there is one (no
+    // model call), else derived from the title and the text.
     if (!roleCriterion(brief.criteria)) {
-      const role = await deriveRole(client, member.orgId, brief);
+      const role = brief.role_profile
+        ? await roleFromProfile(client, member.orgId, brief, brief.role_profile)
+        : await deriveRole(client, member.orgId, brief);
       if (role) {
         brief = { ...brief, criteria: [role, ...brief.criteria] };
         criteriaDerived = true;
+        if (!brief.role_profile && modelConfigured()) needsCheck = true;
       }
+    } else if (brief.role_profile) {
+      // The team edits the profile: the role's definition follows it, so the search and the payloads read one source.
+      brief = {
+        ...brief,
+        criteria: await refreshRoleFromProfile(client, member.orgId, brief, brief.role_profile),
+      };
     }
     const queryText = queryTextOf(brief);
 
@@ -455,7 +765,11 @@ export const runSearch = createServerFn({ method: "POST" })
     }
 
     const scored = profiles.map((profile) =>
-      scoreCandidate(brief.criteria, profile, retrieval.get(profile.id) ?? { textRank: null, vectorRank: null }),
+      scoreCandidate(
+        brief.criteria,
+        profile,
+        retrieval.get(profile.id) ?? { textRank: null, vectorRank: null },
+      ),
     );
     const results = rankResults(scored);
 
@@ -485,6 +799,8 @@ export const runSearch = createServerFn({ method: "POST" })
         fullPool,
         results: results.length,
         criteriaDerived,
+        roleProfileDerived,
+        needsCheck,
       }),
     );
     return {
@@ -493,6 +809,8 @@ export const runSearch = createServerFn({ method: "POST" })
       results,
       criteria: brief.criteria,
       criteriaDerived,
+      roleProfileDerived,
+      needsCheck,
       poolSize,
       createdAt: saved.created_at,
     };
@@ -502,6 +820,18 @@ export const runSearch = createServerFn({ method: "POST" })
 // the expert assessment, a few candidates at a time
 // ---------------------------------------------------------------------
 
+const dimensionAnswer = z
+  .object({
+    score: z.number().nullable().optional(),
+    note: z.string().nullable().optional(),
+    evidence: z.string().nullable().optional(),
+  })
+  .nullable()
+  .optional();
+
+const sentences = z.array(z.string()).max(12).nullable().optional();
+
+/** The dimensions and the lists are optional, so a model that answers the older shape still gets through (its score is then the score). */
 const assessmentAnswer = z.object({
   requirements: z
     .array(
@@ -512,6 +842,19 @@ const assessmentAnswer = z.object({
       }),
     )
     .max(80),
+  dimensions: z
+    .object({
+      role: dimensionAnswer,
+      seniority: dimensionAnswer,
+      context: dimensionAnswer,
+      trajectory: dimensionAnswer,
+      achievements: dimensionAnswer,
+    })
+    .nullable()
+    .optional(),
+  strengths: sentences,
+  concerns: sentences,
+  questions: sentences,
   decision: z.string(),
   score: z.number(),
   summary: z.string(),
@@ -563,7 +906,8 @@ async function carryToShortlist(
   let written = 0;
   for (const item of items) {
     const result = byCandidate.get(item.candidate_id);
-    if (!result || (item.match && typeof item.match === "object" && item.match.assessment)) continue;
+    if (!result || (item.match && typeof item.match === "object" && item.match.assessment))
+      continue;
     const match: MatchResult = { ...result, criteria: [...criteria] };
     await client.patch("shortlist_items", { id: item.id, org_id: orgId }, { match });
     written += 1;
@@ -588,7 +932,7 @@ export const assessCandidates = createServerFn({ method: "POST" })
     // on a decision that would rest on nothing (the panel does not ask).
     const criteria = search.criteria;
     if (!criteria.length) throw new AppError("INPUT:invalid");
-    const briefText = { title: brief.title, description: brief.description, criteria };
+    const briefText = briefTextOf(brief, criteria);
     const stored = new Map(search.results.map((result) => [result.candidateId, result] as const));
     const wanted: string[] = [...new Set<string>(data.candidateIds)];
     const failed: string[] = [];
@@ -602,18 +946,31 @@ export const assessCandidates = createServerFn({ method: "POST" })
     }
 
     const model = settings().llm.assessmentModel;
-    const maxTokens = Math.min(ASSESSMENT_TOKENS_MAX, ASSESSMENT_TOKENS_BASE + ASSESSMENT_TOKENS_PER_REQUIREMENT * criteria.length);
+    const maxTokens = Math.min(
+      ASSESSMENT_TOKENS_MAX,
+      ASSESSMENT_TOKENS_BASE + ASSESSMENT_TOKENS_PER_REQUIREMENT * criteria.length,
+    );
+    // A junior brief reads internships as positions; every quote is checked against the payload's texts.
+    const junior = brief.role_profile?.seniority === "junior";
     const assessOne = async (job: AssessmentJob): Promise<Assessment> => {
+      const payload = assessmentPayload(briefText, job.profile);
       const answer = await completeJson<ModelAssessmentAnswer>({
         system: assessmentSystemPrompt(),
-        user: JSON.stringify(assessmentPayload(briefText, job.profile)),
+        user: JSON.stringify(payload),
         schema: assessmentAnswer,
         temperature: 0,
         maxTokens,
         model,
       });
       await recordUsage(member.orgId, "assess", answer.usage);
-      return enforceAssessment(criteria, job.result.verdicts, answer.value, answer.usage.model);
+      const options: EnforceOptions = { texts: payloadTexts(payload), junior };
+      return enforceAssessment(
+        criteria,
+        job.result.verdicts,
+        answer.value,
+        answer.usage.model,
+        options,
+      );
     };
     // The batch runs in parallel; one failure leaves that candidate unassessed, never the batch.
     const outcomes = await Promise.allSettled(jobs.map((job) => assessOne(job)));
@@ -625,7 +982,11 @@ export const assessCandidates = createServerFn({ method: "POST" })
         assessed.set(job.id, outcome.value);
       } else {
         failed.push(job.id);
-        log("assess_failed", { searchId: search.id, candidateId: job.id, error: String(outcome.reason).slice(0, 300) });
+        log("assess_failed", {
+          searchId: search.id,
+          candidateId: job.id,
+          error: String(outcome.reason).slice(0, 300),
+        });
       }
     });
     if (!assessed.size) return { results: [], failed };
@@ -659,4 +1020,195 @@ export const assessCandidates = createServerFn({ method: "POST" })
       }),
     );
     return { results: answered, failed };
+  });
+
+// ---------------------------------------------------------------------
+// the second opinion on the retained profiles
+// ---------------------------------------------------------------------
+
+const challengeAnswer = z.object({
+  verdict: z.string(),
+  reason: z.string().nullable().optional(),
+  evidence: z.string().nullable().optional(),
+});
+
+/**
+ * The entries of a search with new assessments written into the row:
+ * the row is read again right before writing so the batches one
+ * browser sends one after the other add up (two people on the same
+ * search is last-write-wins between their batches: the loser's entries
+ * keep their previous stage and "resume" sends them again). Answers the
+ * entries as stored.
+ */
+async function storeAssessments(
+  client: ServiceClient,
+  orgId: string,
+  searchId: string,
+  updated: ReadonlyMap<string, Assessment>,
+): Promise<MatchResult[]> {
+  const fresh = await loadSearch(client, orgId, searchId);
+  const results = fresh.results.map((result) => {
+    const assessment = updated.get(result.candidateId);
+    return assessment ? { ...result, assessment } : result;
+  });
+  await client.patch("searches", { id: searchId, org_id: orgId }, { results });
+  return results.filter((result) => updated.has(result.candidateId));
+}
+
+export const challengeCandidates = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => challengeInput.parse(data))
+  .handler(async ({ data }): Promise<AssessmentBatch> => {
+    const member = await requireMember(data.accessToken, data.orgId, "member");
+    await enforceRateLimit("assess", { userKey: member.userId });
+    if (!modelConfigured()) throw new AppError("SETUP:model");
+    const client = db();
+    const brief = await loadBrief(client, member.orgId, data.briefId);
+    const search = await loadSearch(client, member.orgId, data.searchId);
+    if (search.brief_id !== brief.id) throw new AppError("NOT_FOUND");
+    const briefText = briefTextOf(brief, search.criteria);
+    const stored = new Map(search.results.map((result) => [result.candidateId, result] as const));
+    const wanted: string[] = [...new Set<string>(data.candidateIds)];
+    const failed: string[] = [];
+    const profiles = await loadProfiles(client, member.orgId, wanted);
+    // Only a retained profile gets a second opinion; another decision sent by mistake is left as it is, not failed.
+    const jobs: (AssessmentJob & { assessment: Assessment })[] = [];
+    for (const id of wanted) {
+      const result = stored.get(id);
+      const profile = profiles.get(id);
+      const assessment = result?.assessment;
+      if (!result || !assessment) {
+        failed.push(id);
+        continue;
+      }
+      if (assessment.decision !== "fit") continue;
+      if (profile) jobs.push({ id, result, profile, assessment });
+      else failed.push(id);
+    }
+
+    const model = settings().llm.assessmentModel;
+    const challengeOne = async (
+      job: AssessmentJob & { assessment: Assessment },
+    ): Promise<Assessment> => {
+      const payload = challengePayload(briefText, job.profile, job.assessment);
+      const answer = await completeJson<ModelChallengeAnswer>({
+        system: challengeSystemPrompt(),
+        user: JSON.stringify(payload),
+        schema: challengeAnswer,
+        temperature: 0,
+        maxTokens: CHALLENGE_TOKENS,
+        model,
+      });
+      await recordUsage(member.orgId, "assess", answer.usage);
+      return applyChallenge(job.assessment, answer.value, { texts: payloadTexts(payload) });
+    };
+    const outcomes = await Promise.allSettled(jobs.map((job) => challengeOne(job)));
+    const challenged = new Map<string, Assessment>();
+    outcomes.forEach((outcome, index) => {
+      const job = jobs[index];
+      if (!job) return;
+      if (outcome.status === "fulfilled") {
+        challenged.set(job.id, outcome.value);
+      } else {
+        failed.push(job.id);
+        log("challenge_failed", {
+          searchId: search.id,
+          candidateId: job.id,
+          error: String(outcome.reason).slice(0, 300),
+        });
+      }
+    });
+    if (!challenged.size) return { results: [], failed };
+    const results = await storeAssessments(client, member.orgId, search.id, challenged);
+    console.info(
+      "[briefs]",
+      JSON.stringify({
+        event: "challenge",
+        orgId: member.orgId,
+        searchId: search.id,
+        challenged: challenged.size,
+        doubts: results.filter((result) => result.assessment?.challenge?.verdict === "doubt")
+          .length,
+        failed: failed.length,
+      }),
+    );
+    return { results, failed };
+  });
+
+// ---------------------------------------------------------------------
+// the comparative tiering of a group
+// ---------------------------------------------------------------------
+
+const rankingAnswer = z.object({
+  ranking: z
+    .array(
+      z.object({
+        candidateId: z.string(),
+        tier: z.string(),
+        note: z.string().nullable().optional(),
+      }),
+    )
+    .max(RANK_GROUP_MAX * 2),
+});
+
+export const rankCandidates = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => rankInput.parse(data))
+  .handler(async ({ data }): Promise<AssessmentBatch> => {
+    const member = await requireMember(data.accessToken, data.orgId, "member");
+    await enforceRateLimit("assess", { userKey: member.userId });
+    if (!modelConfigured()) throw new AppError("SETUP:model");
+    const client = db();
+    const brief = await loadBrief(client, member.orgId, data.briefId);
+    const search = await loadSearch(client, member.orgId, data.searchId);
+    if (search.brief_id !== brief.id) throw new AppError("NOT_FOUND");
+    const stored = new Map(search.results.map((result) => [result.candidateId, result] as const));
+    const wanted: string[] = [...new Set<string>(data.candidateIds)];
+    const failed: string[] = [];
+    // The sheets compare assessed, retained or borderline profiles; anything else in the group is left out.
+    const group: MatchResult[] = [];
+    for (const id of wanted) {
+      const result = stored.get(id);
+      const decision = result?.assessment?.decision;
+      if (result && (decision === "fit" || decision === "borderline")) group.push(result);
+      else failed.push(id);
+    }
+    if (group.length < RANK_GROUP_MIN) return { results: [], failed };
+
+    const sheets = rankingSheets(group, search.criteria);
+    const answer = await completeJson<ModelRankingAnswer>({
+      system: rankingSystemPrompt(),
+      user: JSON.stringify(
+        rankingPayload(
+          { title: brief.title, criteria: search.criteria, roleProfile: brief.role_profile },
+          sheets,
+        ),
+      ),
+      schema: rankingAnswer,
+      temperature: 0,
+      maxTokens: Math.min(2000, RANKING_TOKENS_PER_CANDIDATE * group.length + 200),
+      model: settings().llm.assessmentModel,
+    });
+    await recordUsage(member.orgId, "assess", answer.usage);
+    const groupIds = new Set(group.map((result) => result.candidateId));
+    const ranked = applyRanking(group, {
+      ranking: answer.value.ranking.filter((entry) => groupIds.has(entry.candidateId)),
+    });
+    const tiered = new Map<string, Assessment>();
+    for (const result of ranked) {
+      if (result.assessment?.tier) tiered.set(result.candidateId, result.assessment);
+    }
+    // A candidate the model left out of its answer is not failed: it simply has no tier yet, and the next run sends it again.
+    if (!tiered.size) return { results: [], failed };
+    const results = await storeAssessments(client, member.orgId, search.id, tiered);
+    console.info(
+      "[briefs]",
+      JSON.stringify({
+        event: "rank",
+        orgId: member.orgId,
+        searchId: search.id,
+        group: group.length,
+        tiered: tiered.size,
+        failed: failed.length,
+      }),
+    );
+    return { results, failed };
   });
