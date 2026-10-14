@@ -2,18 +2,21 @@
  * What leaves for the model and the database, built here so it can be
  * read and tested without either: the brief as one query text (stored
  * with the search and embedded), the full-text terms the search
- * function gets, the two system prompts (criteria extraction, the expert
- * assessment of one candidate against one brief), and the payload of an
- * assessment request (the guard against a criterion about a protected
- * characteristic is criteria.ts's). Prompts are in English; the model answers
- * in the brief's language. A payload never carries a name, an email or
- * a phone number: the model reads a profile, not a person. The name is
- * read for that very reason, so redactIdentity() can take it out of
- * every text (the CV's indexed text starts with it), along with e-mail
- * addresses and phone numbers.
+ * function gets, the system prompts (criteria extraction, the role's
+ * definition for a brief that has none, the expert assessment of one
+ * candidate against one brief), and the payload of an assessment
+ * request, where the role (the job itself) comes first and apart from
+ * the other requirements (the guard against a criterion about a
+ * protected characteristic is criteria.ts's). Prompts are in English;
+ * the model answers in the brief's language. A payload never carries a
+ * name, an email or a phone number: the model reads a profile, not a
+ * person. The name is read for that very reason, so redactIdentity()
+ * can take it out of every text (the CV's indexed text starts with it),
+ * along with e-mail addresses and phone numbers.
  */
 import type { BriefRow, CandidateRow } from "@/lib/db/types";
 
+import { LABEL_MAX, roleCriterion, VALUE_MAX } from "./criteria";
 import { escapeRegExp, normalise, type MatchProfile } from "./matching";
 
 export type BriefText = Pick<BriefRow, "title" | "description" | "criteria">;
@@ -26,11 +29,20 @@ export type BriefText = Pick<BriefRow, "title" | "description" | "criteria">;
 export const FULL_POOL_MAX = 200;
 /** The most rows the retrieval answers; scoring runs on all of them. */
 export const RETRIEVAL_LIMIT = 120;
-/** The most criteria an extraction proposes. */
+/** The most criteria an extraction proposes, the role among them. */
 export const EXTRACTION_MAX = 12;
+/** A role's definition: the job's domain, its core missions, the equivalent titles, the sector when the brief names one. */
+export const ROLE_DEFINITION_MAX = VALUE_MAX;
 
 export const QUERY_TEXT_MAX = 6000;
 export const TEXT_QUERY_MAX_TERMS = 48;
+/**
+ * How many terms of the role's definition go ahead of the title in the
+ * full-text query: its equivalent titles are worth finding, but the
+ * whole text (missions, titles, a sector) would take most of the terms
+ * before the other criteria's values were reached.
+ */
+export const ROLE_DEFINITION_QUERY_TERMS = 12;
 /** The whole assessment payload stays under about this many characters: the CV text is clipped to what is left. */
 export const ASSESSMENT_PAYLOAD_MAX = 9000;
 const ASSESSMENT_DESCRIPTION_MAX = 4000;
@@ -75,25 +87,46 @@ const STOP_WORDS = new Set<string>([
   "skills", "skill", "knowledge", "level", "plus", "proven", "track", "record", "ability", "excellent",
 ]);
 
+/** The terms of one text: normalised, three letters at least, no stop word, each once. */
+function termsOf(part: string | null | undefined): string[] {
+  const out = new Set<string>();
+  for (const token of normalise(part).split(/[^\p{L}\p{N}]+/u)) {
+    if (token.length >= 3 && !STOP_WORDS.has(token)) out.add(token);
+  }
+  return [...out];
+}
+
 /**
  * The terms the full-text search gets, joined with OR so a long brief
  * ranks by how many of its words a CV holds instead of demanding every
- * one of them: criteria first (values, then labels), then the title,
- * then the description; normalised, three letters at least, no stop
- * word, each once, `maxTerms` at most.
+ * one of them: the criteria other than the role first (values, then
+ * labels), then the role's label and the first terms of its definition
+ * (ROLE_DEFINITION_QUERY_TERMS), then the title, the description, and
+ * the rest of the definition; normalised, three letters at least, no
+ * stop word, each once, `maxTerms` at most. The role's definition
+ * comes after the other criteria on purpose: six hundred characters of
+ * missions and titles would otherwise crowd out the languages, the
+ * degree and the tools the brief asks for.
  */
 export function textQueryOf(brief: BriefText, maxTerms = TEXT_QUERY_MAX_TERMS): string {
-  const ordered = [
-    ...(brief.criteria ?? []).map((criterion) => criterion.value),
-    ...(brief.criteria ?? []).map((criterion) => criterion.label),
-    brief.title,
-    brief.description,
+  const criteria = brief.criteria ?? [];
+  const role = roleCriterion(criteria);
+  const others = criteria.filter((criterion) => criterion !== role);
+  const definition = role ? termsOf(role.value) : [];
+  const ordered: string[][] = [
+    ...others.map((criterion) => termsOf(criterion.value)),
+    ...others.map((criterion) => termsOf(criterion.label)),
+    role ? termsOf(role.label) : [],
+    definition.slice(0, ROLE_DEFINITION_QUERY_TERMS),
+    termsOf(brief.title),
+    termsOf(brief.description),
+    definition.slice(ROLE_DEFINITION_QUERY_TERMS),
   ];
   const seen = new Set<string>();
   const terms: string[] = [];
   for (const part of ordered) {
-    for (const token of normalise(part).split(/[^\p{L}\p{N}]+/u)) {
-      if (token.length < 3 || STOP_WORDS.has(token) || seen.has(token)) continue;
+    for (const token of part) {
+      if (seen.has(token)) continue;
       seen.add(token);
       terms.push(token);
       if (terms.length >= maxTerms) return terms.join(" OR ");
@@ -106,19 +139,51 @@ export function textQueryOf(brief: BriefText, maxTerms = TEXT_QUERY_MAX_TERMS): 
 // criteria extraction
 // ---------------------------------------------------------------------
 
+/**
+ * How the role's definition is written, shared by the extraction and
+ * the one-call derivation: what the assessment reads to judge whether a
+ * profile's métier is this job, whatever the titles.
+ */
+const ROLE_DEFINITION_RULES = [
+  `- The role's value is the ROLE DEFINITION, up to ${ROLE_DEFINITION_MAX} characters, in the language of the brief, as prose: the domain of the job (sales, finance, engineering...), the three to six core missions that define the job (for a business developer: prospecting new accounts, selling and negotiating, growing revenue from new clients), the usual equivalent titles under which other companies name the same job (commercial grands comptes, ingénieur d'affaires, chargé d'affaires, sales executive, account executive), and, only when the brief says so, the sector or the product.`,
+  "- Write the definition from what this job is in the market, not only from the brief's words: the brief rarely spells out the missions, and only adds the sector, the product or a particular scope when it states one.",
+  '- Missions, scope and titles only: never a protected characteristic (age, gender, origin, family situation, health, religion, politics, appearance...), and none of the words that name one (write "domain" or "métier", not "family" or "famille", for the job\'s domain).',
+];
+
 export function extractionSystemPrompt(): string {
   return [
     "You extract hiring criteria from a job brief for an HR team. The team reviews every proposal; nothing you answer is applied by itself.",
-    'Answer with JSON only: {"criteria":[{"kind":"skill|experience|language|location|education|availability|other","label":"...","value":"...","required":true,"weight":2}],"warnings":["..."]}.',
+    'Answer with JSON only: {"criteria":[{"kind":"role|skill|experience|language|location|education|availability|other","label":"...","value":"...","required":true,"weight":2}],"warnings":["..."]}.',
     "Rules:",
-    `- At most ${EXTRACTION_MAX} criteria, the most useful first, one criterion per requirement, nothing the brief does not say.`,
-    '- kind: "skill" for a tool, technique, method or domain; "experience" for years of experience (value is the number of years alone, e.g. "5"); "language" for a spoken language (value is the language with its level when stated, e.g. "anglais C1", "english fluent"); "location" for a city, region or country (value is the place alone); "education" for a degree or a school; "availability" for a start date or notice period; "other" for anything else.',
+    `- At most ${EXTRACTION_MAX} criteria, the most useful first, one criterion per requirement, nothing the brief does not say, except the role definition, which you write from your knowledge of the job (the brief rarely spells out the missions).`,
+    '- The FIRST criterion is always the role, exactly one, built from the title and the text: "kind":"role", label = the job title as the brief names it (e.g. "Business Developer"), "required":true, "weight":3.',
+    ...ROLE_DEFINITION_RULES,
+    '- Then the other criteria. kind: "skill" for a tool, technique, method or domain; "experience" for years of experience (value is the number of years alone, e.g. "5"); "language" for a spoken language (value is the language with its level when stated, e.g. "anglais C1", "english fluent"); "location" for a city, region or country (value is the place alone); "education" for a degree or a school; "availability" for a start date or notice period; "other" for anything else.',
     '- label: short, in the language of the brief, as it reads on a chip (e.g. "Anglais courant", "5 ans en contrôle de gestion"). value: the thing to find in a profile, lowercase, no filler words.',
     "- required: true only when the brief states the requirement as mandatory (must, required, mandatory, obligatoire, impératif, indispensable, exigé). Otherwise false.",
     "- weight: 3 for what the brief insists on, 2 for what it asks for, 1 for what it only welcomes (a plus, apprécié, idéalement, nice to have).",
     "- Never produce a criterion about age, date of birth, gender, origin, nationality, ethnicity, family situation, pregnancy, health, disability, religion, union membership, political opinion, sexual orientation, appearance or any other protected characteristic, even when the brief asks for it: drop it and add one sentence to warnings naming the dropped request, in the language of the brief.",
     "- warnings is [] when nothing was dropped.",
   ].join("\n");
+}
+
+/**
+ * The one small call that gives a brief written before the role existed
+ * its role criterion (runSearch adds it in front of the criteria the
+ * brief already has): the job title as the brief names it, and the
+ * definition the assessment reads.
+ */
+export function roleDefinitionPrompt(brief: Pick<BriefRow, "title" | "description">): { system: string; user: string } {
+  return {
+    system: [
+      "You read a job brief for an HR team and name the job it is about. The team reviews your answer; nothing you answer is applied by itself.",
+      'Answer with JSON only: {"label":"...","value":"..."}.',
+      "Rules:",
+      `- label: the job title as the brief names it, at most ${LABEL_MAX} characters, in the language of the brief (the title of the brief when it is one).`,
+      ...ROLE_DEFINITION_RULES,
+    ].join("\n"),
+    user: extractionUserPrompt(brief),
+  };
 }
 
 export function extractionUserPrompt(brief: Pick<BriefRow, "title" | "description">): string {
@@ -131,11 +196,11 @@ export function extractionUserPrompt(brief: Pick<BriefRow, "title" | "descriptio
 // ---------------------------------------------------------------------
 
 /**
- * The columns the assessment reads: the matching's, the dated
- * experiences, and the name, which never leaves: the payload strips it
- * out of every text it sends.
+ * The columns the assessment reads: the matching's (the dated
+ * experiences among them) and the name, which never leaves: the payload
+ * strips it out of every text it sends.
  */
-export type AssessmentProfile = MatchProfile & Pick<CandidateRow, "experiences" | "full_name">;
+export type AssessmentProfile = MatchProfile & Pick<CandidateRow, "full_name">;
 
 export interface AssessmentRequirement {
   id: string;
@@ -143,6 +208,15 @@ export interface AssessmentRequirement {
   value: string;
   required: boolean;
   weight: number;
+}
+
+/** The job itself, first and apart from the other requirements: the model judges it before anything else. */
+export interface AssessmentRole {
+  id: string;
+  /** The job as the brief names it. */
+  label: string;
+  /** Its definition: the job's domain, core missions, equivalent titles, sector when stated. */
+  definition: string;
 }
 
 export interface AssessmentExperience {
@@ -157,6 +231,9 @@ export interface AssessmentPayload {
   brief: {
     title: string;
     description: string;
+    /** Null for a brief analysed before the role existed: the assessment then reads the requirements alone. */
+    role: AssessmentRole | null;
+    /** The other requirements, the role left out. */
     requirements: AssessmentRequirement[];
   };
   candidate: {
@@ -267,29 +344,34 @@ function experiencesOf(profile: AssessmentProfile, clean: CleanText): Assessment
 }
 
 /**
- * The user message of an assessment request: the brief with its
- * requirements, and the candidate's structured profile (no name, no
- * contact details) followed by the CV's text clipped so the whole
- * payload stays under ASSESSMENT_PAYLOAD_MAX characters. The structured
- * fields come first because they are what the processor read with
- * confidence; the text lets the model check dates and wording. Every
- * free text is redacted before it is clipped, so a name cut in half
- * never survives at the edge of a clip.
+ * The user message of an assessment request: the brief with its role
+ * first and apart, then its other requirements, and the candidate's
+ * structured profile (no name, no contact details) followed by the CV's
+ * text clipped so the whole payload stays under ASSESSMENT_PAYLOAD_MAX
+ * characters. The structured fields come first because they are what
+ * the processor read with confidence; the text lets the model check
+ * dates and wording. Every free text is redacted before it is clipped,
+ * so a name cut in half never survives at the edge of a clip.
  */
 export function assessmentPayload(brief: BriefText, profile: AssessmentProfile): AssessmentPayload {
   const clean: CleanText = (value, max) =>
     typeof value === "string" ? text(redactIdentity(value, profile.full_name), max) : null;
+  const criteria = brief.criteria ?? [];
+  const role = roleCriterion(criteria);
   const payload: AssessmentPayload = {
     brief: {
       title: brief.title.trim().slice(0, 200),
       description: brief.description.trim().slice(0, ASSESSMENT_DESCRIPTION_MAX),
-      requirements: (brief.criteria ?? []).map((criterion) => ({
-        id: criterion.id,
-        label: criterion.label,
-        value: criterion.value,
-        required: criterion.required,
-        weight: criterion.weight,
-      })),
+      role: role ? { id: role.id, label: role.label, definition: role.value } : null,
+      requirements: criteria
+        .filter((criterion) => criterion !== role)
+        .map((criterion) => ({
+          id: criterion.id,
+          label: criterion.label,
+          value: criterion.value,
+          required: criterion.required,
+          weight: criterion.weight,
+        })),
     },
     candidate: {
       headline: clean(profile.headline, 200),
@@ -323,15 +405,25 @@ export function assessmentSystemPrompt(): string {
   return [
     "You are a senior recruitment consultant in the field of the job brief. You assess ONE candidate profile against ONE brief for a hiring team, the way you would before presenting the candidate to a client. The team reviews your reading and decides; nothing you answer is applied by itself.",
     'Answer with JSON only: {"requirements":[{"criterionId":"...","met":"yes|partial|no|unknown","evidence":"..."}],"decision":"fit|borderline|no_fit","score":0,"summary":"..."}.',
+    "The role comes first. When the brief carries a role (its label is the job as the team names it, its definition the domain, the core missions and the usual equivalent titles), decide before anything else whether the candidate's actual métier is this role. Judge what the person DID (missions, scope, responsibilities, the products or clients they handled, the seniority of the positions) before how the positions were titled: every company names a job differently, and the same title covers different jobs. The equivalent titles in the definition are examples, not a closed list.",
+    '- met "yes" when the person held this role, or an equivalent one under another title: give as evidence the position and the missions that prove it.',
+    '- met "partial" when the person held an adjacent role that shares part of the core missions: say which part is missing (an account manager keeps clients, a business developer wins them; a comptable général keeps the books, a contrôleur de gestion analyses and forecasts).',
+    '- met "no" when the person\'s career is another métier: the evidence names what they actually did.',
+    '- met "unknown" only when the profile holds no experience at all.',
+    '- For the role, a CV full of other missions is not silence: when the positions describe another métier, answer "no" and quote those positions and missions as evidence (a "no" without evidence is not accepted). "unknown" is reserved for a profile with no experience at all.',
+    '- Judge the métier on the most recent positions and on those held longest. A role held only at the start of the career, or briefly and long ago, is "partial" at most, with the dates in evidence. "partial" needs at least half of the core missions to have been the person\'s main activity: a core mission that appears as a side task of another job (a service director who also sells service contracts) does not make the role; that profile is "no".',
+    '- When a position carries no description, read its title for what it usually means in that industry: a title that unambiguously names the role or one of its equivalents is "yes" with that title and its dates as evidence; an ambiguous title is "partial". A person who managed a team doing this job without carrying the missions themselves is "partial" (say so: led, not done), unless the definition asks for that seniority.',
+    '- The sector or product in the definition narrows the role only when the brief insists on it: the same core missions in another sector are "yes" with the sector named in the evidence, so the team sees the difference; a sector the brief makes mandatory is a separate requirement.',
+    '- Answer the role as the FIRST entry of "requirements", with "criterionId" equal to brief.role.id; then one entry per entry of brief.requirements.',
     "Rules for requirements: one entry per requirement given, with its id exactly as given.",
-    '- met: "yes" when the profile clearly satisfies it; "partial" when it satisfies it in part (a lower level, fewer years, a neighbouring skill); "no" when the profile clearly does not satisfy it; "unknown" when the profile says nothing about it. Silence is never a lack: a requirement the CV does not mention is "unknown", not "no".',
+    '- met: "yes" when the profile clearly satisfies it; "partial" when it satisfies it in part (a lower level, fewer years, a neighbouring skill); "no" when the profile clearly does not satisfy it; "unknown" when the profile says nothing about it. Silence is never a lack for the other requirements (the role has its own rule above): a requirement the CV does not mention is "unknown", not "no".',
     '- evidence: a short quote or fact taken from the profile, at most 200 characters, never invented, never paraphrased into something the profile does not say. Empty when met is "unknown".',
     "- Be strict on required requirements: when the profile clearly does not meet a required requirement, answer \"no\", whatever the rest of the profile.",
     "- Seniority and years of experience are judged from the dated experiences when the CV states them (add up the relevant periods); the stated total is a hint, not a proof.",
     "- Judge the field of experience, not only the words: a title in another industry or another role does not meet a requirement about this one.",
-    'Rules for decision: "fit" when every required requirement is met and you would present the profile to the client as it is; "borderline" when it deserves a human look (a required requirement unknown, or important optional ones missing); "no_fit" when a required requirement is not met or the profile is clearly off the brief.',
-    "Rules for score: 0 to 100, the overall fit of the profile to the brief, required requirements weighing most, then the weights given.",
-    "Rules for summary: two to four factual sentences in the language of the brief, for a hiring manager: what matches, what is missing, what the CV does not say. No praise, no advice, no ranking, no recommendation to hire or reject, no bullet points, no markdown.",
+    'Rules for decision: a role at "no" is "no_fit" whatever the rest: a profile whose métier is another one is not presented, however many other requirements it meets. A role at "partial" is at most "borderline". Then: "fit" when every required requirement is met and you would present the profile to the client as it is; "borderline" when it deserves a human look (a required requirement unknown, or important optional ones missing); "no_fit" when a required requirement is not met or the profile is clearly off the brief.',
+    "Rules for score: 0 to 100, the overall fit of the profile to the brief, the role weighing most, then required requirements, then the weights given.",
+    "Rules for summary: two to four factual sentences in the language of the brief, for a hiring manager. The first sentence says whether the candidate's métier is the role and on what positions that rests; then what matches, what is missing, what the CV does not say. No praise, no advice, no ranking, no recommendation to hire or reject, no bullet points, no markdown.",
     "Never mention, infer or use age, date of birth, gender, origin, nationality, ethnicity, family situation, pregnancy, health, disability, religion, union membership, political opinion, sexual orientation, appearance or any other protected characteristic, even when the brief or the profile mentions one.",
   ].join("\n");
 }

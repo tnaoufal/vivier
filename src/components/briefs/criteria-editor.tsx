@@ -2,15 +2,16 @@
  * The criteria of a brief as rows (criterion-row.tsx), with the model's
  * proposals above them (criteria-proposals.tsx). Rows are edited
  * locally and saved together to briefs.criteria; a row without a label
- * or a value is not saved. The parent learns when there are unsaved
- * changes, because a search reads the saved brief.
+ * or a value is not saved, nor is a second role (a brief is one job:
+ * the row says so under itself). The parent learns when there are
+ * unsaved changes, because a search reads the saved brief.
  */
 import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { requireSupabase } from "@/lib/auth/supabase-client";
-import { cleanCriteria, CRITERIA_MAX, emptyCriterion, hasSimilar, isComplete, sameCriteria } from "@/lib/briefs/criteria";
+import { cleanCriteria, CRITERIA_MAX, emptyCriterion, hasSimilar, isComplete, roleCriterion, sameCriteria } from "@/lib/briefs/criteria";
 import { updateBrief } from "@/lib/briefs/queries";
 import type { BriefCriterion, BriefRow } from "@/lib/db/types";
 import { useT } from "@/lib/i18n";
@@ -38,6 +39,8 @@ export function CriteriaEditor({
 
   const dirty = !sameCriteria(cleanCriteria(rows), brief.criteria);
   const incomplete = rows.some((row) => !isComplete(row));
+  // The first role row is the brief's job; another one would not be saved.
+  const roleId = roleCriterion(rows)?.id ?? null;
 
   // A fresh row from the database (saved here or by a colleague) replaces
   // the rows only while they still equal what was last read: local edits stay.
@@ -64,14 +67,24 @@ export function CriteriaEditor({
     setRows((current) => (current.length >= CRITERIA_MAX ? current : [...current, emptyCriterion()]));
   }
 
-  /** Appends the proposals not already there (same kind and value); answers how many were added. */
+  /**
+   * Appends the proposals not already there (same kind and value; a
+   * role when the brief already has one, whatever its wording); answers
+   * how many were added. A proposed role goes first, as the analysis
+   * reads it.
+   */
   function addProposals(proposals: BriefCriterion[]): number {
     const next = [...rows];
     let added = 0;
     for (const proposal of proposals) {
       if (next.length >= CRITERIA_MAX) break;
       if (hasSimilar(next, proposal)) continue;
-      next.push(proposal);
+      if (proposal.kind === "role") {
+        if (roleCriterion(next)) continue;
+        next.unshift(proposal);
+      } else {
+        next.push(proposal);
+      }
       added += 1;
     }
     if (added > 0) setRows(next);
@@ -108,8 +121,11 @@ export function CriteriaEditor({
       {rows.length ? (
         <ul className="divide-y divide-border">
           {rows.map((row) => (
-            <li key={row.id} className="py-4 first:pt-0 last:pb-0">
+            <li key={row.id} className="space-y-2 py-4 first:pt-0 last:pb-0">
               <CriterionRow criterion={row} canEdit={canEdit} disabled={busy} onChange={update} onRemove={() => remove(row.id)} />
+              {row.kind === "role" && row.id !== roleId ? (
+                <p className="text-[13px] leading-5 text-caution-foreground dark:text-caution">{t("briefs.criteria.role.duplicate")}</p>
+              ) : null}
             </li>
           ))}
         </ul>

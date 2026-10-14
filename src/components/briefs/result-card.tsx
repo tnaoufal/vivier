@@ -2,11 +2,12 @@
  * One result of an analysis: who, the decision of the analysis as a
  * pill, the fit score as a ring (empty when no model read the profile),
  * one row per requirement of the brief with the evidence the verdict
- * rests on, the model's reading when it answered, and the way to the
+ * rests on (the role first, named as such: "Métier · Business
+ * Developer"), the model's reading when it answered, and the way to the
  * shortlist. A requirement the CV says nothing about reads "not
- * stated", never as a lack; a set-aside profile says which required
- * requirement it does not meet (or that the model's reading set it
- * aside, with its score) and stays one click from its page.
+ * stated", never as a lack; a set-aside profile says which requirement
+ * it does not meet, the métier first (or that the model's reading set
+ * it aside, with its score) and stays one click from its page.
  */
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -14,10 +15,11 @@ import { ExternalLink, ListPlus } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { Pill } from "@/components/app-shell/pill";
-import { RequirementList } from "@/components/app-shell/requirement-list";
+import { RequirementList, type RequirementRow } from "@/components/app-shell/requirement-list";
 import { ScoreRing } from "@/components/app-shell/score-ring";
 import { Button } from "@/components/ui/button";
 import { decisionOf, firstMissingRequirement, requirementRows } from "@/lib/briefs/assessment";
+import { kindKey } from "@/lib/briefs/criteria";
 import { candidatePath, shortlistPath } from "@/lib/briefs/paths";
 import type { ResultCandidate } from "@/lib/briefs/queries";
 import type { BriefCriterion, MatchResult, RequirementMet } from "@/lib/db/types";
@@ -54,15 +56,18 @@ export function ResultCard({
   const line = candidate ? [candidate.headline, candidate.location].filter((part) => part && part.trim()).join(" · ") : "";
   const assessment = result.assessment ?? null;
   const decision = decisionOf(result);
-  const rows = requirementRows(criteria, result);
+  // The role row reads as such: the shared list shows the label it is given.
+  const rows: RequirementRow[] = requirementRows(criteria, result).map(({ kind, ...row }) =>
+    kind === "role" ? { ...row, label: `${t(kindKey(kind))} · ${row.label}` } : row,
+  );
   const reason = decision === "no_fit" ? firstMissingRequirement(criteria, result) : null;
   const score = assessment ? assessment.score : null;
-  // A set-aside profile always says why: the required requirement at "no", else the model's own reading and its score.
+  // A set-aside profile always says why: the métier when it is another one, else the required requirement at "no", else the model's own reading and its score.
   const reasonLine =
     decision !== "no_fit" || score === null
       ? null
       : reason
-        ? t("briefs.results.reason", { label: reason.label })
+        ? t(reason.kind === "role" ? "briefs.results.reason.role" : "briefs.results.reason", { label: reason.label })
         : t("briefs.results.reason.model", { score });
   const scoreLabel = score === null ? t("briefs.results.noScore") : t("briefs.results.score", { score });
   const markLabel = (met: RequirementMet) => t(`briefs.met.${met}`);

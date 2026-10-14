@@ -1,23 +1,28 @@
 /**
  * One criterion of a brief as an editable row: its kind, its label (what
  * the requirement row says), its value (what is looked for in a
- * profile), whether it is required (a profile that does not meet it is
- * set aside by the analysis), and its weight as three buttons. A row
- * about a protected characteristic says under itself that it will not
- * be saved (the clean-up leaves it out). The editor wraps the row in
- * the list item that carries the hairline.
+ * profile; for the role, the job's definition in a few lines), whether
+ * it is required (a profile that does not meet it is set aside by the
+ * analysis), and its weight as three buttons. A row that becomes the
+ * role starts required and essential. A row about a protected
+ * characteristic says under itself that it will not be saved (the
+ * clean-up leaves it out). The editor wraps the row in the list item
+ * that carries the hairline.
  */
 import { Check, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   CRITERION_KINDS,
   isCriterionKind,
   kindKey,
   LABEL_MAX,
   protectedCriterion,
+  ROLE_REQUIRED,
+  ROLE_WEIGHT,
   VALUE_MAX,
   WEIGHTS,
   weightKey,
@@ -42,14 +47,18 @@ export function CriterionRow({
   const t = useT();
   const locked = !canEdit || disabled;
   const placeholderKey = `briefs.criteria.value.placeholder.${criterion.kind}` as const;
-  const isProtected = protectedCriterion(criterion.label, criterion.value);
+  const isProtected = protectedCriterion(criterion.label, criterion.value, criterion.kind);
+  const isRole = criterion.kind === "role";
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
         <Select
           value={criterion.kind}
           onValueChange={(value) => {
-            if (isCriterionKind(value)) onChange({ ...criterion, kind: value });
+            if (!isCriterionKind(value)) return;
+            // The job itself is required and essential unless the team says otherwise.
+            if (value === "role") onChange({ ...criterion, kind: value, required: ROLE_REQUIRED, weight: ROLE_WEIGHT });
+            else onChange({ ...criterion, kind: value });
           }}
           disabled={locked}
         >
@@ -73,15 +82,28 @@ export function CriterionRow({
           disabled={locked}
           className="sm:flex-1"
         />
-        <Input
-          value={criterion.value}
-          onChange={(event) => onChange({ ...criterion, value: event.target.value })}
-          placeholder={t(placeholderKey)}
-          aria-label={t("briefs.criteria.value")}
-          maxLength={VALUE_MAX}
-          disabled={locked}
-          className="sm:flex-1"
-        />
+        {isRole ? (
+          <Textarea
+            value={criterion.value}
+            onChange={(event) => onChange({ ...criterion, value: event.target.value })}
+            placeholder={t(placeholderKey)}
+            aria-label={t("briefs.criteria.value.role")}
+            maxLength={VALUE_MAX}
+            rows={3}
+            disabled={locked}
+            className="min-h-0 sm:flex-1"
+          />
+        ) : (
+          <Input
+            value={criterion.value}
+            onChange={(event) => onChange({ ...criterion, value: event.target.value })}
+            placeholder={t(placeholderKey)}
+            aria-label={t("briefs.criteria.value")}
+            maxLength={VALUE_MAX}
+            disabled={locked}
+            className="sm:flex-1"
+          />
+        )}
       </div>
       {isProtected ? <p className="text-[13px] leading-5 text-negative">{t("briefs.criteria.protected")}</p> : null}
       <div className="flex flex-wrap items-center gap-2">

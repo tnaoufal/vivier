@@ -6,7 +6,11 @@
  * the profile says nothing about is "not_stated" and never counts
  * against the person; a verdict of "missing" is given only when the CV
  * contradicts the requirement and always carries the evidence it rests
- * on (the languages or degrees listed, the years, the place).
+ * on (the languages or degrees listed, the years, the place). The role
+ * (the job itself) is only ever found here, in a title that carries the
+ * words of the job's name: a different title is no proof of a different
+ * métier, since every company names a job differently; the model judges
+ * what the person did.
  */
 import type {
   BriefCriterion,
@@ -28,6 +32,7 @@ export type MatchProfile = Pick<
   | "years_experience"
   | "availability"
   | "education"
+  | "experiences"
   | "search_text"
 >;
 
@@ -283,9 +288,58 @@ function evaluateOther(criterion: BriefCriterion, profile: MatchProfile): Criter
   return result(criterion, "not_stated", null);
 }
 
+/** Words a job's name carries that say nothing of the job: "chef de projet" is found by "chef" and "projet". */
+const ROLE_STOP_WORDS = new Set<string>(["des", "les", "pour", "and", "the", "for", "with", "avec", "sur", "senior", "junior", "confirme"]);
+
+/** The words of a job's name worth finding in a title: three letters at least, no function word, each once. */
+export function roleWords(label: string): string[] {
+  const out: string[] = [];
+  for (const token of normalise(label).split(/[^\p{L}\p{N}]+/u)) {
+    if (token.length < 3 || ROLE_STOP_WORDS.has(token) || out.includes(token)) continue;
+    out.push(token);
+  }
+  return out;
+}
+
+/** The headline and the titles of the experiences, as written, blank ones left out. */
+function titlesOf(profile: MatchProfile): string[] {
+  const titles: string[] = [];
+  if (typeof profile.headline === "string" && profile.headline.trim()) titles.push(profile.headline.trim());
+  for (const entry of Array.isArray(profile.experiences) ? profile.experiences : []) {
+    if (entry && typeof entry.title === "string" && entry.title.trim()) titles.push(entry.title.trim());
+  }
+  return titles;
+}
+
+/**
+ * The role, read from the titles alone: the words of the job's name
+ * (the label; the definition's equivalent titles are free text and are
+ * not parsed) against the headline and the title of each experience.
+ * Every word in one title is a match with that title as evidence; half
+ * of them, a partial with the closest title; otherwise not stated,
+ * never missing: a title that reads differently is no proof of another
+ * métier, and the model judges what the person actually did.
+ */
+function evaluateRole(criterion: BriefCriterion, profile: MatchProfile): CriterionResult {
+  const wanted = roleWords(criterion.label);
+  const titles = titlesOf(profile);
+  if (!wanted.length || !titles.length) return result(criterion, "not_stated", null);
+  let closest: { title: string; present: number } | null = null;
+  for (const title of titles) {
+    const haystack = normalise(title);
+    const present = wanted.filter((word) => containsWord(haystack, word)).length;
+    if (present === wanted.length) return result(criterion, "match", title);
+    if (!closest || present > closest.present) closest = { title, present };
+  }
+  if (closest && closest.present * 2 >= wanted.length) return result(criterion, "partial", closest.title);
+  return result(criterion, "not_stated", null);
+}
+
 /** What one criterion says about one profile, with the evidence it rests on. */
 export function evaluateCriterion(criterion: BriefCriterion, profile: MatchProfile): CriterionResult {
   switch (criterion.kind) {
+    case "role":
+      return evaluateRole(criterion, profile);
     case "skill":
       return evaluateSkill(criterion, profile);
     case "language":

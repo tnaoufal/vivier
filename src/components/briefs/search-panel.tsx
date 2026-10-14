@@ -14,7 +14,8 @@
  * ranking alone; when the pool was larger than what one search reads,
  * the line under the results says how many profiles were looked at.
  * Previous analyses reopen from their stored results, assessments
- * included.
+ * included; one run before the brief had its role says so, since its
+ * verdicts never judged the métier.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, SearchX } from "lucide-react";
@@ -27,6 +28,7 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { ASSESS_BATCH_MAX, bucketResults, mostMissingRequirement } from "@/lib/briefs/assessment";
 import { assessCandidates, runSearch, type AssessmentBatch } from "@/lib/briefs/briefs.functions";
+import { kindKey, roleCriterion } from "@/lib/briefs/criteria";
 import { rankResults } from "@/lib/briefs/matching";
 import { FULL_POOL_MAX, RETRIEVAL_LIMIT } from "@/lib/briefs/prompts";
 import {
@@ -358,6 +360,11 @@ export function SearchPanel({
   const assessedCount = ranked.length - unassessedCount;
   const complete = ranked.length > 0 && pendingCount === 0;
   const canResume = canEdit && !textOnly && !noCriteria && current !== null && pendingCount > 0 && !busy;
+  // An analysis stored before the brief had its role (its criteria are the
+  // search's, frozen at run time) presents profiles whose métier was never
+  // judged: the line says so, and only a new run judges it.
+  const roleStale =
+    !textOnly && current !== null && roleCriterion(brief.criteria) !== null && roleCriterion(current.criteria) === null;
 
   const runButton = canEdit ? (
     <Button type="button" onClick={() => void run()} disabled={busy || criteriaDirty} className="gap-1.5">
@@ -414,7 +421,10 @@ export function SearchPanel({
   function noFitText(view: SearchView): string {
     const parts = [t("briefs.search.nofit.text", { count: assessedCount })];
     const missing = mostMissingRequirement(view.criteria, ranked);
-    if (missing) parts.push(t("briefs.search.nofit.missing", { label: missing.label }));
+    if (missing) {
+      const label = missing.kind === "role" ? `${t(kindKey(missing.kind))} · ${missing.label}` : missing.label;
+      parts.push(t("briefs.search.nofit.missing", { label }));
+    }
     parts.push(t("briefs.search.nofit.hint"));
     return parts.join(" ");
   }
@@ -519,6 +529,7 @@ export function SearchPanel({
       {current ? (
         <>
           <p className="text-sm text-muted-foreground">{methodLine(current)}</p>
+          {roleStale ? <p className="text-sm text-muted-foreground">{t("briefs.search.line.roleStale")}</p> : null}
           {ranked.length === 0 ? (
             <EmptyState icon={<SearchX />} title={t("briefs.search.none.title")} text={t("briefs.search.none.text")} />
           ) : candidatesPending ? (

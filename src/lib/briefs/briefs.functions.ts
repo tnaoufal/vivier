@@ -1,8 +1,10 @@
 /**
  * Server functions of the briefs: what the deployment can do (a model
- * or not), the criteria a model proposes from a brief's text, the search
- * of the talent pool for a brief (the whole pool up to FULL_POOL_MAX
- * active candidates, else the hybrid retrieval; then the deterministic
+ * or not), the criteria a model proposes from a brief's text (the role,
+ * the job itself, always first), the search of the talent pool for a
+ * brief (a brief without a role criterion gets one first, derived from
+ * its title and text; then the whole pool up to FULL_POOL_MAX active
+ * candidates, else the hybrid retrieval; then the deterministic
  * verdicts, stored as a searches row), and the expert assessment of a
  * few results at a time (one model call per candidate, enforced by
  * assessment.ts, written back into the same row and carried to the
@@ -19,6 +21,7 @@ import type {
   Assessment,
   BriefCriterion,
   BriefRow,
+  CriterionKind,
   MatchResult,
   SearchMethod,
   SearchRow,
@@ -38,6 +41,9 @@ import {
   LABEL_MAX,
   parseCriteria,
   protectedCriterion,
+  roleCriterion,
+  roleCriterionOf,
+  roleFromTitle,
   toWeight,
   VALUE_MAX,
   withId,
@@ -52,6 +58,7 @@ import {
   FULL_POOL_MAX,
   queryTextOf,
   RETRIEVAL_LIMIT,
+  roleDefinitionPrompt,
   textQueryOf,
   type AssessmentProfile,
 } from "./prompts";
@@ -170,28 +177,39 @@ export interface ExtractionResult {
   dropped: number;
 }
 
-/** One extraction call: the model's proposals cleaned, capped, and stripped of protected characteristics. */
+/**
+ * One extraction call: the model's proposals cleaned, capped, and
+ * stripped of protected characteristics, the role first and once (the
+ * job itself, required and essential whatever the model said of it: the
+ * team may untick it in the editor).
+ */
 async function proposeCriteria(orgId: string, brief: LoadedBrief): Promise<ExtractionResult> {
   const answer = await completeJson<ExtractionAnswer>({
     system: extractionSystemPrompt(),
     user: extractionUserPrompt(brief),
     schema: extractionAnswer,
-    maxTokens: 1500,
+    maxTokens: 2000,
   });
   await recordUsage(orgId, "brief", answer.usage);
   const criteria: BriefCriterion[] = [];
+  let role: BriefCriterion | null = null;
   let dropped = 0;
   for (const item of answer.value.criteria) {
     const label = item.label.trim().slice(0, LABEL_MAX);
     const value = item.value.trim().slice(0, VALUE_MAX);
     if (!label || !value) continue;
-    if (protectedCriterion(label, value)) {
+    const kind: CriterionKind = isCriterionKind(item.kind) ? item.kind : "other";
+    if (protectedCriterion(label, value, kind)) {
       dropped += 1;
+      continue;
+    }
+    if (kind === "role") {
+      if (!role) role = roleCriterionOf(label, value);
       continue;
     }
     criteria.push(
       withId({
-        kind: isCriterionKind(item.kind) ? item.kind : "other",
+        kind,
         label,
         value,
         required: item.required === true,
@@ -200,6 +218,8 @@ async function proposeCriteria(orgId: string, brief: LoadedBrief): Promise<Extra
     );
     if (criteria.length >= EXTRACTION_MAX) break;
   }
+  if (role) criteria.splice(0, 0, role);
+  criteria.splice(EXTRACTION_MAX);
   const warnings = (answer.value.warnings ?? [])
     .map((warning) => warning.trim().slice(0, 300))
     .filter((warning) => warning.length > 0)
@@ -246,7 +266,11 @@ export interface SearchResult {
   results: MatchResult[];
   /** The criteria the verdicts refer to, as they were at run time. */
   criteria: BriefCriterion[];
-  /** True when the brief had no criteria and the model derived them from its text (saved into the brief). */
+  /**
+   * True when the brief's criteria were derived from its text and saved
+   * into it before the search: all of them for a brief that had none, or
+   * the role alone for a brief written before the role existed.
+   */
   criteriaDerived: boolean;
   /** Active candidates in the pool at run time: above FULL_POOL_MAX only the retrieved rows were read, and the panel says so. */
   poolSize: number;
@@ -311,6 +335,60 @@ async function deriveCriteria(client: ServiceClient, orgId: string, brief: Loade
   }
 }
 
+const roleAnswer = z.object({
+  label: z.string(),
+  value: z.string(),
+});
+
+/**
+ * The role criterion of a brief that has none (every brief written
+ * before the role existed): with a model, one small call names the job
+ * and writes its definition; without one, or when the call fails or
+ * answers something the guard refuses, the brief's title stands for
+ * both (honest, and the team edits it). Saved in front of the criteria
+ * the brief already has, so the editor shows it (realtime) and every
+ * later run finds it: it is never added twice. Null for a brief with
+ * neither a title nor a description (there is no job to name), and null
+ * when nothing could be saved: a title that itself names a protected
+ * characteristic is never written, since the parser would drop it on
+ * the next read and every run would derive it again.
+ */
+async function deriveRole(client: ServiceClient, orgId: string, brief: LoadedBrief): Promise<BriefCriterion | null> {
+  if (!brief.title.trim() && !brief.description.trim()) return null;
+  const fallback = roleFromTitle(brief);
+  let role = fallback;
+  if (modelConfigured()) {
+    try {
+      const prompt = roleDefinitionPrompt(brief);
+      const answer = await completeJson<{ label: string; value: string }>({
+        system: prompt.system,
+        user: prompt.user,
+        schema: roleAnswer,
+        maxTokens: 600,
+      });
+      await recordUsage(orgId, "brief", answer.usage);
+      const label = answer.value.label.trim().slice(0, LABEL_MAX) || fallback?.label || "";
+      const value = answer.value.value.trim().slice(0, VALUE_MAX) || fallback?.value || "";
+      if (!label || !value) log("role_empty", { briefId: brief.id });
+      else if (protectedCriterion(label, value, "role")) log("role_protected", { briefId: brief.id });
+      else role = roleCriterionOf(label, value);
+    } catch (error) {
+      log("role_failed", { briefId: brief.id, error: String(error).slice(0, 300) });
+    }
+  }
+  if (!role) {
+    log("role_unnamed", { briefId: brief.id });
+    return null;
+  }
+  // The search runs with the role either way; a save that fails is logged and tried again on the next run.
+  try {
+    await client.patch("briefs", { id: brief.id, org_id: orgId }, { criteria: [role, ...brief.criteria] });
+  } catch (error) {
+    log("role_save_failed", { briefId: brief.id, error: String(error).slice(0, 300) });
+  }
+  return role;
+}
+
 export const runSearch = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => briefInput.parse(data))
   .handler(async ({ data }): Promise<SearchResult> => {
@@ -325,6 +403,16 @@ export const runSearch = createServerFn({ method: "POST" })
       const derived = await deriveCriteria(client, member.orgId, loaded);
       if (derived) {
         brief = { ...loaded, criteria: derived };
+        criteriaDerived = true;
+      }
+    }
+    // The job itself is the first requirement: a brief that has none yet
+    // (written before the role existed, or derived without one) gets it
+    // before anything is read.
+    if (!roleCriterion(brief.criteria)) {
+      const role = await deriveRole(client, member.orgId, brief);
+      if (role) {
+        brief = { ...brief, criteria: [role, ...brief.criteria] };
         criteriaDerived = true;
       }
     }

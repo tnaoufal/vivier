@@ -13,6 +13,9 @@ import {
   REQUIRED_NO_SCORE_CAP,
   REQUIRED_UNKNOWN_SCORE_CAP,
   requirementRows,
+  ROLE_NO_SCORE_CAP,
+  ROLE_PARTIAL_SCORE_CAP,
+  ROLE_UNKNOWN_SCORE_CAP,
   type ModelAssessmentAnswer,
 } from "./assessment";
 
@@ -21,6 +24,18 @@ const criteria: BriefCriterion[] = [
   { id: "lang", kind: "language", label: "Anglais C1", value: "anglais C1", required: true, weight: 2 },
   { id: "sap", kind: "skill", label: "SAP", value: "sap", required: false, weight: 1 },
 ];
+
+const role: BriefCriterion = {
+  id: "role",
+  kind: "role",
+  label: "Business Developer",
+  value: "Commercial : prospection de nouveaux comptes, vente et négociation…",
+  required: true,
+  weight: 3,
+};
+
+/** The same brief with its role kept last, as a row added by hand in the editor would be. */
+const withRole: BriefCriterion[] = [...criteria, role];
 
 const none: CriterionResult[] = [];
 
@@ -301,6 +316,91 @@ describe("enforceAssessment", () => {
   });
 });
 
+describe("enforceAssessment: the role comes first", () => {
+  const roleAt = (met: string, evidence: string | null = "Directeur SAV : pilotage du service après-vente (2015-2024)") =>
+    answer({
+      requirements: [
+        { criterionId: "skill", met: "yes", evidence: "x" },
+        { criterionId: "lang", met: "yes", evidence: "Anglais (C1)" },
+        { criterionId: "sap", met: "yes", evidence: "SAP" },
+        { criterionId: "role", met, evidence },
+      ],
+      decision: "fit",
+      score: 100,
+    });
+
+  it("forces no_fit and caps the score at 25 when the métier is another one, whatever the other requirements", () => {
+    const assessment = enforceAssessment(withRole, none, roleAt("no"), "m");
+    expect(assessment.decision).toBe("no_fit");
+    expect(assessment.score).toBe(ROLE_NO_SCORE_CAP);
+    expect(assessment.requirements[3]).toEqual({ criterionId: "role", met: "no", evidence: "Directeur SAV : pilotage du service après-vente (2015-2024)" });
+    // The role sets aside on its own, even when the team unticked "required".
+    const optional = enforceAssessment([...criteria, { ...role, required: false }], none, roleAt("no"), "m");
+    expect(optional.decision).toBe("no_fit");
+    expect(optional.score).toBe(ROLE_NO_SCORE_CAP);
+    expect(ROLE_NO_SCORE_CAP).toBeLessThan(REQUIRED_NO_SCORE_CAP);
+  });
+
+  it("caps the decision at borderline and the score at 65 for an adjacent métier", () => {
+    const assessment = enforceAssessment(withRole, none, roleAt("partial", "Account manager : fidélisation, pas de conquête"), "m");
+    expect(assessment.decision).toBe("borderline");
+    expect(assessment.score).toBe(ROLE_PARTIAL_SCORE_CAP);
+    // A score already under the cap stays as answered; a stricter decision stands.
+    const low = enforceAssessment(withRole, none, { ...roleAt("partial"), decision: "borderline", score: 50 }, "m");
+    expect(low.decision).toBe("borderline");
+    expect(low.score).toBe(50);
+  });
+
+  it("caps the decision at borderline and the score at 60 when no experience says what the métier is", () => {
+    const assessment = enforceAssessment(withRole, none, roleAt("unknown", null), "m");
+    expect(assessment.decision).toBe("borderline");
+    expect(assessment.score).toBe(ROLE_UNKNOWN_SCORE_CAP);
+    // So does a role the model skipped.
+    const skipped = enforceAssessment(withRole, none, answer({ decision: "fit", score: 90 }), "m");
+    expect(skipped.requirements[3]).toEqual({ criterionId: "role", met: "unknown", evidence: null });
+    expect(skipped.decision).toBe("borderline");
+    expect(skipped.score).toBe(ROLE_UNKNOWN_SCORE_CAP);
+  });
+
+  it("reads a yes on the role without evidence as partial, and a no without evidence as unknown: never set aside on nothing", () => {
+    const bare = enforceAssessment(withRole, none, roleAt("yes", null), "m");
+    expect(bare.requirements[3]?.met).toBe("partial");
+    expect(bare.decision).toBe("borderline");
+    expect(bare.score).toBe(ROLE_PARTIAL_SCORE_CAP);
+    const silent = enforceAssessment(withRole, none, roleAt("no", "  "), "m");
+    expect(silent.requirements[3]?.met).toBe("unknown");
+    expect(silent.decision).toBe("borderline");
+    expect(silent.score).toBe(ROLE_UNKNOWN_SCORE_CAP);
+  });
+
+  it("keeps a fit when the métier is the role with evidence, and still applies the other rules after it", () => {
+    const fit = enforceAssessment(withRole, none, roleAt("yes", "Ingénieur d'affaires : conquête de comptes grands groupes (2018-2024)"), "m");
+    expect(fit.decision).toBe("fit");
+    expect(fit.score).toBe(100);
+    const missingLanguage = enforceAssessment(
+      withRole,
+      none,
+      {
+        ...roleAt("yes", "Ingénieur d'affaires : conquête de comptes"),
+        requirements: [
+          { criterionId: "role", met: "yes", evidence: "Ingénieur d'affaires : conquête de comptes" },
+          { criterionId: "lang", met: "no", evidence: "Anglais (A2)" },
+        ],
+      },
+      "m",
+    );
+    expect(missingLanguage.decision).toBe("no_fit");
+    expect(missingLanguage.score).toBe(REQUIRED_NO_SCORE_CAP);
+  });
+
+  it("changes nothing for a brief without a role criterion", () => {
+    const before = enforceAssessment(criteria, none, answer({ decision: "fit", score: 88 }), "m");
+    expect(before.decision).toBe("fit");
+    expect(before.score).toBe(88);
+    expect(before.requirements).toHaveLength(3);
+  });
+});
+
 describe("decisionOf and bucketResults", () => {
   it("reads the decision, unassessed when no model answered", () => {
     expect(decisionOf(result("a"))).toBe("unassessed");
@@ -349,6 +449,21 @@ describe("mostMissingRequirement", () => {
     expect(mostMissingRequirement(criteria, [result("x"), result("c", { assessment: assessed("fit", 90, rows("yes", "yes", "no")) })])).toBeNull();
     expect(mostMissingRequirement([], results)).toBeNull();
   });
+
+  it("counts the role like the others, first on a tie wherever the brief keeps it, required or not", () => {
+    const rows = (roleMet: "yes" | "no", lang: "yes" | "no") => [
+      { criterionId: "lang", met: lang, evidence: null },
+      { criterionId: "role", met: roleMet, evidence: null },
+    ];
+    const tie = [result("a", { assessment: assessed("no_fit", 10, rows("no", "no")) })];
+    expect(mostMissingRequirement(withRole, tie)?.id).toBe("role");
+    expect(mostMissingRequirement([...criteria, { ...role, required: false }], tie)?.id).toBe("role");
+    const language = [
+      result("a", { assessment: assessed("no_fit", 10, rows("no", "no")) }),
+      result("b", { assessment: assessed("no_fit", 10, rows("yes", "no")) }),
+    ];
+    expect(mostMissingRequirement(withRole, language)?.id).toBe("lang");
+  });
 });
 
 describe("requirementRows", () => {
@@ -364,10 +479,25 @@ describe("requirementRows", () => {
       }),
     );
     expect(rows).toEqual([
-      { id: "skill", label: "Contrôle de gestion", required: true, met: "yes", evidence: "Contrôleur de gestion" },
-      { id: "lang", label: "Anglais C1", required: true, met: "partial", evidence: "Anglais (B2)" },
-      { id: "sap", label: "SAP", required: false, met: "unknown", evidence: null },
+      { id: "skill", kind: "skill", label: "Contrôle de gestion", required: true, met: "yes", evidence: "Contrôleur de gestion" },
+      { id: "lang", kind: "language", label: "Anglais C1", required: true, met: "partial", evidence: "Anglais (B2)" },
+      { id: "sap", kind: "skill", label: "SAP", required: false, met: "unknown", evidence: null },
     ]);
+  });
+
+  it("puts the role first whatever its position in the brief, with its kind and its label as the team wrote it", () => {
+    const rows = requirementRows(
+      withRole,
+      result("a", {
+        verdicts: [{ criterionId: "role", verdict: "partial", evidence: "Développeur business unit" }],
+        assessment: assessed("no_fit", 20, [{ criterionId: "role", met: "no", evidence: "Directeur SAV" }]),
+      }),
+    );
+    expect(rows.map((row) => row.id)).toEqual(["role", "skill", "lang", "sap"]);
+    expect(rows[0]).toEqual({ id: "role", kind: "role", label: "Business Developer", required: true, met: "no", evidence: "Directeur SAV" });
+    // Without an assessment the deterministic reading of the titles is the row.
+    const deterministic = requirementRows(withRole, result("b", { verdicts: [{ criterionId: "role", verdict: "partial", evidence: "Développeur business unit" }] }));
+    expect(deterministic[0]).toMatchObject({ id: "role", met: "partial", evidence: "Développeur business unit" });
   });
 
   it("falls back on the deterministic verdicts: match → yes, partial → partial, missing → no, not_stated → unknown", () => {
@@ -400,5 +530,23 @@ describe("firstMissingRequirement", () => {
     expect(firstMissingRequirement(criteria, missing)?.id).toBe("lang");
     expect(firstMissingRequirement(criteria, result("b"))).toBeNull();
     expect(firstMissingRequirement(criteria, result("c", { assessment: assessed("fit", 80, []) }))).toBeNull();
+  });
+
+  it("names the role before any other requirement, required or not, wherever the brief keeps it", () => {
+    const both = result("a", {
+      assessment: assessed("no_fit", 10, [
+        { criterionId: "lang", met: "no", evidence: "Anglais (A2)" },
+        { criterionId: "role", met: "no", evidence: "Directeur SAV" },
+      ]),
+    });
+    expect(firstMissingRequirement(withRole, both)?.id).toBe("role");
+    expect(firstMissingRequirement([...criteria, { ...role, required: false }], both)?.id).toBe("role");
+    const adjacent = result("b", {
+      assessment: assessed("borderline", 60, [
+        { criterionId: "role", met: "partial", evidence: "Account manager" },
+        { criterionId: "sap", met: "no", evidence: "Oracle" },
+      ]),
+    });
+    expect(firstMissingRequirement(withRole, adjacent)).toBeNull();
   });
 });

@@ -193,7 +193,13 @@ export interface DocumentRow {
   updated_at: string;
 }
 
+/**
+ * "role" is the job itself (one per brief, judged first): its label is
+ * the job as the team names it, its value the role's definition (job
+ * family, core missions, equivalent titles) that the assessment reads.
+ */
 export type CriterionKind =
+  | "role"
   | "skill"
   | "experience"
   | "language"
@@ -205,9 +211,9 @@ export type CriterionKind =
 export interface BriefCriterion {
   id: string;
   kind: CriterionKind;
-  /** Short label shown on chips, e.g. "Anglais courant". */
+  /** Short label shown on chips, e.g. "Anglais courant"; for a role, the job title as the brief names it. */
   label: string;
-  /** The value matched against the profile, e.g. "anglais" / "C1" / "5" (years). */
+  /** The value matched against the profile, e.g. "anglais" / "C1" / "5" (years); for a role, its definition (up to 600 characters). */
   value: string;
   required: boolean;
   /** 1 nice to have, 2 important, 3 essential. */
