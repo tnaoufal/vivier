@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/app-shell/empty-state";
 import { Pill } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
 import { documentStatusKey, documentTone, formatBytes } from "@/lib/candidates/format";
+import { isQuotaFailure } from "@/lib/candidates/quota";
 import { canRetry, useDocumentActions } from "@/lib/candidates/use-document-actions";
 import type { DocumentRow } from "@/lib/db/types";
 import { formatDate, useI18n } from "@/lib/i18n";
@@ -48,11 +49,13 @@ export function DocumentsCard({
 
   /**
    * What the line under a document says: a set-aside file is the service's
-   * reading, said in the person's language (the stored sentence stays for
-   * the audit); a failure keeps the service's own sentence.
+   * reading and a quota refusal its state, both said in the person's
+   * language (the stored sentence stays for the audit); a failure keeps
+   * the service's own sentence.
    */
   const note = (document: DocumentRow): string => {
     if (document.status === "rejected") return t("candidates.documents.rejectedNote");
+    if (isQuotaFailure(document)) return t("candidates.documents.quotaNote");
     return document.error?.trim() || t("candidates.documents.noError");
   };
 
@@ -68,7 +71,12 @@ export function DocumentsCard({
             <li key={document.id} className="space-y-2 py-3 first:pt-0 last:pb-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{document.file_name}</span>
-                <Pill tone={documentTone(document.status)}>{t(documentStatusKey(document.status))}</Pill>
+                {/* A quota refusal is a wait, not a failure: it reads as one. */}
+                {isQuotaFailure(document) ? (
+                  <Pill tone="caution">{t("candidates.documents.status.quota")}</Pill>
+                ) : (
+                  <Pill tone={documentTone(document.status)}>{t(documentStatusKey(document.status))}</Pill>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 {formatBytes(document.byte_size, locale)} · {formatDate(locale, document.created_at)}
@@ -77,8 +85,13 @@ export function DocumentsCard({
                   : ""}
               </p>
               {hasNote(document.status) ? (
-                // Set aside is the service's reading, not a failure: it reads in the quiet tone.
-                <p className={cn("text-xs", document.status === "rejected" ? "text-muted-foreground" : "text-negative")}>
+                // Set aside is the service's reading and a quota refusal a wait, not failures: they read in the quiet tone.
+                <p
+                  className={cn(
+                    "text-xs",
+                    document.status === "rejected" || isQuotaFailure(document) ? "text-muted-foreground" : "text-negative",
+                  )}
+                >
                   {note(document)}
                 </p>
               ) : null}

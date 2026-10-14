@@ -4,9 +4,15 @@
  * and archived; tag chips from the loaded page), fifty rows a page in a
  * sheet, and the two ways in: a batch of CVs or a candidate typed by
  * hand. A banner above the list follows the documents the service is
- * reading, live through realtime on documents.
+ * reading (the set-aside counts and the wave's progress), live through
+ * realtime on documents, and every fifteen seconds while something is
+ * pending (the list too: a dense burst of events keeps the debounce
+ * from firing) so the rate and the estimate move even between two
+ * events. The page keeps the start of the wave it follows between two
+ * reads, so the bar never steps back as the queue's earliest document
+ * moves on, and the end of the wave is counted from it.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Search, Upload, UserPlus, Users } from "lucide-react";
 
@@ -23,7 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { distinctTags } from "@/lib/candidates/format";
-import { listCandidates, readProcessingCounts } from "@/lib/candidates/queries";
+import { listCandidates, readProcessingCounts, readProcessingProgress } from "@/lib/candidates/queries";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
 import type { CandidateStatus } from "@/lib/db/types";
@@ -36,6 +42,8 @@ export const Route = createFileRoute("/app/candidates/")({
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SKELETON_ROWS = 5;
+/** While something is pending, the wave is read again this often: the rate and the estimate follow the clock. */
+const PROGRESS_INTERVAL_MS = 15_000;
 
 function isStatus(value: string): value is CandidateStatus {
   return value === "active" || value === "archived";
@@ -72,16 +80,45 @@ function CandidatesPage() {
   const counts = useQuery(`processing:${org.id}`, async () =>
     readProcessingCounts(await requireSupabase(), org.id),
   );
+  // The start of the wave this page follows: kept while something is pending, let go once the
+  // wave ended, and never carried from one organisation to another.
+  const waveStart = useRef<{ orgId: string; startedAt: string | null }>({ orgId: org.id, startedAt: null });
+  const wave = useQuery(`processing-wave:${org.id}`, async () => {
+    const held = waveStart.current.orgId === org.id ? waveStart.current.startedAt : null;
+    const read = await readProcessingProgress(await requireSupabase(), org.id, { startedAt: held });
+    waveStart.current = { orgId: org.id, startedAt: read.pending > 0 ? read.startedAt : null };
+    return read;
+  });
 
   const refreshList = list.refresh;
   const refreshCounts = counts.refresh;
+  const refreshWave = wave.refresh;
   useEffect(() => {
     const refresh = debounce(() => {
       void refreshList();
       void refreshCounts();
+      void refreshWave();
     }, 400);
     return subscribeToTable("documents", `org_id=eq.${org.id}`, refresh);
-  }, [org.id, refreshList, refreshCounts]);
+  }, [org.id, refreshList, refreshCounts, refreshWave]);
+
+  // The throughput is a window on the clock: between two events it moves on its own. Keyed on
+  // whether something is pending, not on how much, so the clock is steady across refreshes.
+  const reading = (wave.data?.pending ?? 0) > 0;
+  useEffect(() => {
+    if (!reading) return;
+    const timer = setInterval(() => {
+      void refreshWave();
+      void refreshCounts();
+      void refreshList();
+    }, PROGRESS_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [reading, refreshWave, refreshCounts, refreshList]);
+
+  const refreshProcessing = () => {
+    void refreshCounts();
+    void refreshWave();
+  };
 
   const rows = list.data?.rows ?? [];
   const total = list.data?.total ?? 0;
@@ -128,11 +165,10 @@ function CandidatesPage() {
 
       <ProcessingBanner
         orgId={org.id}
-        counts={counts.data ?? { pending: 0, failed: 0 }}
+        counts={counts.data ?? { failed: 0, rejected: 0, quota: 0 }}
+        wave={wave.data}
         canEdit={canEdit}
-        onChanged={() => {
-          void refreshCounts();
-        }}
+        onChanged={refreshProcessing}
       />
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -261,9 +297,7 @@ function CandidatesPage() {
       <UploadDialog
         open={uploadOpen}
         onOpenChange={setUploadOpen}
-        onUploaded={() => {
-          void refreshCounts();
-        }}
+        onUploaded={refreshProcessing}
       />
       <ManualCandidateDialog
         open={manualOpen}

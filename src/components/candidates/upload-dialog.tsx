@@ -10,7 +10,12 @@
  * list never holds 10 000 rows) and, once over, the failed files with a
  * retry. Closing is refused while a lot runs; between lots the person
  * may stop, and resume later. With a `candidate`, every new document is
- * attached to that profile so the processor merges into it.
+ * attached to that profile so the processor merges into it. On opening,
+ * the dialog reads what the month's quota has left (the CVs processed
+ * this month and those already in the queue, which the service reads
+ * first) and says so; files past it are still sent (the processor sets
+ * them aside, waiting) and a sentence says how many, as soon as the
+ * selection and the quota are both known.
  */
 import { useRef, useState } from "react";
 import { ChevronDown, ChevronUp, FileText, RefreshCw, Upload } from "lucide-react";
@@ -29,6 +34,8 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { notifyProcessor } from "@/lib/candidates/candidates.functions";
 import { formatBytes, formatCount } from "@/lib/candidates/format";
+import { countPendingDocuments } from "@/lib/candidates/queries";
+import { beyondQuota, quotaRemaining } from "@/lib/candidates/quota";
 import {
   groupRejected,
   planBatch,
@@ -45,9 +52,11 @@ import {
 } from "@/lib/candidates/upload";
 import { supabaseUploadDeps } from "@/lib/candidates/upload-browser";
 import { runUploads, type RunResult } from "@/lib/candidates/upload-runner";
+import { useQuery } from "@/lib/data/use-query";
 import { useI18n, type Locale } from "@/lib/i18n";
 import { useCurrentOrg } from "@/lib/org/org-context";
 import { withToken } from "@/lib/platform/call";
+import { readCvsProcessedThisMonth } from "@/lib/team/team";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -111,6 +120,28 @@ export function UploadDialog({
   const [note, setNote] = useState<string | null>(null);
   const [failedOpen, setFailedOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // Bumped by "Nouvel import": the files just sent are in the queue now, so the next selection
+  // is measured against what they leave.
+  const [quotaGeneration, setQuotaGeneration] = useState(0);
+  // Read each time the dialog opens: the month's use moves with every CV processed, and the
+  // queue (read by the service before anything sent now) with every import.
+  const quotaUse = useQuery(
+    `quota-use:${org.id}:${open ? "open" : "closed"}:${quotaGeneration}`,
+    async () => {
+      const supabase = await requireSupabase();
+      const [processed, pending] = await Promise.all([
+        readCvsProcessedThisMonth(supabase, org.id),
+        countPendingDocuments(supabase, org.id),
+      ]);
+      return { processed, pending };
+    },
+    open,
+  );
+  const quota = org.cv_quota_month;
+  // The hook keeps the last answer while it reads again: on a second opening, nothing is said
+  // from the previous one until the fresh figures are in.
+  const quotaRead = !quotaUse.loading && quotaUse.data !== null ? quotaUse.data : null;
+  const room = quotaRead === null ? null : quotaRemaining(quota, quotaRead.processed, quotaRead.pending);
   // The dispatch reads the newest items synchronously; the state only feeds the render.
   const latest = useRef<UploadItem[]>([]);
   // Read by the runner between lots; the state only changes the button's label.
@@ -220,6 +251,7 @@ export function UploadDialog({
     const checked = validateFiles(files);
     setRefused(groupRejected(checked.rejected));
     if (!checked.accepted.length) return;
+    // No block: the import runs and the processor sets the files past the quota aside, honestly, as waiting.
     const plan = planBatch(checked.accepted, org.id, makeId);
     latest.current = plan;
     lotsRun.current = 0;
@@ -268,6 +300,30 @@ export function UploadDialog({
   }
 
   const refusedText = refusedSentence(refused);
+  // Under the description: what the month has left, or that it could not be read; nothing while it loads.
+  const quotaLine = quotaUse.loading
+    ? null
+    : quotaUse.error
+      ? t("candidates.upload.quota.unknown", { quota: formatCount(locale, quota) })
+      : room === null || quotaRead === null
+        ? null
+        : quotaRead.pending > 0
+          ? t("candidates.upload.quota.lineQueued", {
+              remaining: formatCount(locale, room),
+              quota: formatCount(locale, quota),
+              pending: formatCount(locale, quotaRead.pending),
+            })
+          : t("candidates.upload.quota.line", { remaining: formatCount(locale, room), quota: formatCount(locale, quota) });
+  // How many of the chosen files are past the month's quota (an upper bound: the items are the accepted
+  // files, a retry replaces its failures one for one): derived here so it appears as soon as both the
+  // selection and the quota are known, whichever came first.
+  const beyond = room === null || !items.length ? 0 : beyondQuota(items.length, room);
+  const beyondText =
+    beyond === 0
+      ? null
+      : beyond === 1
+        ? t("candidates.upload.quota.beyond.one")
+        : t("candidates.upload.quota.beyond.many", { count: formatCount(locale, beyond) });
   const title = candidate ? t("candidates.upload.titleFor", { name: candidate.name }) : t("candidates.upload.title");
 
   return (
@@ -288,6 +344,16 @@ export function UploadDialog({
         <DialogHeader className="min-w-0 space-y-2 pr-8 text-left">
           <DialogTitle className="truncate text-xl leading-7">{title}</DialogTitle>
           <DialogDescription className="text-sm leading-5">{t("candidates.upload.text")}</DialogDescription>
+          {quotaLine ? (
+            <p
+              className={cn(
+                "text-[13px] leading-5 tabular-nums",
+                room === 0 ? "text-caution-foreground dark:text-caution" : "text-muted-foreground",
+              )}
+            >
+              {quotaLine}
+            </p>
+          ) : null}
         </DialogHeader>
 
         {/* Scrolls only when a short screen cannot hold the whole dialog; the lists scroll on their own. */}
@@ -378,6 +444,9 @@ export function UploadDialog({
                 <StatTile label={t("candidates.upload.stat.rejected")} value={refusedCount} locale={locale} />
               </dl>
 
+              {beyondText ? (
+                <p className="text-[13px] leading-5 text-caution-foreground dark:text-caution">{beyondText}</p>
+              ) : null}
               {refusedText ? <p className="text-[13px] leading-5 text-muted-foreground">{refusedText}</p> : null}
               {running ? <p className="text-[13px] leading-5 text-muted-foreground">{t("candidates.upload.keepOpen")}</p> : null}
 
@@ -474,7 +543,14 @@ export function UploadDialog({
             </Button>
           ) : null}
           {over ? (
-            <Button type="button" variant="outline" onClick={reset}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                reset();
+                setQuotaGeneration((value) => value + 1);
+              }}
+            >
               {t("candidates.upload.again")}
             </Button>
           ) : null}

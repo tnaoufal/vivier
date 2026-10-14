@@ -107,7 +107,18 @@ function DashboardPage() {
 
       <StatGrid>
         <StatTile label={t("shell.dashboard.candidates")} value={stats?.candidates ?? null} icon={<Users />} to={CANDIDATES_PATH} loading={loading} />
-        <StatTile label={t("shell.dashboard.processing")} value={stats?.processing ?? null} icon={<FileText />} to={CANDIDATES_PATH} loading={loading} />
+        <StatTile
+          label={t("shell.dashboard.processing")}
+          value={stats?.processing ?? null}
+          icon={<FileText />}
+          to={CANDIDATES_PATH}
+          loading={loading}
+          progress={
+            stats && stats.processing !== null && stats.processingTotal !== null && stats.processing > 0
+              ? { done: Math.max(0, stats.processingTotal - stats.processing), total: stats.processingTotal }
+              : undefined
+          }
+        />
         <StatTile label={t("shell.dashboard.openBriefs")} value={stats?.openBriefs ?? null} icon={<Briefcase />} to={BRIEFS_PATH} loading={loading} />
         <StatTile label={t("shell.dashboard.retained")} value={stats?.retainedThisMonth ?? null} icon={<ListChecks />} to={SHORTLISTS_PATH} loading={loading} />
       </StatGrid>

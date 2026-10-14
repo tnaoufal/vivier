@@ -11,10 +11,13 @@
  * kept apart, advisory), and the decision and score obey the brief
  * first on its role, then on its required requirements, whatever the
  * model answered (a métier that is not the role is a no_fit however the
- * rest reads, an adjacent one is at most borderline; a required
- * requirement clearly not met is a no_fit, one the CV says nothing
- * about is at most borderline; a no_fit the model cannot pin on either
- * is borderline: the team decides). A sentence that names a protected
+ * rest reads, an adjacent one is at most borderline; with the
+ * dimensions, a fit also needs the role requirement at "yes" and the
+ * métier scored ROLE_DIMENSION_FIT_MIN or more, else it is at most
+ * borderline; a required requirement clearly not met is a no_fit, one
+ * the CV says nothing about is at most borderline; a no_fit the model
+ * cannot pin on either is borderline: the team decides; a fit needs
+ * FIT_MIN_SCORE). A sentence that names a protected
  * characteristic or a period without a position is withheld, and the
  * assessment says how many were, so the reading shown is never taken
  * for complete. The second opinion (applyChallenge) can only lower: a
@@ -64,10 +67,12 @@ export const NOTE_MAX = 200;
 export const STRENGTHS_MAX = 5;
 export const CONCERNS_MAX = 4;
 export const QUESTIONS_MAX = 3;
-/** A "fit" needs at least this score. */
-export const FIT_MIN_SCORE = 70;
+/** A "fit" needs at least this score: what is presented is strict, the rest is the team's to dig into. */
+export const FIT_MIN_SCORE = 75;
 /** A "borderline" needs at least this score; below it the profile is a no_fit. */
 export const BORDERLINE_MIN_SCORE = 45;
+/** With the dimensions, a "fit" also needs the métier scored at least this (and the role requirement at "yes"); else at most borderline. */
+export const ROLE_DIMENSION_FIT_MIN = 70;
 /** A required requirement at "no" caps the score here (and forces no_fit). */
 export const REQUIRED_NO_SCORE_CAP = 39;
 /** A required requirement at "unknown" caps the score here (and the decision at borderline). */
@@ -486,17 +491,24 @@ function dimensionsOf(
  * not the team kept it required; at "partial" it caps the decision at
  * borderline and the score at 65; at "unknown" at borderline and 60 (a
  * role at "yes" without evidence is already "partial" by the general
- * rule). Then the required requirements: one at "no" forces no_fit and
- * caps the score at 39; one at "unknown" caps the decision at
+ * rule). When the model scored the dimensions, a fit also needs the
+ * role requirement at "yes" and the métier dimension at
+ * ROLE_DIMENSION_FIT_MIN (70) or more, else the decision is at most
+ * borderline: the métier weighs forty points of the composite, and a
+ * profile retained on the rest alone, or for a brief without a role
+ * criterion (no métier judged), is the team's to look at, not to
+ * present. Then the required requirements: one at "no" forces no_fit
+ * and caps the score at 39; one at "unknown" caps the decision at
  * borderline and the score at 69; one at "partial" caps the decision at
  * borderline (met in part is not met); a no_fit the model answered
  * with the role met (or absent) and no required requirement at "no" is
  * borderline, since a profile is never set aside with nothing to show
  * for it (what bothered the model is in its concerns, with evidence);
- * "fit" needs a score of 70 or more, "borderline" 45 or more, otherwise
- * no_fit. The model's own borderline is never raised: it is allowed to
- * be stricter. With `texts`, every quote is checked against what the
- * model was given; with `junior`, a role at "unknown" keeps its score.
+ * "fit" needs a score of FIT_MIN_SCORE (75) or more, "borderline" 45 or
+ * more, otherwise no_fit. The model's own borderline is never raised:
+ * it is allowed to be stricter. With `texts`, every quote is checked
+ * against what the model was given; with `junior`, a role at "unknown"
+ * keeps its score.
  */
 export function enforceAssessment(
   criteria: readonly BriefCriterion[],
@@ -564,6 +576,13 @@ export function enforceAssessment(
     if (!options.junior) score = Math.min(score, ROLE_UNKNOWN_SCORE_CAP);
     if (decision === "fit") decision = "borderline";
   }
+  // With the dimensions, what is presented is strict: the role requirement at "yes" and the métier scored high enough, else the team looks first.
+  if (
+    dimensions &&
+    decision === "fit" &&
+    (roleMet !== "yes" || dimensions.role.score < ROLE_DIMENSION_FIT_MIN)
+  )
+    decision = "borderline";
   if (requiredNo) {
     decision = "no_fit";
     score = Math.min(score, REQUIRED_NO_SCORE_CAP);

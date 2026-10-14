@@ -532,12 +532,16 @@ stopped):
    `no_fit` the rules can pin on neither the role nor a required
    requirement becomes `borderline`: a profile is never set aside with
    nothing to show for it, and what bothered the model is in its concerns
-   with evidence. `fit` needs 70, `borderline` 45, below that `no_fit`;
-   the model's own stricter decision is never raised. The assessment is
-   written into the same `searches.results` entry (with the model that
-   answered) and carried to the brief's shortlist items that still hold
-   an unassessed match. One failed candidate leaves that card unread and
-   "resume" picks it up.
+   with evidence. With the dimensions, a `fit` also needs the role
+   requirement at `yes` and the métier dimension at 70 or more
+   (`ROLE_DIMENSION_FIT_MIN`), else `borderline`: a brief without a role
+   criterion has no métier judged, so nothing in it is presented before
+   the team looks. `fit` needs 75 (`FIT_MIN_SCORE`), `borderline` 45,
+   below that `no_fit`; the model's own stricter decision is never
+   raised. The assessment is written into the same `searches.results`
+   entry (with the model that answered) and carried to the brief's
+   shortlist items that still hold an unassessed match. One failed
+   candidate leaves that card unread and "resume" picks it up.
 4. **The second opinion** (`challengeCandidates`, retained profiles only,
    six a batch, `CHALLENGE_BATCH_MAX`): one more call per `fit`, with the
    same brief, the same redacted profile and the first reading (decision,
@@ -597,11 +601,13 @@ use `LLM_ASSESSMENT_MODEL` (see "Model"), and each call is one `ai_usage`
 row of kind `assess`.
 
 The brief page groups the results: **to present** (`fit` at tier A, or
-`fit` the tiering has not reached), **to dig into** (`borderline`, and
-`fit` at B), **set aside** (`no_fit`, collapsed: never deleted, only out
-of the way, the first requirement at `no` named on each card, the role
-first, else the model's reading with its score), **not analysed**; each
-group sorted by tier, then composite score, then deterministic score. A
+`fit` the tiering has not reached; the one group open), **to dig into**
+(`borderline`, and `fit` at B), **set aside** (`no_fit`: never deleted,
+only out of the way, the first requirement at `no` named on each card,
+the role first, else the model's reading with its score), **not
+analysed**; the last three collapsed with their counts, opened by the
+person; each group sorted by tier, then composite score, then
+deterministic score. A
 card carries the tier and the decision as pills, the fit ring, the five
 dimensions as a row of small meters with the weight each carries in the
 composite (green from 80, amber from 60; the note on hover, the evidence
@@ -617,6 +623,24 @@ Without a model, or when the brief has no criteria, the panel says so and
 shows the deterministic ranking alone. The `why` sentences of analyses
 stored before evolution 2 (`ai_usage` kind `explain`) are still read
 where present; nothing writes them any more.
+
+**Strict presentation.** What the page presents is what the team could
+send as it is, and nothing else. A profile is in "to present" only when
+the model read its métier as the role with a quote found in the CV and
+scored that dimension 70 or more (`ROLE_DIMENSION_FIT_MIN`), every
+required requirement is met with a quote found in the CV, the composite
+reaches 75 (`FIT_MIN_SCORE`), the second opinion raised no grounded doubt
+and the tiering, when it ran, put it at A. Everything the rules can only
+hold back goes to "to dig into" (an adjacent métier, a métier under 70,
+a composite between 45 and 74, a must-have not stated or met in part, a
+doubt with evidence, a tier B), and a role at `no`, a must-have at `no`
+or a composite under 45 to "set aside". So a pool with no match reads
+"0 profil correspond à ce brief" once every stage ran, with how many
+profiles were read and the requirement most often missing; while a stage
+still runs, the group shows its progress instead; and the method line
+counts "0 à présenter". The thresholds are the exported constants of
+`src/lib/briefs/assessment.ts`, each tested at its boundary in
+`assessment.test.ts`.
 
 **What the shortlist and the dossier carry.** The whole reading
 (`Assessment`: the rows, the dimensions, `strengths`, `concerns`,
