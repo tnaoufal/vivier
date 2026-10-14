@@ -1,11 +1,12 @@
 /**
  * Words of sharing a shortlist: the three-step dialog (content, review,
- * sending), the panel of shares under a board, and the public dossier a
- * link opens, which speaks the sharing organisation's language in a
- * consultant's tone: sober, precise, nothing the CV does not say. The
- * dossier never pretends: it says when the link expires, where the
- * sheets and the requirement table come from, that a thing the CV does
- * not state is "not stated", and that the PDF is the browser's print.
+ * sending) with its stepper, the panel of shares under a board, and the
+ * public dossier a link opens, which speaks the sharing organisation's
+ * language in a consultant's tone: sober, precise, nothing the CV does
+ * not say. The dossier never pretends: it says when the link expires,
+ * where the sheets and the requirement table come from, that a thing the
+ * CV does not state is "not stated", that it shows no photo, and that
+ * the PDF is the browser's print.
  */
 const fr = {
   // dialog
@@ -14,6 +15,8 @@ const fr = {
   "shares.step.content": "Contenu",
   "shares.step.review": "Relecture",
   "shares.step.send": "Envoi",
+  "shares.step.of": "Étape {index} sur {count}",
+  "shares.step.done": "terminée",
   "shares.created": "Lien créé.",
 
   // step 1: content
@@ -26,13 +29,16 @@ const fr = {
   "shares.content.title": "Titre de la présentation",
   "shares.content.intro": "Introduction",
   "shares.content.intro.placeholder": "Quelques lignes pour le destinataire : le contexte, ce que vous attendez de lui.",
-  "shares.content.includeCvs": "Joindre les CV (liens signés, valables deux minutes à chaque ouverture)",
+  "shares.content.options": "Options",
+  "shares.content.includeCvs": "Joindre les CV",
+  "shares.content.includeCvs.help": "Liens signés, valables deux minutes à chaque ouverture.",
+  "shares.content.noPhotos": "Le dossier ne montre aucune photo : chaque profil est identifié par son nom.",
   "shares.content.expiry": "Le lien expire dans",
   "shares.content.expiry.days": "{days} jours",
   "shares.content.useModel": "Rédiger les synthèses avec le modèle",
   "shares.content.useModel.help": "Le modèle rédige la synthèse, les points forts et les points d'attention à partir des profils, du brief et de l'évaluation ; le tableau des exigences n'est jamais modifié ; vous relisez tout avant l'envoi.",
   "shares.content.noModel": "Aucun modèle n'est configuré sur ce déploiement : les fiches reprennent les profils et l'analyse de la shortlist tels quels, à compléter à la relecture.",
-  "shares.content.prepare": "Préparer",
+  "shares.content.prepare": "Préparer les fiches",
   "shares.item.noName": "Sans nom",
   "shares.item.status.to_review": "À examiner",
   "shares.item.status.retained": "Retenu",
@@ -49,6 +55,9 @@ const fr = {
   "shares.review.assessment": "Évaluation",
   "shares.review.assessment.help": "Lecture seule : le score, la lecture et le tableau viennent de l'analyse menée sur la shortlist.",
   "shares.review.noAssessment": "Aucune analyse n'a été menée sur ce profil dans la shortlist : le dossier le dira.",
+  "shares.review.edit": "Modifier la fiche",
+  "shares.review.collapse": "Replier la fiche",
+  "shares.review.summary.empty": "Aucune synthèse pour l'instant : ouvrez la fiche pour l'écrire.",
   "shares.review.headline": "Intitulé",
   "shares.review.summary": "Synthèse",
   "shares.review.summary.placeholder": "Deux ou trois phrases factuelles sur ce profil.",
@@ -73,10 +82,10 @@ const fr = {
   "shares.send.recipients.help": "Jusqu'à {max} adresses, séparées par des virgules ; Entrée pour ajouter.",
   "shares.send.recipients.placeholder": "prenom.nom@entreprise.fr",
   "shares.send.removeRecipient": "Retirer {email}",
-  "shares.send.message": "Message (facultatif)",
+  "shares.send.message": "Message",
   "shares.send.message.placeholder": "Quelques mots pour accompagner le lien.",
   "shares.send.emailOff": "L'envoi d'email n'est pas configuré sur ce déploiement : copiez le lien et transmettez-le vous-même.",
-  "shares.send.send": "Envoyer",
+  "shares.send.send": "Envoyer par email",
   "shares.send.sent.none": "Aucun email n'est parti.",
   "shares.send.sent.one": "1 email envoyé.",
   "shares.send.sent.many": "{count} emails envoyés.",
@@ -132,8 +141,11 @@ const fr = {
 
   // the dossier a link opens
   "shares.page.eyebrow": "Dossier de présentation",
-  "shares.page.dates.one": "Préparé le {created} · 1 profil · lien valable jusqu'au {expires}",
-  "shares.page.dates.many": "Préparé le {created} · {count} profils · lien valable jusqu'au {expires}",
+  "shares.page.from": "Présenté par {org}",
+  "shares.page.prepared": "Préparé le",
+  "shares.page.profiles": "Profils",
+  "shares.page.requirementsCount": "Exigences",
+  "shares.page.validUntil": "Lien valable jusqu'au",
   "shares.page.print": "Imprimer / Enregistrer en PDF",
   "shares.page.print.help": "Le PDF est celui que votre navigateur produit à l'impression de cette page.",
   "shares.page.brief": "Ce que nous avons recherché",
@@ -148,6 +160,7 @@ const fr = {
   "shares.page.col.decision": "Lecture",
   "shares.page.col.requirements": "Exigences",
   "shares.page.sheet": "Fiche {index} sur {count}",
+  "shares.page.facts": "Repères",
   "shares.page.location.none": "lieu non renseigné",
   "shares.page.years.one": "1 an d'expérience",
   "shares.page.years.many": "{years} ans d'expérience",
@@ -172,7 +185,7 @@ const fr = {
   "shares.page.cv": "Voir le CV",
   "shares.page.cv.print": "Le CV complet s'ouvre depuis le lien de ce dossier.",
   "shares.page.noItems": "Ce dossier ne contient aucune fiche.",
-  "shares.page.footer": "Dossier préparé avec Vivier à partir des CV reçus et du brief. L'analyse propose une lecture ; chaque décision est prise par une personne. Ce que le CV ne mentionne pas est noté « non renseigné », jamais compté comme un manque.",
+  "shares.page.footer": "Dossier préparé avec Vivier à partir des CV reçus et du brief. L'analyse propose une lecture ; chaque décision est prise par une personne. Ce que le CV ne mentionne pas est noté « non renseigné », jamais compté comme un manque. Aucune photo n'est reproduite.",
   "shares.page.missing": "Ce lien n'ouvre aucun dossier. Vérifiez l'adresse reçue.",
   "shares.page.revoked": "Ce dossier a été retiré par l'organisation qui l'avait partagé.",
   "shares.page.expired": "Ce lien a expiré. Demandez un nouveau lien à la personne qui vous l'a envoyé.",
@@ -185,6 +198,8 @@ const en = {
   "shares.step.content": "Content",
   "shares.step.review": "Review",
   "shares.step.send": "Sending",
+  "shares.step.of": "Step {index} of {count}",
+  "shares.step.done": "done",
   "shares.created": "Link created.",
 
   // step 1: content
@@ -197,13 +212,16 @@ const en = {
   "shares.content.title": "Presentation title",
   "shares.content.intro": "Introduction",
   "shares.content.intro.placeholder": "A few lines for the reader: the context, what you expect from them.",
-  "shares.content.includeCvs": "Include the CVs (signed links, valid two minutes at each opening)",
+  "shares.content.options": "Options",
+  "shares.content.includeCvs": "Include the CVs",
+  "shares.content.includeCvs.help": "Signed links, valid two minutes at each opening.",
+  "shares.content.noPhotos": "The dossier shows no photo: each profile is identified by name.",
   "shares.content.expiry": "The link expires in",
   "shares.content.expiry.days": "{days} days",
   "shares.content.useModel": "Draft the syntheses with the model",
   "shares.content.useModel.help": "The model drafts the synthesis, the strengths and the points of attention from the profiles, the brief and the assessment; the requirement table is never changed; you review everything before sending.",
   "shares.content.noModel": "No model is configured on this deployment: the sheets copy the profiles and the shortlist's analysis as they are, to complete at the review.",
-  "shares.content.prepare": "Prepare",
+  "shares.content.prepare": "Prepare the sheets",
   "shares.item.noName": "Unnamed",
   "shares.item.status.to_review": "To review",
   "shares.item.status.retained": "Retained",
@@ -220,6 +238,9 @@ const en = {
   "shares.review.assessment": "Assessment",
   "shares.review.assessment.help": "Read only: the score, the reading and the table come from the analysis run on the shortlist.",
   "shares.review.noAssessment": "No analysis was run on this profile in the shortlist: the dossier will say so.",
+  "shares.review.edit": "Edit the sheet",
+  "shares.review.collapse": "Collapse the sheet",
+  "shares.review.summary.empty": "No synthesis yet: open the sheet to write one.",
   "shares.review.headline": "Headline",
   "shares.review.summary": "Synthesis",
   "shares.review.summary.placeholder": "Two or three factual sentences about this profile.",
@@ -244,10 +265,10 @@ const en = {
   "shares.send.recipients.help": "Up to {max} addresses, separated by commas; Enter to add.",
   "shares.send.recipients.placeholder": "first.last@company.com",
   "shares.send.removeRecipient": "Remove {email}",
-  "shares.send.message": "Message (optional)",
+  "shares.send.message": "Message",
   "shares.send.message.placeholder": "A few words to go with the link.",
   "shares.send.emailOff": "Email sending is not configured on this deployment: copy the link and pass it on yourself.",
-  "shares.send.send": "Send",
+  "shares.send.send": "Send by email",
   "shares.send.sent.none": "No email went out.",
   "shares.send.sent.one": "1 email sent.",
   "shares.send.sent.many": "{count} emails sent.",
@@ -303,8 +324,11 @@ const en = {
 
   // the dossier a link opens
   "shares.page.eyebrow": "Presentation dossier",
-  "shares.page.dates.one": "Prepared on {created} · 1 profile · link valid until {expires}",
-  "shares.page.dates.many": "Prepared on {created} · {count} profiles · link valid until {expires}",
+  "shares.page.from": "Presented by {org}",
+  "shares.page.prepared": "Prepared on",
+  "shares.page.profiles": "Profiles",
+  "shares.page.requirementsCount": "Requirements",
+  "shares.page.validUntil": "Link valid until",
   "shares.page.print": "Print / Save as PDF",
   "shares.page.print.help": "The PDF is the one your browser produces when printing this page.",
   "shares.page.brief": "What we looked for",
@@ -319,6 +343,7 @@ const en = {
   "shares.page.col.decision": "Reading",
   "shares.page.col.requirements": "Requirements",
   "shares.page.sheet": "Sheet {index} of {count}",
+  "shares.page.facts": "Facts",
   "shares.page.location.none": "location not stated",
   "shares.page.years.one": "1 year of experience",
   "shares.page.years.many": "{years} years of experience",
@@ -343,7 +368,7 @@ const en = {
   "shares.page.cv": "View the CV",
   "shares.page.cv.print": "The full CV opens from this dossier's link.",
   "shares.page.noItems": "This dossier holds no sheet.",
-  "shares.page.footer": "Dossier prepared with Vivier from the CVs received and the brief. The analysis proposes a reading; every decision is taken by a person. What the CV does not mention is marked \"not stated\", never counted as a lack.",
+  "shares.page.footer": "Dossier prepared with Vivier from the CVs received and the brief. The analysis proposes a reading; every decision is taken by a person. What the CV does not mention is marked \"not stated\", never counted as a lack. No photo is reproduced.",
   "shares.page.missing": "This link opens no dossier. Check the address you received.",
   "shares.page.revoked": "This dossier was withdrawn by the organisation that shared it.",
   "shares.page.expired": "This link has expired. Ask the person who sent it for a new one.",

@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import type { Assessment, BriefCriterion, MatchResult } from "@/lib/db/types";
 
-import { assessedScore, criteriaOf, hasReading, modelReading, recruiterReadingOf, requirementRowsOf, tierOf } from "./requirements";
+import {
+  assessedScore,
+  criteriaOf,
+  hasReading,
+  missingRequired,
+  modelReading,
+  recruiterReadingOf,
+  requirementRowsOf,
+  tierOf,
+} from "./requirements";
 
 const criteria: BriefCriterion[] = [
   { id: "k1", kind: "skill", label: "React", value: "react", required: true, weight: 3 },
@@ -268,5 +277,32 @@ describe("recruiterReadingOf", () => {
     expect(result?.concerns).toHaveLength(8);
     expect(result?.concerns[7]).toEqual({ text: "Les trois derniers postes sont en agence", challenge: true });
     expect(result?.questions).toHaveLength(8);
+  });
+});
+
+describe("missingRequired", () => {
+  it("names the required requirements the match says are not met, in order", () => {
+    const strict = [...criteria.map((c) => ({ ...c, required: true }))];
+    expect(missingRequired(strict, assessed, "?")).toEqual(["Anglais C1"]);
+    expect(missingRequired(criteria, assessed, "?")).toEqual([]);
+  });
+
+  it("never counts a silence or a partial answer as a lack", () => {
+    const strict = criteria.map((c) => ({ ...c, required: true }));
+    // k1 partial, k2 partial, k3 unknown: nothing missing.
+    const soft: MatchResult = {
+      ...deterministic,
+      verdicts: [
+        { criterionId: "k1", verdict: "partial", evidence: null },
+        { criterionId: "k2", verdict: "partial", evidence: null },
+      ],
+    };
+    expect(missingRequired(strict, soft, "?")).toEqual([]);
+    expect(missingRequired(strict, null, "?")).toEqual([]);
+  });
+
+  it("leaves out a criterion the brief dropped, which is never required", () => {
+    // k9 is "missing" in the verdicts but no longer in the criteria: it is kept as a row, not as a lack.
+    expect(missingRequired(criteria, deterministic, "Retiré")).toEqual([]);
   });
 });

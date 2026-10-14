@@ -18,12 +18,14 @@
  * selection and the quota are both known.
  */
 import { useRef, useState } from "react";
-import { ChevronDown, ChevronUp, FileText, RefreshCw, Upload } from "lucide-react";
+import { ChevronDown, FileText, RefreshCw, Upload } from "lucide-react";
 
 import { Pill, type PillTone } from "@/components/app-shell/pill";
+import { ProgressBar } from "@/components/app-shell/progress-bar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -157,7 +159,6 @@ export function UploadDialog({
   const currentLot: CurrentLot | null = lot;
   const lotItems: UploadItem[] = currentLot ? items.filter((item: UploadItem) => currentLot.ids.has(item.id)) : [];
   const failedItems: UploadItem[] = over ? items.filter((item: UploadItem) => item.status === "failed") : [];
-  const percent = summary.total ? Math.round((summary.done / summary.total) * 100) : 0;
 
   function reset() {
     latest.current = [];
@@ -329,8 +330,9 @@ export function UploadDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
+        size="xl"
         className={cn(
-          "flex max-h-[92vh] max-w-2xl flex-col gap-6 overflow-hidden p-8 sm:p-8",
+          "flex flex-col",
           // The corner close button is the content's last child: muted while a lot runs.
           running && "[&>button:last-child]:pointer-events-none [&>button:last-child]:opacity-40",
         )}
@@ -341,13 +343,13 @@ export function UploadDialog({
           if (running) event.preventDefault();
         }}
       >
-        <DialogHeader className="min-w-0 space-y-2 pr-8 text-left">
-          <DialogTitle className="truncate text-xl leading-7">{title}</DialogTitle>
-          <DialogDescription className="text-sm leading-5">{t("candidates.upload.text")}</DialogDescription>
+        <DialogHeader>
+          <DialogTitle className="truncate">{title}</DialogTitle>
+          <DialogDescription className="text-sm">{t("candidates.upload.text")}</DialogDescription>
           {quotaLine ? (
             <p
               className={cn(
-                "text-[13px] leading-5 tabular-nums",
+                "text-meta tabular-nums",
                 room === 0 ? "text-caution-foreground dark:text-caution" : "text-muted-foreground",
               )}
             >
@@ -357,7 +359,7 @@ export function UploadDialog({
         </DialogHeader>
 
         {/* Scrolls only when a short screen cannot hold the whole dialog; the lists scroll on their own. */}
-        <div className="min-h-0 min-w-0 space-y-6 overflow-y-auto">
+        <DialogBody className="space-y-6">
           {phase === "pick" ? (
             <div
               onDragOver={(event) => {
@@ -372,15 +374,15 @@ export function UploadDialog({
                 void start(Array.from(dropped));
               }}
               className={cn(
-                "flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-colors duration-150",
-                dragging ? "border-primary bg-primary/5" : "border-border",
+                "flex flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed px-6 py-12 text-center transition-colors duration-fast ease-out-soft",
+                dragging ? "border-primary bg-primary/5" : "border-input",
               )}
             >
               <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <Upload className="size-6" aria-hidden="true" />
               </div>
-              <p className="text-[15px] font-medium leading-6 text-ink">{t("candidates.upload.drop")}</p>
-              <Button type="button" onClick={() => inputRef.current?.click()}>
+              <p className="text-body font-medium text-ink">{t("candidates.upload.drop")}</p>
+              <Button type="button" variant="outline" onClick={() => inputRef.current?.click()}>
                 {t("candidates.upload.browse")}
               </Button>
               <input
@@ -404,7 +406,7 @@ export function UploadDialog({
           {items.length ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <span className="text-[15px] font-semibold tabular-nums text-ink">
+                <span className="font-display text-xl text-ink tabular-nums">
                   {t("candidates.upload.progress", {
                     done: formatCount(locale, summary.done),
                     total: formatCount(locale, summary.total),
@@ -419,50 +421,46 @@ export function UploadDialog({
                   </span>
                 ) : null}
               </div>
-              <div
-                className="h-2 overflow-hidden rounded-full bg-muted"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={summary.total}
-                aria-valuenow={summary.done}
-              >
-                <div
-                  className="h-full rounded-full bg-primary transition-[width] duration-200"
-                  style={{ width: `${percent}%` }}
-                />
-              </div>
+              <ProgressBar
+                size="md"
+                value={summary.done}
+                max={Math.max(1, summary.total)}
+                active={running}
+                tone={over && summary.failed === 0 ? "positive" : "primary"}
+                label={t("candidates.upload.progress.label")}
+              />
 
               <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <StatTile label={t("candidates.upload.stat.uploaded")} value={summary.uploaded} locale={locale} />
-                <StatTile label={t("candidates.upload.stat.duplicate")} value={summary.duplicate} locale={locale} />
-                <StatTile
+                <Counter label={t("candidates.upload.stat.uploaded")} value={summary.uploaded} locale={locale} />
+                <Counter label={t("candidates.upload.stat.duplicate")} value={summary.duplicate} locale={locale} />
+                <Counter
                   label={t("candidates.upload.stat.failed")}
                   value={summary.failed}
                   locale={locale}
                   tone={summary.failed > 0 ? "negative" : "ink"}
                 />
-                <StatTile label={t("candidates.upload.stat.rejected")} value={refusedCount} locale={locale} />
+                <Counter label={t("candidates.upload.stat.rejected")} value={refusedCount} locale={locale} />
               </dl>
 
               {beyondText ? (
-                <p className="text-[13px] leading-5 text-caution-foreground dark:text-caution">{beyondText}</p>
+                <p className="text-meta text-caution-foreground dark:text-caution">{beyondText}</p>
               ) : null}
-              {refusedText ? <p className="text-[13px] leading-5 text-muted-foreground">{refusedText}</p> : null}
-              {running ? <p className="text-[13px] leading-5 text-muted-foreground">{t("candidates.upload.keepOpen")}</p> : null}
+              {refusedText ? <p className="text-meta text-muted-foreground">{refusedText}</p> : null}
+              {running ? <p className="text-meta text-muted-foreground">{t("candidates.upload.keepOpen")}</p> : null}
 
               {lotItems.length ? (
-                <ul className="max-h-[40vh] divide-y divide-border overflow-y-auto rounded-xl border border-border">
+                <ul className="max-h-[40vh] divide-y divide-border overflow-y-auto rounded-lg border border-border">
                   {lotItems.map((item: UploadItem) => (
                     <li key={item.id} className="flex items-center gap-3 px-4 py-2.5">
                       <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm text-ink">{item.file.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">
+                        <p className="truncate text-meta text-muted-foreground">
                           {formatBytes(item.file.size, locale)}
                           {item.status === "failed" && item.error ? ` · ${t(`candidates.upload.error.${item.error}`)}` : ""}
                         </p>
                       </div>
-                      <Pill tone={STATUS_TONE[item.status]} className="shrink-0">
+                      <Pill size="sm" dot tone={STATUS_TONE[item.status]} className="shrink-0">
                         {t(`candidates.upload.status.${item.status}`)}
                       </Pill>
                     </li>
@@ -491,27 +489,28 @@ export function UploadDialog({
               {note ? <p className="text-muted-foreground">{note}</p> : null}
 
               {failedItems.length ? (
-                <div className="rounded-xl border border-border">
+                <div className="rounded-lg border border-border">
                   <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
                     <button
                       type="button"
                       onClick={() => setFailedOpen((value) => !value)}
                       aria-expanded={failedOpen}
-                      className="flex min-h-10 min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-sm font-medium text-ink"
+                      className="flex min-h-10 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      {failedOpen ? (
-                        <ChevronUp className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                      ) : (
-                        <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                      )}
+                      <ChevronDown
+                        className={cn(
+                          "size-4 shrink-0 text-muted-foreground transition-transform duration-base ease-out-soft",
+                          failedOpen && "rotate-180",
+                        )}
+                        aria-hidden="true"
+                      />
                       <span className="min-w-0 truncate">
                         {failedOpen
                           ? t("candidates.upload.failed.hide")
                           : t("candidates.upload.failed.show", { count: formatCount(locale, failedItems.length) })}
                       </span>
                     </button>
-                    <Button type="button" variant="outline" size="sm" onClick={() => void retry()} className="gap-1.5">
-                      <RefreshCw />
+                    <Button type="button" variant="outline" size="sm" icon={<RefreshCw />} onClick={() => void retry()}>
                       {t("candidates.upload.retryFailed")}
                     </Button>
                   </div>
@@ -522,7 +521,7 @@ export function UploadDialog({
                           <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm text-ink">{item.file.name}</p>
-                            <p className="truncate text-xs text-negative">
+                            <p className="truncate text-meta text-negative">
                               {item.error ? t(`candidates.upload.error.${item.error}`) : t("candidates.upload.status.failed")}
                             </p>
                           </div>
@@ -534,9 +533,9 @@ export function UploadDialog({
               ) : null}
             </div>
           ) : null}
-        </div>
+        </DialogBody>
 
-        <DialogFooter className="flex-row flex-wrap justify-end gap-2 sm:space-x-0">
+        <DialogFooter>
           {running ? (
             <Button type="button" variant="outline" onClick={requestStop} disabled={stopRequested}>
               {stopRequested ? t("candidates.upload.stopping") : t("candidates.upload.stopAfterLot")}
@@ -578,7 +577,7 @@ function countRefused(groups: readonly RejectedGroup[]): number {
 }
 
 /** One of the four counters: a label and a tabular number; the negative tone only when something failed. */
-function StatTile({
+function Counter({
   label,
   value,
   locale,
@@ -590,9 +589,9 @@ function StatTile({
   tone?: "ink" | "negative";
 }) {
   return (
-    <div className="min-w-0 rounded-xl border border-border px-4 py-3">
-      <dt className="text-[13px] font-medium leading-5 text-muted-foreground">{label}</dt>
-      <dd className={cn("mt-0.5 text-xl font-semibold leading-7 tabular-nums", tone === "negative" ? "text-negative" : "text-ink")}>
+    <div className="min-w-0 rounded-lg border border-border px-4 py-3">
+      <dt className="label-caps">{label}</dt>
+      <dd className={cn("mt-0.5 font-display text-xl tabular-nums", tone === "negative" ? "text-negative" : "text-ink")}>
         {formatCount(locale, value)}
       </dd>
     </div>

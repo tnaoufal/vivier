@@ -1,11 +1,12 @@
 /**
  * Pure formatting for the talent pool: confidence tones, file sizes,
- * experience date ranges, years of experience, the one-line summaries a
- * list row shows. No React, no data access; every rule is tested in
- * format.test.ts. Words for a locale live here the way formatRelative()
+ * experience date ranges and durations, years of experience, the
+ * position held today and the one-line summaries a list row shows. No
+ * React, no data access; every rule is tested in format.test.ts. Words for a locale live here the way formatRelative()
  * keeps them in src/lib/i18n: short and the same for every caller.
  */
 import type {
+  CandidateExperience,
   CandidateLanguage,
   CandidateRow,
   ConfidenceMap,
@@ -126,6 +127,111 @@ export function topSkills(skills: readonly string[] | null | undefined, count: n
     .slice(0, Math.max(0, count));
 }
 
+/** How many skills a list row shows: the first of the ordered list, the ones the CV put first. */
+export const KEY_SKILLS = 3;
+
+/** The skills that tell a row apart: the first three as the CV orders them. */
+export function keySkills(skills: readonly string[] | null | undefined, count: number = KEY_SKILLS): string[] {
+  return topSkills(skills, count);
+}
+
+/** The position held today, as a row or a header says it: "Title @ Company". */
+export interface CurrentPosition {
+  title: string;
+  company: string | null;
+}
+
+/**
+ * The position held today: the first experience without an end (the CV
+ * lists them newest first), else the headline alone; null when the CV
+ * states neither. Only an end that is null or empty reads as "ongoing":
+ * a value that is not a date is still a value the CV wrote.
+ */
+export function currentPosition(
+  row: Pick<CandidateRow, "headline"> & { experiences?: readonly CandidateExperience[] | null | undefined },
+): CurrentPosition | null {
+  for (const experience of row.experiences ?? []) {
+    if (!experience || typeof experience !== "object") continue;
+    const title = typeof experience.title === "string" ? experience.title.trim() : "";
+    const end = typeof experience.end === "string" ? experience.end.trim() : "";
+    if (!title || end) continue;
+    const company = typeof experience.company === "string" ? experience.company.trim() : "";
+    return { title, company: company || null };
+  }
+  const headline = row.headline?.trim();
+  return headline ? { title: headline, company: null } : null;
+}
+
+/** "Paris · 6 ans · Disponible en janvier": the location, the years and the availability the CV states, in that order; "" when none. */
+export function metaLine(
+  locale: Locale,
+  row: Pick<CandidateRow, "location" | "years_experience" | "availability">,
+): string {
+  return [row.location?.trim(), yearsLabel(locale, row.years_experience), row.availability?.trim()]
+    .filter((part): part is string => typeof part === "string" && part.length > 0)
+    .join(" · ");
+}
+
+/**
+ * A "YYYY-MM" / "YYYY" value as a month index (year × 12 + month − 1),
+ * null when it is not one. A year alone reads as its first month at the
+ * start of a period and as its last at the end, so "2019" to "2019" is
+ * a whole year.
+ */
+export function monthIndex(value: string | null | undefined, edge: "start" | "end"): number | null {
+  if (!value) return null;
+  const match = /^(\d{4})(?:-(\d{1,2}))?(?!\d)/.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = match[2] !== undefined ? Number(match[2]) : edge === "start" ? 1 : 12;
+  if (month < 1 || month > 12) return null;
+  return year * 12 + (month - 1);
+}
+
+/**
+ * How many months an experience lasted, both ends counted (January to
+ * December is twelve); an empty end counts to `now`. Null when the start
+ * is not a date, when the end is a value that is not one, or when the
+ * end comes before the start: nothing is estimated.
+ */
+export function durationMonths(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  now: Date = new Date(),
+): number | null {
+  const from = monthIndex(start, "start");
+  if (from === null) return null;
+  const to = end?.trim() ? monthIndex(end, "end") : now.getFullYear() * 12 + now.getMonth();
+  if (to === null || to < from) return null;
+  return to - from + 1;
+}
+
+/** "3 mois", "1 an", "2 ans 4 mois" / "3 months", "1 year", "2 years 4 months"; "" for nothing. */
+export function durationLabel(locale: Locale, months: number | null | undefined): string {
+  if (typeof months !== "number" || !Number.isFinite(months) || months < 1) return "";
+  const whole = Math.floor(months);
+  const years = Math.floor(whole / 12);
+  const rest = whole % 12;
+  const parts: string[] = [];
+  if (years > 0) {
+    parts.push(locale === "fr" ? `${years} ${years === 1 ? "an" : "ans"}` : `${years} ${years === 1 ? "year" : "years"}`);
+  }
+  if (rest > 0) {
+    parts.push(locale === "fr" ? `${rest} mois` : `${rest} ${rest === 1 ? "month" : "months"}`);
+  }
+  return parts.join(" ");
+}
+
+/** The duration of an experience in words, "" when it cannot be computed. */
+export function formatDuration(
+  locale: Locale,
+  start: string | null | undefined,
+  end: string | null | undefined,
+  now: Date = new Date(),
+): string {
+  return durationLabel(locale, durationMonths(start, end, now));
+}
+
 export type PillToneName = "neutral" | "positive" | "caution" | "negative" | "primary";
 
 /** The pill tone of a document status: processed is good, failed is bad, the rest is on its way. */
@@ -161,6 +267,30 @@ export function distinctTags(rows: readonly Pick<CandidateRow, "tags">[]): strin
   for (const row of rows) {
     for (const tag of row.tags ?? []) {
       const clean = typeof tag === "string" ? tag.trim() : "";
+      if (clean && !seen.has(clean)) {
+        seen.add(clean);
+        out.push(clean);
+      }
+    }
+  }
+  return out;
+}
+
+/** The "years min" filter as typed: a whole number of years from 1 to 70, else null (nothing typed, or nothing a filter can use). */
+export function parseYearsMin(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^\d{1,2}$/.test(trimmed)) return null;
+  const years = Number(trimmed);
+  return years >= 1 && years <= 70 ? years : null;
+}
+
+/** The distinct skills of a page of rows, in order of first appearance: the suggestions of the skill filter. */
+export function distinctSkills(rows: readonly Pick<CandidateRow, "skills">[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const row of rows) {
+    for (const skill of row.skills ?? []) {
+      const clean = typeof skill === "string" ? skill.trim() : "";
       if (clean && !seen.has(clean)) {
         seen.add(clean);
         out.push(clean);

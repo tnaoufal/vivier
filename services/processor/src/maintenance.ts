@@ -4,10 +4,11 @@
  *
  * Purge: `expired_candidates()` names the candidates past their
  * organisation's retention or with a withdrawn consent; for each, the
- * files of its documents are removed from the `cvs` bucket first, then
- * the candidate row (the cascade takes the document rows). A candidate
- * whose files could not be removed is left for the next pass: a row must
- * never outlive its files, nor the files the row.
+ * files of its documents are removed from the `cvs` bucket and its photo
+ * from the `photos` bucket first, then the candidate row (the cascade
+ * takes the document rows). A candidate whose files could not be removed
+ * is left for the next pass: a row must never outlive its files, nor the
+ * files the row.
  *
  * Re-embed: with a model, the active candidates still without a vector
  * (an embedding call that failed when the document was processed, a
@@ -22,7 +23,7 @@
  * the same way, and one log line with the fix sentence says more than a
  * hundred.
  */
-import type { Db, ExpiredCandidate } from "./db.js";
+import { CV_BUCKET, PHOTO_BUCKET, type Db, type ExpiredCandidate } from "./db.js";
 import {
   embeddingFixSentence,
   isDimensionMismatch,
@@ -192,15 +193,20 @@ export async function runMaintenance(deps: MaintenanceDeps): Promise<Maintenance
     try {
       const documents = await db.listDocumentsOfCandidate(item.candidate_id);
       const paths = documents.map((document) => document.storage_path);
-      if (paths.length > 0) await db.removeObjects(paths);
+      if (paths.length > 0) await db.removeObjects(paths, CV_BUCKET);
+      // The photo leaves with the person: its key is on the row, so the
+      // row is read before it goes.
+      const photoPath = (await db.getCandidateById(item.org_id, item.candidate_id))?.photo_path ?? null;
+      if (photoPath) await db.removeObjects([photoPath], PHOTO_BUCKET);
       await db.deleteCandidate(item.candidate_id);
       purged += 1;
-      filesRemoved += paths.length;
+      filesRemoved += paths.length + (photoPath ? 1 : 0);
       logInfo("purged", {
         candidateId: item.candidate_id,
         orgId: item.org_id,
         reason: item.reason,
         files: paths.length,
+        photo: photoPath !== null,
       });
     } catch (error) {
       failed += 1;

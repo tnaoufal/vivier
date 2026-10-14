@@ -1,72 +1,100 @@
 /**
- * One line of the talent pool, the whole of it a link to the profile:
- * initials, the name (or "no name" when none was read) with its pills,
- * the headline and location, the first four skills, and on the right
- * from `sm` the languages and the last update in muted 13px (under the
- * skills on a phone). The caller wraps it in the list item.
+ * One line of the talent pool, the whole of it a link to the profile,
+ * built for a recruiter deciding whether to open it: the photo when the
+ * organisation shows photos and the CV had one (initials otherwise), the
+ * name with its pills, the position held today, where and for how long
+ * and when available, the three skills the CV put first, the languages
+ * with their level, and the last update on the right from `sm`. Each
+ * value the CV does not state is simply absent from the row (the sheet
+ * says "not stated"); only the position reads so, since it is the line
+ * a recruiter scans. The caller wraps the row in a list item that rises
+ * in once.
  */
 import { Link } from "@tanstack/react-router";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { Pill } from "@/components/app-shell/pill";
-import { displayName, languagesLine, needsReview, topSkills } from "@/lib/candidates/format";
+import {
+  currentPosition,
+  displayName,
+  keySkills,
+  languagesLine,
+  metaLine,
+  needsReview,
+} from "@/lib/candidates/format";
 import type { CandidateListRow } from "@/lib/candidates/queries";
+import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
 import { formatDate, useI18n } from "@/lib/i18n";
 
-export function CandidateRow({ row }: { row: CandidateListRow }) {
+export function CandidateRow({ row, showPhotos }: { row: CandidateListRow; showPhotos: boolean }) {
   const { t, locale } = useI18n();
   const name = displayName(row, t("candidates.noName"));
-  const skills = topSkills(row.skills, 4);
+  const photoUrl = usePhotoUrl(row.photo_path, showPhotos);
+  const position = currentPosition(row);
+  const meta = metaLine(locale, row);
+  const skills = keySkills(row.skills);
   const languages = languagesLine(row.languages);
-  const line = [row.headline, row.location].filter((part) => part && part.trim()).join(" · ");
   const updated = t("candidates.updated", { date: formatDate(locale, row.updated_at) });
   return (
     <Link
       to="/app/candidates/$candidateId"
       params={{ candidateId: row.id }}
-      className="sheet-row items-start sm:items-center"
+      className="sheet-row items-start"
     >
-      <Avatar name={name} size="lg" />
+      <Avatar name={name} size="lg" photoUrl={photoUrl} className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="min-w-0 truncate text-[15px] font-semibold leading-6 text-ink">{name}</span>
+          <span className="min-w-0 truncate text-body font-semibold text-ink">{name}</span>
           {needsReview(row.confidence) ? (
-            <Pill tone="caution" dot>
+            <Pill tone="caution" dot size="sm">
               {t("candidates.review")}
             </Pill>
           ) : null}
-          {row.source === "manual" ? <Pill>{t("candidates.source.manual")}</Pill> : null}
+          {row.source === "manual" ? <Pill size="sm">{t("candidates.source.manual")}</Pill> : null}
           {row.consent_status === "withdrawn" ? (
-            <Pill tone="negative" dot>
+            <Pill tone="negative" dot size="sm">
               {t("candidates.consent.withdrawn")}
             </Pill>
           ) : null}
         </div>
-        <p className="mt-0.5 truncate text-sm text-muted-foreground">{line || t("common.unknown")}</p>
-        {skills.length ? (
-          <ul className="mt-2 flex flex-wrap gap-1.5">
-            {skills.map((skill) => (
-              <li key={skill} className="min-w-0">
-                <Pill className="max-w-48">
-                  <span className="min-w-0 truncate">{skill}</span>
-                </Pill>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <p className="mt-2 truncate text-[13px] leading-5 text-muted-foreground sm:hidden">
-          {languages ? `${languages} · ` : ""}
-          {updated}
+        <p className="mt-0.5 truncate text-sm text-ink/85">
+          {position ? (
+            <>
+              {position.title}
+              {position.company ? (
+                <span className="text-muted-foreground"> @ {position.company}</span>
+              ) : null}
+            </>
+          ) : (
+            <span className="text-muted-foreground">{t("common.unknown")}</span>
+          )}
         </p>
-      </div>
-      <div className="hidden w-44 shrink-0 flex-col items-end text-right text-[13px] leading-5 text-muted-foreground sm:flex">
-        {languages ? (
-          <span className="max-w-full truncate" title={languages}>
-            {languages}
-          </span>
+        {meta ? <p className="mt-0.5 truncate text-meta text-muted-foreground tabular-nums">{meta}</p> : null}
+        {skills.length || languages ? (
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            {skills.length ? (
+              <ul className="flex flex-wrap gap-1.5">
+                {skills.map((skill) => (
+                  <li key={skill} className="min-w-0">
+                    <Pill size="sm" className="max-w-48">
+                      {skill}
+                    </Pill>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {languages ? (
+              <span className="min-w-0 truncate text-meta text-muted-foreground" title={languages}>
+                {languages}
+              </span>
+            ) : null}
+          </div>
         ) : null}
-        <span>{updated}</span>
+        <p className="mt-1.5 text-meta text-muted-foreground sm:hidden">{updated}</p>
       </div>
+      <span className="hidden shrink-0 pt-0.5 text-meta text-muted-foreground tabular-nums sm:block">
+        {updated}
+      </span>
     </Link>
   );
 }

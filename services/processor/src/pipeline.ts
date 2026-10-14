@@ -6,11 +6,13 @@
  * sentence that says so, and no candidate is touched), then, one
  * organisation at a time (mutex.ts), the candidate the person already is
  * (dedup.ts: pinned, email, phone, fingerprint), the merge into it, the
- * search text and the candidate row; then the embedding (best effort,
- * outside the lock) and the document row with what was done. Any thrown
- * error leaves the document `failed` with one French sentence per
- * failure class (messages.ts) and the real cause in the log. Model and
- * OCR spend is recorded in ai_usage as it happens.
+ * search text and the candidate row; then, outside the lock and best
+ * effort, the photo (photo.ts: a portrait among the first page's images,
+ * written to the `photos` bucket when the candidate has none; it never
+ * reaches the model) and the embedding, and the document row with what
+ * was done. Any thrown error leaves the document `failed` with one
+ * French sentence per failure class (messages.ts) and the real cause in
+ * the log. Model and OCR spend is recorded in ai_usage as it happens.
  *
  * Everything with a side effect comes through `PipelineDeps`, so the
  * tests run the whole flow against an in-memory database and fake
@@ -21,6 +23,7 @@ import { createHash } from "node:crypto";
 import type { ProcessorConfig } from "./config.js";
 import {
   DuplicateFileError,
+  PHOTO_BUCKET,
   type CandidateInsert,
   type CandidateWrite,
   type Db,
@@ -38,7 +41,16 @@ import { countDocument, countModelCall, countOcrCall, countPages } from "./metri
 import { ModelError, embedOne, vectorLiteral, type Embedder } from "./model.js";
 import { KeyedMutex } from "./mutex.js";
 import { ocrPdf, type OcrResult } from "./ocr.js";
-import { extractPdfText, looksScanned, normaliseText, readableChars, type PdfText } from "./pdf.js";
+import {
+  extractPageImages,
+  extractPdfText,
+  looksScanned,
+  normaliseText,
+  readableChars,
+  type PageImages,
+  type PdfText,
+} from "./pdf.js";
+import { choosePhoto, isPhotoLike, photoFileOf, photoPathOf, type PhotoFile } from "./photo.js";
 import {
   backfillContacts,
   embeddingTextOf,
@@ -58,6 +70,8 @@ export interface PipelineDeps {
   db: Db;
   config: ProcessorConfig;
   extractPdf: (buffer: Buffer) => Promise<PdfText>;
+  /** The images of page 1 of a PDF with a text layer, for the photo; a thrown error means no photo. */
+  pageImages: (buffer: Buffer) => Promise<PageImages>;
   /** Null when OCR is not configured: scanned PDFs end in needs_ocr. */
   ocr: ((buffer: Buffer) => Promise<OcrResult>) | null;
   /** Null without a model: the heuristic profile is used and nothing is classified. */
@@ -74,6 +88,7 @@ export function defaultDeps(config: ProcessorConfig, db: Db): PipelineDeps {
     db,
     config,
     extractPdf: (buffer) => extractPdfText(buffer),
+    pageImages: (buffer) => extractPageImages(buffer, 1),
     ocr: ocr ? (buffer) => ocrPdf(buffer, ocr) : null,
     structure: model ? (text) => modelProfile(text, model) : null,
     embed: model ? (text) => embedOne(text, model) : null,
@@ -255,6 +270,8 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
   countPages(pageCount);
   let text = extracted.text;
   let extractionMethod: ExtractionMethod = "pdf-text";
+  /** The OCR answer, kept for its first page's images (the photo). */
+  let ocrAnswer: OcrResult | null = null;
 
   if (looksScanned(text, pageCount)) {
     if (!deps.ocr) {
@@ -284,6 +301,7 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
     });
     text = ocr.text;
     extractionMethod = "ocr";
+    ocrAnswer = ocr;
   }
 
   text = normaliseText(text, config.maxTextChars);
@@ -346,6 +364,16 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
   // fingerprint stored is the merged profile's: the surest identity known.
   const written = await candidateWrites.run(doc.org_id, () => writeCandidate(db, doc, profile));
   const { candidateId, merged } = written;
+
+  // The photo, outside the lock and never fatal: a candidate found with a
+  // photo keeps it (the first reading identified them); one without gets
+  // the portrait of this CV's first page, when there is one. The file goes
+  // to the bucket, the key to the row, and nothing of it to any model.
+  let photo = false;
+  if (written.photoPath === null) {
+    const file = await findPhoto(deps, doc, buffer, ocrAnswer);
+    if (file) photo = await writePhoto(db, doc, candidateId, file);
+  }
 
   // Only once the row exists, outside the lock (the call takes a while and
   // must not hold the organisation's other documents), and never fatal: a
@@ -415,8 +443,58 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
     pages: pageCount,
     textChars: text.length,
     embedding: embedded,
+    photo,
   });
   return "processed";
+}
+
+/**
+ * The portrait of the first page as a file, or null: from the OCR answer
+ * when the PDF was scanned (the first image that fits, as the OCR cut it
+ * out), else from the PDF's own images (the largest that fits, downscaled
+ * and encoded as a PNG). A failure to read the images is a log line and no
+ * photo: the document is processed all the same.
+ */
+async function findPhoto(
+  deps: PipelineDeps,
+  doc: DocumentRow,
+  buffer: Buffer,
+  ocrAnswer: OcrResult | null,
+): Promise<PhotoFile | null> {
+  try {
+    if (ocrAnswer) {
+      const page = ocrAnswer.firstPage;
+      if (!page) return null;
+      const image = page.images.find((candidate) => isPhotoLike(candidate, page.pageWidth));
+      return image ? { bytes: image.bytes, contentType: image.contentType } : null;
+    }
+    const page = await deps.pageImages(buffer);
+    const image = choosePhoto(page.images, page.pageWidth);
+    return image ? photoFileOf(image) : null;
+  } catch (error) {
+    logError("photo_read_failed", error, { documentId: doc.id, orgId: doc.org_id });
+    return null;
+  }
+}
+
+/** Uploads the photo and writes its key on the row; false, logged, when either failed. */
+async function writePhoto(db: Db, doc: DocumentRow, candidateId: string, file: PhotoFile): Promise<boolean> {
+  const path = photoPathOf(doc.org_id, candidateId, file.contentType);
+  try {
+    await db.uploadObject(PHOTO_BUCKET, path, file.bytes, file.contentType);
+    await db.updateCandidate(candidateId, { photo_path: path });
+  } catch (error) {
+    logError("photo_write_failed", error, { documentId: doc.id, orgId: doc.org_id, candidateId });
+    return false;
+  }
+  logInfo("photo_written", {
+    documentId: doc.id,
+    orgId: doc.org_id,
+    candidateId,
+    contentType: file.contentType,
+    bytes: file.bytes.byteLength,
+  });
+  return true;
 }
 
 interface CandidateWritten {
@@ -427,6 +505,8 @@ interface CandidateWritten {
   matchedBy: DedupKey | null;
   /** True when the candidate found was archived and this CV put them back in the pool. */
   reactivated: boolean;
+  /** The photo the candidate already had; null for a new row or one without. */
+  photoPath: string | null;
 }
 
 /**
@@ -451,7 +531,13 @@ async function writeCandidate(db: Db, doc: DocumentRow, profile: Profile): Promi
     if (reactivated) {
       logInfo("candidate_reactivated", { documentId: doc.id, orgId: doc.org_id, candidateId: existing.id });
     }
-    return { candidateId: existing.id, merged, matchedBy: match?.by ?? null, reactivated };
+    return {
+      candidateId: existing.id,
+      merged,
+      matchedBy: match?.by ?? null,
+      reactivated,
+      photoPath: existing.photo_path,
+    };
   }
   const insert: CandidateInsert = {
     ...write,
@@ -459,5 +545,11 @@ async function writeCandidate(db: Db, doc: DocumentRow, profile: Profile): Promi
     created_by: doc.uploaded_by,
     source: "upload",
   };
-  return { candidateId: await db.insertCandidate(insert), merged, matchedBy: null, reactivated: false };
+  return {
+    candidateId: await db.insertCandidate(insert),
+    merged,
+    matchedBy: null,
+    reactivated: false,
+    photoPath: null,
+  };
 }

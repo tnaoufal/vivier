@@ -1,10 +1,11 @@
 /**
  * Inviting a colleague: an address and a role, sent to the server
- * function that writes the invitation and emails it. When no email went
- * out (Resend not set up, or the send failed) the link is shown once with
- * a copy button so the inviter can pass it on themselves.
+ * function that writes the invitation and emails it. A malformed address
+ * is refused inline, under the field, before any call. When no email
+ * went out (Resend not set up, or the send failed) the link is shown
+ * once with a copy button so the inviter can pass it on themselves.
  */
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { Copy, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,16 +32,21 @@ export function InviteForm({
   orgId,
   disabled,
   onInvited,
+  id,
 }: {
   orgId: string;
   /** True when no seat is left: the form explains instead of trying. */
   disabled: boolean;
   onInvited: () => void;
+  /** An anchor the page may jump to. */
+  id?: string | undefined;
 }) {
   const { t, locale } = useI18n();
+  const errorId = useId();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<InviteRole>("member");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [pendingLink, setPendingLink] = useState<{ email: string; link: string } | null>(null);
 
   async function submit(event: FormEvent) {
@@ -48,9 +54,10 @@ export function InviteForm({
     const address = email.trim().toLowerCase();
     if (busy || disabled) return;
     if (!EMAIL_SHAPE.test(address)) {
-      toast.error(t("team.invite.invalidEmail"));
+      setError(t("team.invite.invalidEmail"));
       return;
     }
+    setError(null);
     setBusy(true);
     try {
       const result = await inviteMember({ data: { ...(await withToken()), orgId, email: address, role } });
@@ -63,11 +70,11 @@ export function InviteForm({
         toast.success(t("team.invite.created", { email: address }));
       }
       onInvited();
-    } catch (error) {
-      console.error(error);
-      if (errorSays(error, "TEAM:duplicate")) toast.error(t("team.invite.duplicate"));
-      else if (errorSays(error, "TEAM:already_member")) toast.error(t("team.invite.alreadyMember"));
-      else toast.error(errorMessage(locale, error, { "ORG:seats": t("team.invite.seats") }));
+    } catch (caught) {
+      console.error(caught);
+      if (errorSays(caught, "TEAM:duplicate")) setError(t("team.invite.duplicate"));
+      else if (errorSays(caught, "TEAM:already_member")) setError(t("team.invite.alreadyMember"));
+      else setError(errorMessage(locale, caught, { "ORG:seats": t("team.invite.seats") }));
     } finally {
       setBusy(false);
     }
@@ -78,32 +85,43 @@ export function InviteForm({
     try {
       await navigator.clipboard.writeText(pendingLink.link);
       toast(t("common.copied"));
-    } catch (error) {
-      console.error(error);
+    } catch (caught) {
+      console.error(caught);
       toast.error(t("common.error"));
     }
   }
 
   return (
-    <form onSubmit={submit} className="sheet p-6 sm:p-8">
-      <h2 className="font-display text-xl text-ink">{t("team.invite.title")}</h2>
-      <p className="mt-1 text-sm leading-5 text-muted-foreground">{t("team.invite.text")}</p>
-      {/* The button has its own row: beside the two fields it left the address a few characters wide on a small tablet. */}
-      <div className="mt-6 grid gap-6 sm:grid-cols-[minmax(0,1fr)_11rem]">
-        <div className="min-w-0 space-y-2">
+    <form id={id} onSubmit={submit} className="sheet scroll-mt-24 p-6" aria-labelledby="invite-form-title">
+      <h2 id="invite-form-title" className="font-display text-xl text-ink">
+        {t("team.invite.title")}
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">{t("team.invite.text")}</p>
+      <div className="mt-6 space-y-5">
+        <div className="space-y-2">
           <Label htmlFor="invite-email">{t("auth.email")}</Label>
           <Input
             id="invite-email"
             type="email"
             autoComplete="off"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (error) setError(null);
+            }}
             disabled={busy || disabled}
             maxLength={254}
             required
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
           />
+          {error ? (
+            <p id={errorId} role="alert" className="text-meta text-negative">
+              {error}
+            </p>
+          ) : null}
         </div>
-        <div className="min-w-0 space-y-2">
+        <div className="space-y-2">
           <Label htmlFor="invite-role">{t("common.role")}</Label>
           <Select value={role} onValueChange={(value) => setRole(value as InviteRole)} disabled={busy || disabled}>
             <SelectTrigger id="invite-role">
@@ -117,23 +135,21 @@ export function InviteForm({
               ))}
             </SelectContent>
           </Select>
+          <p className="text-meta text-muted-foreground">{t(roleHelpKey(role))}</p>
         </div>
       </div>
-      <p className="mt-2 text-[13px] leading-5 text-muted-foreground">{t(roleHelpKey(role))}</p>
       {disabled ? <p className="mt-4 text-sm text-caution-foreground dark:text-caution">{t("members.seatsFull")}</p> : null}
-      <div className="mt-6 flex flex-col sm:flex-row sm:justify-end">
-        <Button type="submit" disabled={busy || disabled || !email.trim()}>
-          <UserPlus />
+      <div className="mt-6">
+        <Button type="submit" className="w-full" icon={<UserPlus />} disabled={busy || disabled || !email.trim()}>
           {t("team.invite.send")}
         </Button>
       </div>
       {pendingLink ? (
-        <div className="mt-6 rounded-2xl border border-caution/40 bg-caution/10 p-4 text-sm">
+        <div className="fade-in mt-6 rounded-lg border border-caution/40 bg-caution/10 p-4 text-sm">
           <p className="text-ink">{t("team.invite.notEmailed")}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <code className="min-w-0 flex-1 truncate rounded-lg bg-card px-3 py-2 text-xs">{pendingLink.link}</code>
-            <Button type="button" size="sm" variant="outline" onClick={() => void copyLink()}>
-              <Copy />
+            <code className="min-w-0 flex-1 truncate rounded-sm bg-card px-3 py-2 text-xs">{pendingLink.link}</code>
+            <Button type="button" size="sm" variant="outline" icon={<Copy />} onClick={() => void copyLink()}>
               {t("team.invite.copyLink")}
             </Button>
           </div>

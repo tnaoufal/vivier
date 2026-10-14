@@ -138,7 +138,7 @@ export function MentionComposer({
           id={listId}
           role="listbox"
           aria-label={t("shortlists.comments.suggestions")}
-          className="surface-float absolute left-0 top-full z-30 mt-1 max-h-56 w-64 max-w-full overflow-y-auto p-1"
+          className="surface-float fade-in absolute left-0 top-full z-10 mt-1 max-h-56 w-64 max-w-full overflow-y-auto p-1"
         >
           {suggestions.map((member, index) => (
             <li
@@ -149,7 +149,7 @@ export function MentionComposer({
               onMouseEnter={() => setActive(index)}
               onClick={() => pick(member)}
               className={cn(
-                "flex min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm transition-colors duration-150",
+                "flex min-w-0 cursor-pointer items-center gap-2.5 rounded-sm px-2.5 py-2 text-sm transition-colors duration-fast ease-out-soft",
                 index === active ? "bg-accent text-accent-foreground" : "text-ink",
               )}
             >

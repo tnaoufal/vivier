@@ -1,111 +1,377 @@
-# Vivier design charter
+# Vivier design charter, v2
 
-Vivier is a professional tool used for hours by HR teams. The look is
-modern, calm and airy: generous whitespace, one accent colour, hairline
-borders, large readable type, nothing cramped and nothing clipped. Every
-page follows the same skeleton so the product feels like one object.
-This page is the contract every screen follows; the tokens live in
-`src/styles.css`, the shared pieces in `src/components/app-shell`.
+Vivier is a professional tool HR teams use for hours: a talent pool, a
+brief, a shortlist built together, a dossier sent to a manager. The look
+is the one of a product people pay for: calm, precise, generous
+whitespace, a strong typographic hierarchy, one accent, motion with a
+purpose. Every block on a screen earns its place by helping a recruiter
+decide; what does not, goes. This page is the contract every screen
+follows. The tokens live in `src/styles.css`, the primitives in
+`src/components/ui` (shadcn, restyled) and `src/components/app-shell`.
+
+## Principles
+
+1. **One object.** Every page is built from the same skeleton (header,
+   sections, sheets, rows) and the same primitives, so the product feels
+   like one thing, not twelve screens.
+2. **Hierarchy before decoration.** Size, weight and spacing carry the
+   structure. Colour is reserved: one accent for the action, four tones
+   for meaning. No grey boxes in white boxes, no borders where a gap
+   does the job.
+3. **Earn the pixels.** A block exists only if it answers a recruiter's
+   question ("does this profile fit?", "who decided?", "what is
+   missing?"). A list shows what tells profiles apart, not everything the
+   row holds.
+4. **Honest by construction.** What the CV does not say reads
+   "Non renseigné", never a dash or a zero. A model's sentence is
+   introduced as the model's. A decision names who took it and when.
+5. **Motion explains.** Things move to show where they came from, where
+   they went, or that work is running. Nothing bounces, nothing loops
+   for decoration, and a person who asked for less motion gets none.
+6. **Phone first, desk best.** Every layout works at 360px with 16px
+   gutters and no horizontal scroll; from `sm` it spreads into columns.
+
+## Tokens (`src/styles.css`)
+
+Every token exists in light and in dark (`.dark` mirrors `:root`); a
+component never hard-codes a colour, a shadow, a duration or a radius.
+
+### Colour
+
+| Token                                   | Light                         | Role                                            |
+| --------------------------------------- | ----------------------------- | ----------------------------------------------- |
+| `background`                            | warm off-white, oklch 0.985   | the page                                        |
+| `card`, `popover`                       | white                         | sheets, menus, dialogs                          |
+| `border` / `line`                       | black at 9 percent            | hairlines (dark: white at 10 percent)           |
+| `input`                                 | black at 14 percent           | field borders                                   |
+| `ink`, `foreground`                     | near-black green              | text                                            |
+| `muted-foreground`                      | oklch 0.49 (AA on white)      | secondary text, labels                          |
+| `muted`, `secondary`, `accent`          | warm greys                    | tracks, hover tints, selected rows              |
+| `primary`                               | deep green, oklch 0.45 (AA)   | the one main action, links, active nav, rings   |
+| `positive` / `caution` / `negative`     | green / amber / red           | met, retained / partial, to check / missing     |
+| `neutral`                               | grey                          | not stated (never a judgement)                  |
+| `destructive`                           | red                           | erase, delete                                   |
+| `sidebar-*`                             | a shade under the page        | the sidebar surface, its hover and borders      |
+
+Tints are the token at an alpha (`bg-primary/10`, `bg-positive/12`), so
+dark mode follows on its own. Semantic tones are reserved for meaning:
+never for decoration, never alone (always with an icon, a dot or a word).
+
+### Elevation, radii, layers
+
+| Scale    | Steps                                                                                  |
+| -------- | -------------------------------------------------------------------------------------- |
+| Shadows  | `shadow-hairline` (a sheet), `shadow-raised` (a lifted card, a filled button), `shadow-float` (menus, popovers, toasts), `shadow-dialog` (dialogs, drawers) |
+| Radii    | `rounded-sm` 8 (menu items, tooltips, small discs), `rounded-md` 12 (nav items, inputs' siblings), `rounded-lg` 16 (sheets, textareas), `rounded-xl` 24 (dialogs), `rounded-full` (buttons, pills, fields) |
+| Layers   | `z-sticky` 20 (sticky headers), `z-overlay` 40 (the scrim), `z-modal` 50 (dialog, drawer), `z-popover` 60 (menus above a drawer), `z-toast` 70 |
+
+### Type
+
+Geist for everything, Poppins 600 (`font-display`) for display titles
+only. Sentence case everywhere; no all-caps. Numbers in `tabular-nums`.
+
+| Utility     | Size / line | Use                                             |
+| ----------- | ----------- | ----------------------------------------------- |
+| `text-xs`   | 12 / 16     | pills, shortcuts                                |
+| `text-meta` | 13 / 20     | labels, meta lines, dates, hints (`label-caps`) |
+| `text-sm`   | 14 / 20     | secondary text, rows' second line, buttons      |
+| `text-body` | 15 / 24     | body, descriptions, dialog text                 |
+| `text-base` | 16 / 24     | card titles (600)                               |
+| `text-lg`   | 18 / 28     | compact empty-state titles                      |
+| `text-xl`   | 20 / 28     | section titles, dialog titles, sticky headers   |
+| `text-2xl`  | 24 / 32     | page titles on phones                           |
+| `text-3xl`  | 30 / 36     | page titles (`font-display`), `stat-number`     |
+| `text-4xl`  | 36 / 40     | the landing page's hero on a phone              |
+| `text-5xl`  | 48 / 1      | reserved                                        |
+| `text-6xl`  | 60 / 1      | the hero from `sm`, the 404 number              |
+
+One sentence of description under every page title, two lines at most.
+
+### Spacing
+
+An 8px grid: 32px between page sections (`space-y-8`), 24px between cards
+in a grid (`gap-6`) and inside a card (`p-6`), 16px between cards stacked
+in one column (`space-y-4`: a board column, the dashboard's briefs, the
+results of an analysis), 16px of vertical padding per row (`py-4`), 8px
+between a label and its field. Touch targets are
+40px high; icon buttons 40 × 40; the 32px `sm` button lives only inside a
+desktop row that already measures 40px or more.
+
+### Motion
+
+| Token                         | Value                     | For                                            |
+| ----------------------------- | ------------------------- | ---------------------------------------------- |
+| `duration-fast`               | 120 ms                    | hover, press, a colour change                  |
+| `duration-base`               | 180 ms                    | menus, popovers, the page change, the nav mark |
+| `duration-slow`               | 240 ms                    | dialogs and drawers entering                   |
+| `duration-slower`             | 320 ms                    | rows rising in, a bar or a ring reaching its value |
+| `ease-out-soft`               | cubic-bezier(.2,.7,.2,1)  | everything that settles                        |
+| `ease-spring`                 | cubic-bezier(.34,1.3,.64,1) | a dialog entering (a gentle overshoot, 4 percent) |
+| `--stagger`                   | 40 ms                     | the wait between two rows of a list            |
+
+`src/lib/motion.ts` carries the same numbers for code that drives a
+timer (`DURATION`, `staggerDelay`, `staggerVars`) and the reading of the
+reduced-motion preference (`prefersReducedMotion`, `subscribeReducedMotion`;
+the hook `usePrefersReducedMotion` lives in `app-shell/page-transition`).
 
 ## Layout
 
-- Content column: `max-w-6xl` (72rem) centred, horizontal padding 16px on
-  phones, 32px from `sm`, 40px from `lg`. Vertical padding 32px top.
-- Sidebar 256px, sticky, with the organisation at the top, five sections,
-  the person at the bottom. On phones a top bar and a full-screen menu.
-- Vertical rhythm: 8px grid. Gap between page sections 32px (`space-y-8`),
-  between cards in a grid 24px (`gap-6`), inside a card 24px padding
-  (`p-6`), between a label and its field 8px, between rows 0 with a 1px
-  divider and 16px vertical padding per row (`py-4`).
-- Nothing narrower than its content: every flex child that may hold a long
-  string gets `min-w-0` and the string `truncate` (file names, emails, URLs);
-  tables scroll horizontally inside their card (`overflow-x-auto`), never the
-  page. A dialog is `max-w-2xl`, padding 32px, `overflow-hidden`, with the
-  scrolling list inside it (`max-h-[60vh] overflow-y-auto`) and a footer whose
-  buttons wrap on narrow screens.
-- Touch targets at least 40px high; icon buttons 40×40.
+- The shell: a 264px sidebar (the brand, the organisation switcher with
+  the plan pill, five sections with 20px icons and one active mark that
+  slides to the current section, the person at the bottom). On phones a
+  64px top bar and a full-screen sheet menu, closed on navigation.
+- The content column: `max-w-6xl` (72rem) centred, 16px of horizontal
+  padding on phones, 32px from `sm`, 40px from `lg`, 32px of vertical
+  padding. Every page change fades the column in and rises it 6px
+  (`PageTransition`, keyed on the pathname).
+- Nothing narrower than its content: every flex child that may hold a
+  long string gets `min-w-0` and the string `truncate` (file names,
+  emails, URLs); tables scroll horizontally inside their card, never the
+  page.
+- Two columns from `lg` only when the second one earns it (an activity
+  feed next to a card of steps, a profile next to its verdicts).
 
-## Typography
+## Components
 
-Geist for everything, Poppins 600 for display titles only.
+Every primitive keeps its earlier props; the new ones are optional.
 
-| Role | Size / line | Weight |
-| --- | --- | --- |
-| Page title | 30 / 36 (`text-3xl`), 24 / 32 on phones | display 600 |
-| Section title | 20 / 28 (`text-xl`) | 600 |
-| Card title | 16 / 24 (`text-base`) | 600 |
-| Body | 15 / 24 (`text-[15px] leading-6`) | 400 |
-| Secondary | 14 / 20 (`text-sm`) | 400, muted |
-| Label, meta | 13 / 20 (`text-[13px]`) | 500, muted |
+### `src/components/ui`
 
-Sentence case everywhere; no all-caps. Numbers in `tabular-nums`. One
-sentence of description under every page title, at most two lines.
+- **Button** `variant` primary (= default) · secondary · outline · ghost ·
+  destructive · link; `size` sm 32 · md 40 (= default) · lg 44 · icon ·
+  icon-sm; `icon` the one leading 16px icon (a literal `<svg>` child is
+  dropped and the svg of a child component is hidden, so a button can
+  never show two; children that are not icons stay); `asChild`. Press
+  feedback on every variant (`press`: 2 percent under the finger). At
+  most one filled primary per view.
+- **Input, Textarea, Select** 40px, pill-shaped fields on the card colour,
+  the ring on focus. The Select trigger draws its one chevron; a caller
+  never adds another.
+- **Dialog** `size` sm 28rem · md 32rem · lg 42rem · xl 56rem, 32px of
+  padding, `overflow-hidden`; slots `DialogHeader`, `DialogBody` (the
+  part that scrolls), `DialogFooter` (buttons wrap, stacked on a phone).
+  Springs in over 240ms, leaves in 180ms. The close button is a 40px
+  target and the content's last child.
+- **Sheet** (drawer) `side`, `size` md 32rem · lg 44rem · full (the
+  viewport minus a gutter, for the CV viewer); slots `SheetHeader`,
+  `SheetBody` (give the content `flex flex-col gap-6 overflow-hidden` to
+  pin the header and footer), `SheetFooter`.
+- **Tabs** a 40px muted track with pill triggers, the active one lifted;
+  **Segmented** the same track without panels, `value`/`onChange`/
+  `options` (label, one icon, a count in muted text at full strength,
+  lighter by weight), a thumb that slides, arrow keys.
+- **Tooltip** ink on light, 13px, one line; the provider is mounted at
+  the root. A tooltip never replaces an `aria-label`.
+- **DropdownMenu, Popover, Command** the float surface; items 36px with
+  one leading icon at most; `destructive` on an item for erase. Menus
+  open above drawers (`z-popover`).
+- **Skeleton, SkeletonRows** shimmering placeholders the size of what
+  they stand for; `SkeletonRows` is the list every page shows before its
+  rows arrive.
+- **Toaster** the float surface, an icon in a tinted disc, bottom right,
+  above everything.
 
-## Colour
+### `src/components/app-shell`
 
-- Page `bg-background` (off-white, slightly green), cards `bg-card` (pure
-  white) with `border-border` hairlines; dark mode mirrors this with deep
-  green-black surfaces. No grey boxes inside white boxes: use hairlines and
-  spacing to separate, tints (`bg-muted/50`) only for a selected or hovered
-  row.
-- The accent (`primary`, deep green) is for the one main action of a page,
-  links, the active navigation item and focus rings. At most one filled
-  primary button per view; the rest are `outline` or `ghost`.
-- Semantic tones are reserved for meaning: `positive` (met, retained),
-  `caution` (partial, to check), `negative` (missing, dismissed),
-  `neutral` (not stated). Never for decoration.
+- **PageHeader** `eyebrow`, `title` (30/36, 24/32 on phones),
+  `description`, `meta` (a row of pills), `actions`; `sticky` is the slim
+  variant of a long page (20/28, under the top edge with a blur).
+- **Section** `title`, `count`, `description`, `action`, `id`.
+- **Pill** `tone` neutral · positive · caution · negative · primary;
+  `dot` or `icon` (14px), never both: `icon` wins; `size` sm 20 · md 24.
+- **Avatar** `name`, `size` sm 28 · md 36 · lg 44 · xl 72, `photoUrl` (a
+  signed URL; the initials stay under the photo until it loads, then it
+  fades in; a failed photo leaves the initials), `variant` disc · profile
+  (square-rounded, for a candidate sheet). The photo identifies a person
+  in the interface only and never reaches a model.
+- **StatTile** `label`, `value` (null draws a dash with the reason on
+  hover and as its text for assistive technologies, never a zero),
+  `icon`, `to`, `loading`, `progress` (a 4px bar
+  with a sheen while it runs), `hint`. **StatGrid** staggers its tiles.
+- **ProgressBar** `value` (null = indeterminate), `max`, `size` sm 4px ·
+  md 6px, `active` (the sheen), `tone`, `label` (required, for assistive
+  technologies). The width eases over 320ms.
+- **Meter** `label`, `value` (null reads "Non renseigné" and the bar is
+  decoration: no meter role without a value), `max`, `hint`, `tone`
+  primary · score (coloured like the ring), `name` (the accessible name
+  when `label` is a node). For the five dimensions of an assessment.
+- **Timeline, TimelineItem** `when`, `title`, `subtitle`, `current`,
+  children: a vertical rail with dots, dates on the left from `sm`,
+  items rising in one after the other. For the experiences.
+- **ScoreRing** `score` 0–100 or null (a dash), `label`, `size` sm 40 ·
+  md 56 · lg 72, `static` (the public dossier: drawn at rest for print).
+  Green from 80, amber from 60, red below. The arc draws itself once.
+- **RequirementList, RequirementMark** one row per requirement: the mark
+  (✓ met, – partial, ✗ missing, ? not stated, each with a text
+  alternative), the label, the evidence; `compact` for print.
+- **EmptyState** `icon` (in a tinted disc), `title`, `text` (one
+  sentence), `action` (one), `compact` inside a card or a drawer.
+- **FilterChip** `active`, `onClick`, `icon`, `count`; 40px like the
+  field and the tabs beside it, hairline, accent tint when on, never the
+  filled primary; the count at full strength, lighter by weight only.
+  **LocaleChips** the two languages, one on.
+- **ConfirmDialog** a small dialog, cancel then the one confirming
+  button (negative when `destructive`), `busy` disables both.
+- **PageTransition** wraps the outlet; **usePrefersReducedMotion** for
+  code that drives a timer.
 
-## Components (src/components/app-shell)
+### Utilities (`src/styles.css`)
 
-- `PageHeader`: eyebrow (optional), title, description, actions on the
-  right; on phones the actions wrap under the title.
-- `Section`: a title with an optional count and action, then its content.
-- `Sheet` utility: the card (`rounded-2xl border bg-card`); `sheet-row` for a
-  list row (`flex items-center gap-4 py-4`), hover tint, the whole row is the
-  link when it leads somewhere; `sheet-link` for a card that leads
-  somewhere (tint and accent border on hover and keyboard focus).
-- `StatTile`: a label, the count in `stat-number` (display face, 30/36,
-  tabular digits), an icon in a tinted disc; a dash with the reason on
-  hover when the count could not be read, never a zero.
-- `Pill`: statuses and verdicts; always with a leading dot or icon so colour
-  is never the only signal. `DecisionPill` (briefs, share) is the analysis's
-  reading as a pill with an icon: matches, to check, does not match, not
-  analysed; it never says more.
-- `FilterChip`: a toggle in a filter row, hairline, accent tint when on,
-  never the filled primary. `LocaleChips`: the two languages, one on.
-- `ScoreRing`: the fit score 0–100 as a ring with the number inside; green
-  from 80, amber from 60, red below; "—" when no model assessed the
-  profile. `md` (56px) in a list, `lg` (72px) on a dossier sheet.
-- `RequirementList`: one row per requirement with the mark (✓ met, ~ partial,
-  ✗ missing, ? not stated), the label, the evidence in muted text; the same
-  rows on a result card, in the shortlist drawer and on a dossier sheet
-  (`compact` for print).
-- `EmptyState`: an icon in a tinted disc, one sentence, one action.
-- `Skeleton` rows while loading; never a spinner alone on a blank page.
-- Dialog and Sheet (drawer) from `src/components/ui`, sized as above.
+`sheet` (a card: hairline, white, 16px corners), `sheet-row` (a roomy
+row, hairline between rows, tint on hover when it leads somewhere),
+`sheet-link` (a card that leads somewhere: tint, accent border, lift,
+the ring outside on focus), `label-caps`, `stat-number`, `font-display`,
+`skeleton`, `surface-float`, `surface-dialog`, `brand-text`; motion:
+`press`, `lift` (the hover lift and the focus ring alone, for a linking
+surface that is not a sheet; never with `sheet-link`), `rise-in`,
+`fade-in`, `page-enter`,
+`stagger`, `shine`, `duration-*`; layers: `z-*`; `share-sheet` for the
+public dossier only. Hiding a control in print is Tailwind's
+`print:hidden`.
 
-## The analysis and the dossier
+## Motion: what moves and why
 
-- The brief page groups results by decision: matching, to check, set aside
-  (collapsed by default: out of the way, never gone, the missing required
-  requirement named on the card), not analysed. The progress of an analysis
-  is one line with the count, a thin bar and the way to interrupt it.
-- The dossier (`/share/:token`) is a white sheet with dark ink on any theme
-  (`share-sheet` scopes the tokens, `color-scheme: light`), A4 with a 16 mm
-  margin, one sheet per candidate per printed page (`print:break-before-page`),
-  the print and CV buttons hidden in print, the ring drawn at rest. The PDF a
-  reader keeps is the browser's print of the page.
+| Moment                              | Motion                                                                                   |
+| ----------------------------------- | ---------------------------------------------------------------------------------------- |
+| A page change                       | the column fades in and rises 6px, 180ms (`PageTransition`)                              |
+| A list arriving                     | rows rise in one after the other, 320ms, 40ms apart, once (`stagger` + `rise-in`); never on a refresh |
+| A control pressed                   | it gives 2 percent, 120ms (`press`)                                                      |
+| A card that leads somewhere, hovered| it lifts 1px and its shadow with it (`sheet-link`, `lift`)                              |
+| The section changing in the sidebar | the active mark slides to it, 180ms                                                      |
+| A segmented control                 | the thumb slides to the chosen option, 180ms                                             |
+| A dialog opening                    | fades, scales from 96 percent and rises 8px with a gentle spring, 240ms; leaves in 180ms |
+| A drawer opening                    | slides in from its edge, 240ms; the scrim fades                                          |
+| A menu, a popover, a tooltip        | fades and scales from 95 percent toward its trigger, 180ms (tooltip 120ms)               |
+| Work running                        | the bar's width eases to its value and a sheen crosses it (`shine`); indeterminate when the size is unknown |
+| A score ring mounting               | the arc draws itself once, 320ms (`static` for print)                                    |
+| A photo loading                     | it fades in over the initials, 240ms                                                     |
+| A theme change                      | one viewport cross-fade (view transition), component transitions frozen meanwhile        |
 
-## Motion
+Nothing moves on every re-render, nothing loops except the sheen of a
+running bar and the shimmer of a skeleton. `prefers-reduced-motion`
+neutralises every transition and animation through one rule in
+`styles.css` (the tokens are the only path), and `PageTransition` keeps
+the page still.
 
-150ms ease-out for hover and pressed states, 200ms for panels, nothing
-bounces. Lists animate rows in once (`rise-in`), never on every refresh.
+## Icons
 
-## Honesty in the interface
+lucide only, stroke 1.75. 16px in buttons, rows, pills (14px) and menu
+items; 20px in the navigation, page headers and stat tiles; 24px in an
+empty state's disc. One icon per control: a button with the `icon` prop
+never also has an icon child; a pill has a dot or an icon; a select
+trigger has its one chevron; a menu item has one leading icon and, if
+anything, text on the right. Every icon-only button carries an
+`aria-label`; every decorative icon `aria-hidden`.
 
-A value the CV does not state reads "Non renseigné" in muted text, never a
-dash that could be read as "none". A model's sentence is introduced as the
-model's ("Lecture du modèle"). A decision shows who took it and when. A
-pool larger than one analysis reads says how many profiles were looked at;
-a dossier sheet without an analysis says so instead of showing an empty
-table; a document set aside says it is not a CV and can be retried.
+| Meaning                 | Icon            | Meaning                | Icon              |
+| ----------------------- | --------------- | ---------------------- | ----------------- |
+| upload CVs              | `Upload`        | add a person by hand   | `UserPlus`        |
+| a brief                 | `Briefcase`     | a shortlist            | `ListChecks`      |
+| share, send a dossier   | `Share2`        | run the analysis       | `Sparkles`        |
+| present (the dossier)   | `Presentation`  | a deeper look          | `FileSearch`      |
+| set aside               | `Archive`       | similar profiles       | `Users`           |
+| print                   | `Printer`       | stop                   | `Square`          |
+| resume                  | `Play`          | retry                  | `RefreshCw`       |
+| quota, waiting          | `Hourglass`     | a photo                | `Image`           |
+| a document, a CV        | `FileText`      | consent, GDPR          | `ShieldCheck`     |
+| delete, erase           | `Trash2`        | archive                | `Archive`         |
+| edit                    | `Pencil`        | save                   | `Check`           |
+| cancel, close           | `X`             | search                 | `Search`          |
+| filter                  | `SlidersHorizontal` | sort               | `ArrowUpDown`     |
+| back                    | `ArrowLeft`     | more actions           | `Ellipsis`        |
+| retained                | `Check`         | dismissed              | `X`               |
+| partially met           | `Minus`         | not stated             | `CircleHelp`      |
+| the dashboard           | `LayoutDashboard` | activity             | `Activity`        |
+| the talent pool         | `Users`         | settings               | `Settings`        |
+| a comment               | `MessageSquare` | a vote                 | `ThumbsUp` / `ThumbsDown` |
+| copy a link             | `Copy`          | an email               | `Mail`            |
+| in processing           | `CircleDashed`  | open elsewhere         | `ExternalLink`    |
+
+Known doubles to purge, and what replaces them:
+
+- A `Button` with both the `icon` prop and an svg child → the `icon` prop
+  alone (the primitive now drops or hides the child).
+- A `SelectTrigger` with a `ChevronDown` child next to the one it draws →
+  the trigger's own chevron (a child chevron is now hidden).
+- A `Pill` with `dot` and an icon child → `icon` alone (the dot is not
+  drawn when an icon is given).
+- A `DropdownMenuItem` with a leading and a trailing icon → one leading
+  icon, text (a role, a shortcut) on the right.
+- Two `Avatar`s for the same person in one row (the list row and its
+  hover card) → one.
+
+## Content rules
+
+- A block exists only if it answers one of: who is this, does the
+  profile fit, what is missing, who decided and when, what happens next.
+  A list row shows what tells rows apart (the headline, the years, the
+  three skills that matter for the brief, the verdict), never every field.
+- A value the CV does not state reads "Non renseigné" / "Not stated" in
+  muted text (`t("common.unknown")`), never a dash that could be read as
+  "none", never an empty cell, never a zero.
+- A model's sentence is introduced as the model's ("Lecture du modèle",
+  "The model's reading"); a decision shows who took it and when; a share
+  says when it expires; a document that failed says why in one sentence;
+  a search without a model says it ran on text only.
+- Skills: at most eight chips in a row, the ones relevant to the brief
+  first; the rest behind "N more" in the sheet, never a wall of chips.
+- Sentences in both languages, plain, one idea each. No all-caps, no
+  exclamation marks, no "AI magic".
+
+## Accessibility
+
+- Contrast AA: ink and muted text on white and on the card, primary on
+  white, white on primary; tints never carry text alone.
+- Focus is always visible: a 2px ring in the accent on every control,
+  inset on rows that are links, outside on cards that are links
+  (`sheet-link`).
+- Secondary text is never faded by alpha to look lighter (a count, a
+  duration): it is `text-muted-foreground` at full strength, lighter by
+  weight, so it keeps AA on the card in both themes.
+- Everything reachable by keyboard: dialogs and drawers trap focus and
+  close on Escape, menus and the segmented control take arrow keys, the
+  phone menu is a dialog.
+- Every icon-only button has an `aria-label`; every progress bar and
+  meter a label, min, max and value; every ring and mark a text
+  alternative; a photo has an empty `alt` and the name on its container.
+- Colour is never the only signal: a verdict is an icon and a word in a
+  tone; a status pill has a dot or an icon.
+- `prefers-reduced-motion` is respected globally; nothing requires motion
+  to be understood.
+- Text zooms: no fixed heights around text, `min-w-0` and wrapping
+  everywhere a string may be long.
+
+## Page templates
+
+- **List page** (the pool, the briefs, the shortlists): `PageHeader`
+  with the one primary action; a filter row (`Segmented` or
+  `FilterChip`s, a search `Input`); one `sheet` of `sheet-row`s, each row
+  the link, rising in once; `SkeletonRows` while loading; `EmptyState`
+  with the action that fills it; a count in the description.
+- **Detail page** (a candidate, a brief): `PageHeader sticky` on long
+  pages with the title, `meta` pills (status, source) and the actions;
+  then two columns from `lg`: the identity and the verdicts on the left
+  (Avatar `profile`, the headline, the Meters, the RequirementList), the
+  evidence on the right (the Timeline of experiences, the skills, the
+  languages, the documents); comments and history in their own sections
+  below; the CV opens in a `Sheet size="full"`.
+- **Board page** (a shortlist): `PageHeader` with the share action;
+  columns or grouped sections by decision (matching, to check, set aside
+  collapsed, not analysed), each card a `sheet-link` with the Avatar, the
+  ScoreRing `sm`, the missing required requirement named; a drawer for
+  the item (`Sheet size="lg"`) with the profile, the verdicts, the note,
+  the votes, the comments, the history.
+- **Dialog** (a confirmation, a form): `size` by content (`sm` for a
+  question, `lg` for a form with rows, `xl` for an upload with a table),
+  `DialogHeader` with a title and one sentence, `DialogBody` scrolling,
+  `DialogFooter` with cancel then the one confirming button.
+- **Drawer**: `SheetHeader` with the Avatar and the title, `SheetBody`
+  scrolling, `SheetFooter` with the actions when the drawer decides
+  something.
+- **Public dossier** (`/share/:token`): a white sheet with dark ink on
+  any theme (`share-sheet` scopes the tokens), A4 with a 16mm margin, one
+  sheet per candidate per printed page (`print:break-before-page`), the
+  ring drawn at rest (`static`), the print and CV buttons hidden in print
+  (`print:hidden`). It says when the link expires; a sheet without an
+  analysis says so instead of showing an empty table. The PDF a reader
+  keeps is the browser's print of the page.

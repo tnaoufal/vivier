@@ -39,17 +39,15 @@ function RemoveButton({ onClick, disabled }: { onClick: () => void; disabled: bo
       disabled={disabled}
       aria-label={t("candidates.row.remove")}
       title={t("candidates.row.remove")}
+      icon={<X />}
       className="shrink-0 text-muted-foreground hover:text-negative"
-    >
-      <X />
-    </Button>
+    />
   );
 }
 
 function AddButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled: boolean }) {
   return (
-    <Button type="button" size="sm" variant="outline" onClick={onClick} disabled={disabled}>
-      <Plus />
+    <Button type="button" size="sm" variant="outline" icon={<Plus />} onClick={onClick} disabled={disabled}>
       {label}
     </Button>
   );
@@ -60,7 +58,7 @@ export function ExperienceRows({ rows, onChange, disabled }: { rows: ExperienceD
   return (
     <div className="space-y-4">
       {rows.map((row, index) => (
-        <div key={index} className="rounded-2xl border border-border p-4">
+        <div key={index} className="rounded-lg border border-border p-4">
           <div className="flex items-start gap-3">
             <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
               <Input value={row.title} onChange={(e) => onChange(update(rows, index, { title: e.target.value }))} placeholder={t("candidates.experience.title")} maxLength={200} disabled={disabled} aria-label={t("candidates.experience.title")} />

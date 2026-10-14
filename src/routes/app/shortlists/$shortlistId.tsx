@@ -1,22 +1,24 @@
 /**
  * /app/shortlists/:shortlistId: the board of one shortlist. The brief in
- * the header with the counts, a way to the brief's search to add
- * candidates and the share dialog (members); three columns from lg,
- * stacked before: to review, retained, dismissed, each a list of cards;
- * a drawer for one item; the shares under the board. Live through
- * realtime on the shortlist's items, the organisation's votes and
- * comments, each change debounced into one re-read.
+ * the header with the three counts as pills, a way to the brief's search
+ * to add candidates and the share dialog (members); three columns from
+ * lg, stacked before, each with a header that stays in view: to review,
+ * retained, dismissed, each a list of cards; a drawer for one item, in
+ * three tabs; the shares under the board. Live through realtime on the
+ * shortlist's items, the organisation's votes and comments, each change
+ * debounced into one re-read.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { ArrowLeft, Share2, UserPlus } from "lucide-react";
+import { Share2, UserPlus } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
+import { Pill, type PillTone } from "@/components/app-shell/pill";
 import { ShareDialog } from "@/components/share/share-dialog";
 import { SharesPanel } from "@/components/share/shares-panel";
 import { ItemCard } from "@/components/shortlist/item-card";
-import { ItemDrawer } from "@/components/shortlist/item-drawer";
+import { ItemDrawer, type DrawerTab } from "@/components/shortlist/item-drawer";
 import { StatusSection } from "@/components/shortlist/status-section";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +27,7 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
+import type { BriefStatus, ShortlistItemStatus } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
 import { useCurrentOrg, useOrg } from "@/lib/org/org-context";
 import { readBoard, readShortlist } from "@/lib/shortlists/queries";
@@ -41,6 +44,17 @@ export const Route = createFileRoute("/app/shortlists/$shortlistId")({
   component: ShortlistPage,
 });
 
+const BRIEF_TONES: Record<BriefStatus, PillTone> = {
+  draft: "neutral",
+  open: "positive",
+  closed: "neutral",
+};
+const COUNT_TONES: Record<ShortlistItemStatus, PillTone> = {
+  to_review: "primary",
+  retained: "positive",
+  dismissed: "negative",
+};
+
 function ShortlistPage() {
   const { shortlistId } = Route.useParams();
   const { t } = useI18n();
@@ -49,7 +63,7 @@ function ShortlistPage() {
   const { user } = useAuth();
   const canAct = can("member");
 
-  const [openItemId, setOpenItemId] = useState<string | null>(null);
+  const [opened, setOpened] = useState<{ id: string; tab: DrawerTab } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
 
@@ -84,29 +98,39 @@ function ShortlistPage() {
   const counts = useMemo(() => countByStatus(items), [items]);
   const commentCounts = board.data?.commentCounts;
   const userId = user?.id ?? null;
-  const openItem = openItemId ? (items.find((item) => item.id === openItemId) ?? null) : null;
+  const openItem = opened ? (items.find((item) => item.id === opened.id) ?? null) : null;
   const openTally = openItem ? tallyVotes(votes.get(openItem.id) ?? [], userId) : NO_VOTES;
 
   const row = shortlist.data ?? null;
   const brief = row?.briefs ?? null;
   const briefId = row?.brief_id ?? null;
+  const criteria = useMemo(() => brief?.criteria ?? [], [brief]);
   const title = brief ? brief.title : t("shortlists.noBrief");
 
-  const backLink = (
-    <div className="mb-4">
-      <Button asChild variant="ghost" size="sm" className="-ml-3 text-muted-foreground hover:text-ink">
-        <Link to="/app/shortlists">
-          <ArrowLeft />
-          {t("shortlists.back")}
-        </Link>
-      </Button>
-    </div>
+  // The way back is the header's eyebrow, as on a brief or a candidate: one detail skeleton across the product.
+  const eyebrow = (
+    <Link
+      to="/app/shortlists"
+      className="rounded-sm hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {t("nav.shortlists")}
+    </Link>
   );
 
   if (shortlist.loading && !row) {
     return (
       <div>
-        {backLink}
+        <PageHeader
+          sticky
+          eyebrow={eyebrow}
+          title={
+            <span
+              className="skeleton inline-block h-5 w-56 max-w-full rounded-sm align-middle"
+              aria-hidden="true"
+            />
+          }
+        />
+        <p className="sr-only">{t("common.loading")}</p>
         <div className="space-y-3" aria-busy="true">
           <Skeleton className="h-8 w-1/2" />
           <Skeleton className="h-4 w-1/3" />
@@ -118,7 +142,7 @@ function ShortlistPage() {
   if (!row) {
     return (
       <div>
-        {backLink}
+        <PageHeader sticky eyebrow={eyebrow} title={t("shortlists.title")} />
         <EmptyState
           title={shortlist.error ? t("shortlists.boardError") : t("shortlists.notFound.title")}
           text={shortlist.error ? undefined : t("shortlists.notFound.text")}
@@ -133,39 +157,47 @@ function ShortlistPage() {
   }
 
   const addLink = briefId ? (
-    <Button asChild variant="outline">
-      <Link to={briefPath(briefId)}>
-        <UserPlus />
-        {t("shortlists.addCandidates")}
-      </Link>
+    <Button asChild variant="outline" icon={<UserPlus />}>
+      <Link to={briefPath(briefId)}>{t("shortlists.addCandidates")}</Link>
     </Button>
   ) : null;
 
   return (
     <div>
-      {backLink}
       <PageHeader
-        eyebrow={
-          briefId ? (
-            <Link to={briefPath(briefId)} className="hover:text-ink hover:underline">
-              {t("shortlists.openBrief")}
-            </Link>
-          ) : (
-            t("shortlists.title")
-          )
-        }
+        sticky
+        eyebrow={eyebrow}
         title={title}
-        description={t("shortlists.counts.line", {
-          to_review: counts.to_review,
-          retained: counts.retained,
-          dismissed: counts.dismissed,
-        })}
+        description={t("shortlists.board.subtitle")}
+        meta={
+          <>
+            {briefId ? (
+              <Link
+                to={briefPath(briefId)}
+                className="rounded-sm text-meta font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {t("shortlists.openBrief")}
+              </Link>
+            ) : null}
+            {brief ? (
+              <Pill tone={BRIEF_TONES[brief.status]} dot>
+                {t(`shortlists.brief.status.${brief.status}`)}
+              </Pill>
+            ) : null}
+            {ITEM_STATUSES.map((status) => (
+              <Fragment key={status}>
+                <Pill tone={counts[status] === 0 ? "neutral" : COUNT_TONES[status]} dot>
+                  {t(`shortlists.pill.${status}`, { count: counts[status] })}
+                </Pill>
+              </Fragment>
+            ))}
+          </>
+        }
         actions={
           canAct ? (
             <>
               {addLink}
-              <Button type="button" onClick={() => setShareOpen(true)}>
-                <Share2 />
+              <Button type="button" icon={<Share2 />} onClick={() => setShareOpen(true)}>
                 {t("shortlists.share")}
               </Button>
             </>
@@ -173,7 +205,9 @@ function ShortlistPage() {
         }
       />
 
-      {!canAct ? <p className="mb-6 text-sm text-muted-foreground">{t("shortlists.viewer")}</p> : null}
+      {!canAct ? (
+        <p className="mb-6 text-sm text-muted-foreground">{t("shortlists.viewer")}</p>
+      ) : null}
 
       {board.error ? (
         <EmptyState
@@ -189,7 +223,8 @@ function ShortlistPage() {
           {ITEM_STATUSES.map((status) => (
             <div key={status} className="space-y-4">
               <Skeleton className="h-7 w-1/2" />
-              <Skeleton className="h-40 w-full rounded-2xl" />
+              <Skeleton className="h-36 w-full rounded-lg" />
+              <Skeleton className="h-36 w-full rounded-lg" />
             </div>
           ))}
         </div>
@@ -201,20 +236,24 @@ function ShortlistPage() {
           action={canAct ? addLink : undefined}
         />
       ) : (
-        <div className="grid items-start gap-6 lg:grid-cols-3">
+        <div
+          className="grid items-start gap-6 lg:grid-cols-3"
+          aria-label={t("shortlists.board.columns")}
+        >
           {ITEM_STATUSES.map((status) => (
             <div key={status} className="min-w-0">
               <StatusSection status={status} count={groups[status].length}>
                 {groups[status].map((item) => (
-                  <li key={item.id} className="min-w-0">
+                  <li key={item.id} className="rise-in min-w-0">
                     <ItemCard
                       item={item}
                       orgId={org.id}
+                      criteria={criteria}
                       tally={tallyVotes(votes.get(item.id) ?? [], userId)}
                       commentCount={commentCounts?.get(item.id) ?? 0}
                       canAct={canAct}
                       onChanged={onChanged}
-                      onOpen={() => setOpenItemId(item.id)}
+                      onOpen={(tab) => setOpened({ id: item.id, tab: tab ?? "decision" })}
                     />
                   </li>
                 ))}
@@ -224,24 +263,31 @@ function ShortlistPage() {
         </div>
       )}
 
-      <div className="mt-10">
+      <div className="mt-12">
         <SharesPanel shortlistId={shortlistId} />
       </div>
 
       <ItemDrawer
         item={openItem}
+        tab={opened?.tab ?? "decision"}
+        onTabChange={(tab) => setOpened((current) => (current ? { ...current, tab } : current))}
         orgId={org.id}
         briefId={briefId}
         briefTitle={brief ? brief.title : null}
-        criteria={brief?.criteria ?? []}
+        criteria={criteria}
         tally={openTally}
         canAct={canAct}
         refreshSignal={refreshSignal}
         onChanged={onChanged}
-        onClose={() => setOpenItemId(null)}
+        onClose={() => setOpened(null)}
       />
 
-      <ShareDialog shortlistId={shortlistId} briefTitle={title} open={shareOpen} onOpenChange={setShareOpen} />
+      <ShareDialog
+        shortlistId={shortlistId}
+        briefTitle={title}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+      />
     </div>
   );
 }

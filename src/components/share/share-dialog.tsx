@@ -1,25 +1,43 @@
 /**
- * Sharing a shortlist in one dialog and three steps: the content (which
- * candidates, title, intro, CVs, expiry, the model or not), the review
- * of every sheet (the assessment read only, the prose editable), then
- * the link and the emails. The state lives in a pure reducer
+ * Sharing a shortlist in one dialog and three steps, marked by a
+ * stepper: the content (which candidates, title, intro, CVs, expiry,
+ * the model or not), the review of every sheet (the assessment read
+ * only, the prose editable, each sheet folded until opened), then the
+ * link and the emails. The state lives in a pure reducer
  * (lib/shares/dialog-state.ts); the server functions do the reading of
  * profiles and of the shortlist's analysis, the model call, the share
- * row and the emails. Opened from the shortlist board by members.
+ * row and the emails. Opened from the shortlist board by members. The
+ * header and the stepper stay in place; the step scrolls; the step's
+ * buttons sit under it so the main action never scrolls away.
  */
 import { useEffect, useReducer, useRef, useState } from "react";
+import { Check } from "lucide-react";
 
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { useQuery } from "@/lib/data/use-query";
 import { useI18n } from "@/lib/i18n";
 import { useCurrentOrg } from "@/lib/org/org-context";
 import { errorMessage, withToken } from "@/lib/platform/call";
-import { dialogReducer, initialState, STEPS, stepIndex, type Step } from "@/lib/shares/dialog-state";
+import { dialogReducer, initialState, STEPS, stepStatus, type Step } from "@/lib/shares/dialog-state";
 import { cleanItems } from "@/lib/shares/draft";
 import { listShareableItems } from "@/lib/shares/queries";
-import { createShare, draftShare, sendShare, shareCapabilities, type ShareCapabilities } from "@/lib/shares/shares.functions";
+import {
+  createShare,
+  draftShare,
+  sendShare,
+  shareCapabilities,
+  type ShareCapabilities,
+} from "@/lib/shares/shares.functions";
 import { toast } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 import { ContentFooter, ContentStep } from "./step-content";
 import { ReviewFooter, ReviewStep } from "./step-review";
@@ -38,20 +56,57 @@ function errorSays(error: unknown, code: string): boolean {
   return typeof message === "string" && message.includes(code);
 }
 
-function StepIndicator({ step }: { step: Step }) {
+/** Three discs joined by a line: the current one filled, the done ones ticked, the rest muted. */
+function Stepper({ step }: { step: Step }) {
   const { t } = useI18n();
-  const current = stepIndex(step);
   return (
-    <ol className="flex flex-wrap gap-x-5 gap-y-1 text-[13px]" aria-label={t("shares.dialog.title")}>
-      {STEPS.map((name, index) => (
-        <li
-          key={name}
-          aria-current={index === current ? "step" : undefined}
-          className={index === current ? "font-semibold text-ink" : index < current ? "text-primary" : "text-muted-foreground"}
-        >
-          {index + 1}. {t(STEP_KEYS[name])}
-        </li>
-      ))}
+    <ol className="flex items-center gap-2" aria-label={t("shares.dialog.title")}>
+      {STEPS.map((name, index) => {
+        const status = stepStatus(name, step);
+        const last = index === STEPS.length - 1;
+        return (
+          <li
+            key={name}
+            aria-current={status === "current" ? "step" : undefined}
+            className={cn("flex min-w-0 items-center gap-2", !last && "flex-1")}
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors duration-base ease-out-soft",
+                status === "current"
+                  ? "bg-primary text-primary-foreground shadow-raised"
+                  : status === "done"
+                    ? "bg-primary/12 text-primary"
+                    : "bg-muted text-muted-foreground",
+              )}
+            >
+              {status === "done" ? <Check className="size-3.5" /> : index + 1}
+            </span>
+            <span
+              className={cn(
+                "truncate text-meta font-medium",
+                status === "current" ? "text-ink" : status === "done" ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              {t(STEP_KEYS[name])}
+              <span className="sr-only">
+                {` · ${t("shares.step.of", { index: index + 1, count: STEPS.length })}`}
+                {status === "done" ? ` · ${t("shares.step.done")}` : ""}
+              </span>
+            </span>
+            {!last ? (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "h-px min-w-4 flex-1 transition-colors duration-base ease-out-soft",
+                  status === "done" ? "bg-primary/40" : "bg-border",
+                )}
+              />
+            ) : null}
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -107,7 +162,9 @@ export function ShareDialog({
     if (!shareable.data) return;
     dispatch({
       type: "setSelected",
-      candidateIds: shareable.data.filter((item) => item.status === "retained" && item.candidates).map((item) => item.candidate_id),
+      candidateIds: shareable.data
+        .filter((item) => item.status === "retained" && item.candidates)
+        .map((item) => item.candidate_id),
     });
   }, [shareable.data]);
 
@@ -189,14 +246,15 @@ export function ShareDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[92vh] w-full max-w-2xl flex-col gap-6 overflow-hidden p-8 sm:p-8">
-        <DialogHeader className="min-w-0 space-y-2 pr-8 text-left">
-          <DialogTitle className="text-xl leading-7">{t("shares.dialog.title")}</DialogTitle>
-          <DialogDescription className="text-sm leading-5">{t("shares.dialog.text")}</DialogDescription>
+      <DialogContent size="lg" className="flex flex-col gap-5">
+        <DialogHeader className="shrink-0">
+          <DialogTitle>{t("shares.dialog.title")}</DialogTitle>
+          <DialogDescription>{t("shares.dialog.text")}</DialogDescription>
         </DialogHeader>
-        <StepIndicator step={state.step} />
-        {/* Scrolls only when a short screen cannot hold the step; the candidates list scrolls on its own. */}
-        <div className="min-h-0 min-w-0 overflow-y-auto">
+        <div className="shrink-0">
+          <Stepper step={state.step} />
+        </div>
+        <DialogBody className="py-1">
           {state.step === "content" ? (
             <ContentStep
               state={state}
@@ -211,15 +269,30 @@ export function ShareDialog({
           ) : (
             <SendStep state={state} dispatch={dispatch} emailReady={capabilities?.email === true} />
           )}
+        </DialogBody>
+        <div className="shrink-0">
+          {state.step === "content" ? (
+            <ContentFooter
+              state={state}
+              items={shareable.data}
+              loading={shareable.loading}
+              onPrepare={() => void prepare()}
+            />
+          ) : state.step === "review" ? (
+            <ReviewFooter
+              state={state}
+              onBack={() => dispatch({ type: "backToContent" })}
+              onCreate={() => void create()}
+            />
+          ) : (
+            <SendFooter
+              state={state}
+              emailReady={capabilities?.email === true}
+              onSend={() => void send()}
+              onClose={() => onOpenChange(false)}
+            />
+          )}
         </div>
-        {/* The step's buttons sit under the scrolling box, as the charter asks, so the primary action never scrolls away with thirty sheets. */}
-        {state.step === "content" ? (
-          <ContentFooter state={state} items={shareable.data} loading={shareable.loading} onPrepare={() => void prepare()} />
-        ) : state.step === "review" ? (
-          <ReviewFooter state={state} onBack={() => dispatch({ type: "backToContent" })} onCreate={() => void create()} />
-        ) : (
-          <SendFooter state={state} emailReady={capabilities?.email === true} onSend={() => void send()} onClose={() => onOpenChange(false)} />
-        )}
       </DialogContent>
     </Dialog>
   );

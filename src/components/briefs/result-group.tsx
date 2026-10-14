@@ -4,8 +4,9 @@
  * saying what the group means, and, when the group is collapsible, a
  * button that shows or hides its cards. Only "to present" is open by
  * default: the other groups start collapsed with their counts, out of
- * the way and never gone, and the person opens them. A list the person
- * opens rises in once; nothing animates on a refresh.
+ * the way and never gone, and the person opens them. The cards animate
+ * themselves when they mount, so a list the person opens unfolds once
+ * and nothing moves on a refresh.
  */
 import { useId, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
@@ -42,21 +43,18 @@ export function ResultGroup({
       onClick={() => setOpen((value) => !value)}
       aria-expanded={open}
       aria-controls={shown ? contentId : undefined}
-      className="gap-1.5"
+      icon={
+        <ChevronDown
+          className={cn("transition-transform duration-base ease-out-soft", open && "rotate-180")}
+        />
+      }
     >
-      <ChevronDown
-        className={cn("transition-transform duration-150 ease-out", open && "rotate-180")}
-      />
       {open ? t("briefs.section.hide") : t("briefs.section.show")}
     </Button>
   ) : null;
   return (
     <Section title={title} count={count} description={help} action={toggle}>
-      {shown ? (
-        <div id={contentId} className={cn(collapsible && "rise-in")}>
-          {children}
-        </div>
-      ) : null}
+      {shown ? <div id={contentId}>{children}</div> : null}
     </Section>
   );
 }

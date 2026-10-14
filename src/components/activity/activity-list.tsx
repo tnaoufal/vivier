@@ -1,89 +1,124 @@
 /**
- * The activity feed as a list of sentences: who did what, when, with a
- * link to the brief or the candidate when the row points at one. Shared
- * by the dashboard (last fifteen) and the activity page (paged). Each
- * row is a `sheet-row`; the list wraps them in a sheet.
+ * The activity feed as a timeline in one card: rows grouped by day
+ * (today, yesterday, then dated), each with the actor's avatar on a
+ * rail, the sentence with the actor's name set heavier, the moment
+ * (relative, the exact time on hover) and a link to the brief or the
+ * candidate the row points at. A row without an actor (the service read
+ * a document) shows its family's icon instead of a face. Shared by the
+ * dashboard (the last few) and the activity page (paged). Rows rise in
+ * once, one after the other; a refresh keeps the rows that are there.
  */
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { Settings } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { describeActivity, type ActivityNames } from "@/lib/activity/describe";
+import { groupByDay, splitActor, type DayLabel } from "@/lib/activity/grouping";
 import { briefPath, candidatePath } from "@/lib/activity/links";
 import type { ActivityRow } from "@/lib/db/types";
-import { formatDateTime, formatRelative, useI18n } from "@/lib/i18n";
+import { formatDate, formatDateTime, formatRelative, useI18n, type Locale } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
+
+import { familyIcon } from "./family-icon";
+
+function dayTitle(label: DayLabel, locale: Locale, t: (key: "activity.group.today" | "activity.group.yesterday") => string): string {
+  if (label.kind === "today") return t("activity.group.today");
+  if (label.kind === "yesterday") return t("activity.group.yesterday");
+  return formatDate(locale, `${label.iso}T12:00:00`);
+}
 
 export function ActivityList({
   rows,
   names,
   loading,
   emptyState,
+  grouped = true,
+  className,
 }: {
   rows: ActivityRow[];
   names: ActivityNames;
   loading: boolean;
   /** Shown when there is nothing to list (an EmptyState). */
   emptyState: ReactNode;
+  /** Day headings between the rows; off for a short list that fits one glance. */
+  grouped?: boolean;
+  className?: string;
 }) {
+  const { locale, t } = useI18n();
   if (loading && rows.length === 0) {
     return (
-      <div className="sheet overflow-hidden" aria-busy="true">
-        {[0, 1, 2].map((index) => (
-          <div key={index} className="sheet-row items-start">
-            <Skeleton className="size-7 rounded-full" />
-            <div className="flex-1 space-y-2 py-1">
-              <Skeleton className="h-3.5 w-3/4" />
-              <Skeleton className="h-3 w-24" />
-            </div>
-          </div>
-        ))}
+      <div className={cn("sheet overflow-hidden", className)}>
+        <SkeletonRows rows={4} />
       </div>
     );
   }
   if (rows.length === 0) return <>{emptyState}</>;
+  const groups = grouped ? groupByDay(rows) : [{ key: "all", label: null, rows }];
   return (
-    <ol className="sheet overflow-hidden">
-      {rows.map((row) => (
-        <li key={row.id} className="sheet-row items-start">
-          <ActivityItem row={row} names={names} />
-        </li>
+    <div className={cn("sheet overflow-hidden", className)}>
+      {groups.map((group) => (
+        <section key={group.key} className="border-t border-border first:border-t-0">
+          {group.label ? (
+            <h3 className="label-caps border-b border-border bg-muted/40 px-4 py-2 sm:px-6">
+              {dayTitle(group.label, locale, t)}
+            </h3>
+          ) : null}
+          <ol className="stagger">
+            {group.rows.map((row) => (
+              <li
+                key={row.id}
+                className={cn(
+                  "sheet-row rise-in relative items-start",
+                  // The rail: a hairline above the disc (not on the first row) and below it (not on the last), through the padding, so the rows read as one timeline.
+                  "before:absolute before:left-[30px] before:top-0 before:h-[18px] before:w-px before:bg-border first:before:hidden sm:before:left-[38px]",
+                  "after:absolute after:bottom-0 after:left-[30px] after:top-[46px] after:w-px after:bg-border last:after:hidden sm:after:left-[38px]",
+                )}
+              >
+                <ActivityItem row={row} names={names} />
+              </li>
+            ))}
+          </ol>
+        </section>
       ))}
-    </ol>
+    </div>
   );
 }
 
-/** The inside of one row: the actor's disc, the sentence, the moment and the links. */
+/** The inside of one row: the actor's disc on the rail, the sentence, the moment and the links. */
 function ActivityItem({ row, names }: { row: ActivityRow; names: ActivityNames }) {
   const { locale, t } = useI18n();
   const sentence = describeActivity(row, locale, names);
   const actorName = row.actor_id ? (names.members.get(row.actor_id) ?? null) : null;
+  const [actor, rest] = splitActor(sentence, actorName);
   return (
     <>
       {actorName ? (
-        <Avatar name={actorName} size="sm" className="mt-0.5" />
+        <Avatar name={actorName} size="sm" className="relative mt-0.5" />
       ) : (
         <span
-          className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+          className="relative mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground [&_svg]:size-3.5"
           aria-hidden="true"
         >
-          <Settings className="size-3.5" />
+          {familyIcon(row.kind)}
         </span>
       )}
-      <div className="min-w-0 flex-1">
-        <p className="text-[15px] leading-6 text-ink break-words">{sentence}</p>
-        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] leading-5 text-muted-foreground">
+      <div className="min-w-0 flex-1 pb-1">
+        <p className="text-sm leading-5 text-ink break-words">
+          {actor ? <span className="font-semibold">{actor}</span> : null}
+          {rest}
+        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-muted-foreground">
           <time dateTime={row.created_at} title={formatDateTime(locale, row.created_at)}>
             {formatRelative(locale, row.created_at)}
           </time>
           {row.brief_id ? (
-            <Link to={briefPath(row.brief_id)} className="font-medium text-primary hover:underline">
+            <Link to={briefPath(row.brief_id)} className="rounded-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {t("activity.openBrief")}
             </Link>
           ) : null}
           {row.candidate_id ? (
-            <Link to={candidatePath(row.candidate_id)} className="font-medium text-primary hover:underline">
+            <Link to={candidatePath(row.candidate_id)} className="rounded-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {t("activity.openCandidate")}
             </Link>
           ) : null}

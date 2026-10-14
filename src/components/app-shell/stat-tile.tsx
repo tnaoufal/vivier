@@ -1,10 +1,12 @@
 /**
  * A number of the dashboard (and of the team page): a muted label, the
  * count in the display face with digits that line up, the icon in a
- * tinted disc. A tile that links to a page tints on hover. A count that
- * could not be read shows a dash with the reason on hover, never a zero
- * that would look like a fact. A tile that follows work in progress may
- * draw a thin bar under its number (`progress`: done out of total).
+ * tinted disc. A tile that links to a page lifts on hover. A count that
+ * could not be read shows a dash with the reason on hover and, for
+ * assistive technologies, as the text in its place; never a zero that
+ * would look like a fact. A tile that follows work in progress
+ * draws a thin bar under its number (`progress`: done out of total);
+ * `hint` is one short sentence under the number (a trend, a period).
  */
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
@@ -13,6 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
+import { ProgressBar } from "./progress-bar";
+
 export function StatTile({
   label,
   value,
@@ -20,6 +24,7 @@ export function StatTile({
   to,
   loading,
   progress,
+  hint,
   className,
 }: {
   label: string;
@@ -30,13 +35,11 @@ export function StatTile({
   loading: boolean;
   /** Work in progress behind the number: a 4px bar, done out of total, under it. */
   progress?: { done: number; total: number } | undefined;
+  /** One short line under the number. */
+  hint?: ReactNode;
   className?: string;
 }) {
   const t = useT();
-  const percent =
-    progress && progress.total > 0
-      ? Math.min(100, Math.max(0, Math.round((100 * progress.done) / progress.total)))
-      : 0;
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
@@ -48,28 +51,35 @@ export function StatTile({
       {loading ? (
         <Skeleton className="mt-3 h-9 w-20" />
       ) : (
-        <span className="stat-number mt-3 block text-ink" title={value === null ? t("dashboard.statsUnread") : undefined}>
-          {value === null ? "—" : value.toLocaleString()}
+        <span
+          className="stat-number mt-3 block text-ink"
+          title={value === null ? t("dashboard.statsUnread") : undefined}
+        >
+          {value === null ? (
+            <>
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">{t("dashboard.statsUnread")}</span>
+            </>
+          ) : (
+            value.toLocaleString()
+          )}
         </span>
       )}
+      {!loading && hint ? (
+        <span className="mt-1 block text-meta text-muted-foreground">{hint}</span>
+      ) : null}
       {!loading && progress && progress.total > 0 ? (
-        <div
-          role="progressbar"
-          aria-label={t("shell.stat.progress", { done: progress.done, total: progress.total })}
-          aria-valuemin={0}
-          aria-valuemax={progress.total}
-          aria-valuenow={progress.done}
-          className="mt-3 h-1 w-full overflow-hidden rounded-full bg-muted"
-        >
-          <div
-            className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out-soft"
-            style={{ width: `${percent}%` }}
-          />
-        </div>
+        <ProgressBar
+          className="mt-3"
+          value={progress.done}
+          max={progress.total}
+          active={progress.done < progress.total}
+          label={t("shell.stat.progress", { done: progress.done, total: progress.total })}
+        />
       ) : null}
     </>
   );
-  const base = cn("sheet block min-w-0 p-6", className);
+  const base = cn("sheet rise-in block min-w-0 p-6", className);
   if (to) {
     return (
       <Link to={to} className={cn(base, "sheet-link")}>
@@ -80,7 +90,11 @@ export function StatTile({
   return <div className={base}>{body}</div>;
 }
 
-/** Four tiles from `lg`, two on anything narrower. */
+/** Four tiles from `lg`, two on anything narrower; the tiles rise in one after the other. */
 export function StatGrid({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-4", className)}>{children}</div>;
+  return (
+    <div className={cn("stagger grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-4", className)}>
+      {children}
+    </div>
+  );
 }

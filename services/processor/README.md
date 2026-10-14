@@ -26,10 +26,11 @@ process started.
    at no cost: a "processed" copy leading to no candidate would say nothing.
 4. **Text**: the PDF's text layer (unpdf). A PDF with fewer than 150 readable characters
    per page on average (or in total) counts as scanned: with `MISTRAL_OCR_API_KEY` it
-   goes through OCR (`extraction_method = 'ocr'`); without, the document is
-   `needs_ocr` with "Ce PDF est scanné : aucun texte lisible n'a été trouvé. Activez
-   l'OCR ou saisissez la fiche à la main." Text is normalised (whitespace, control
-   characters, `MAX_TEXT_CHARS`).
+   goes through OCR (`extraction_method = 'ocr'`; the call asks for the images the OCR
+   cut out, `include_image_base64`, kept for step 9 and stripped from the text);
+   without, the document is `needs_ocr` with "Ce PDF est scanné : aucun texte lisible
+   n'a été trouvé. Activez l'OCR ou saisissez la fiche à la main." Text is normalised
+   (whitespace, control characters, `MAX_TEXT_CHARS`).
 5. **Structuring**: with a model (`LLM_API_KEY`), one JSON completion under a prompt
    that extracts only what is written, answers null for what is not stated, gives a
    confidence per field and must not extract age, date of birth, gender, nationality or
@@ -37,6 +38,13 @@ process started.
    is validated with zod (one retry quoting the error). Without a model, a heuristic
    profile: email and phone by regex, a name from the first lines or the file name,
    low confidences, everything else empty (`structuring_method = 'heuristic'`).
+   **Skills** are curated, not exhaustive: the prompt asks for the 8 to 20 skills that
+   define the profile, from the most central to the least, as a recruiter would list
+   them (domains of expertise, tools, methods, certifications; never document names,
+   never generic words like "communication" unless the CV insists), and the processor
+   keeps 24 at most (`MAX_SKILLS`, the first being the most central: the interface
+   shows the first eight). A candidate read before this rule keeps the long list their
+   row holds: the merge unions skills, it never trims them.
 6. **Classification**, inside the same model call (no extra cost): the model says
    whether the text is one person's CV (`document_kind = 'cv'`: identity or contact
    details with experiences, education or skills) or something else (`'other'`: a cover
@@ -86,6 +94,27 @@ process started.
 8. **Document**: `processed`, `candidate_id`, `page_count`, `text_chars`,
    `extracted_text`, `extraction_method`, `structuring_method`, `document_kind`
    (`'cv'` with a model, null without), `processed_at`.
+9. **Photo** (`photo.ts`, `png.ts`), outside the lock and never fatal: a candidate who
+   already has a photo keeps it; one without gets the portrait of this CV's first page,
+   when there is one. For a PDF with a text layer, the images drawn on page 1 are read
+   with unpdf (`extractImages`, objects with width, height and channels since unpdf 0.12.2,
+   the floor in `package.json`; the answer is checked at runtime: an unpdf of another
+   signature means no photo and a `photo_images_unsupported` line, never a failure);
+   the candidate photo is the largest image that looks like a portrait: both sides
+   between 80 and 1200 px, width/height between 0.6 and 1.1, an area above 80x80, not
+   wider than half the page (the page counted at 1.5 px a point, so a scan of the page
+   or a background is never taken for a face); it is downscaled with a box filter to
+   256 px on its longest side and encoded as a PNG by the processor's own encoder
+   (zlib, no dependency). For a scanned PDF, the OCR's first page is read instead: the
+   first image it cut out that fits the same rules (its bounding box against the page's
+   width), stored as the OCR answered it, JPEG or PNG. The file goes to the private
+   `photos` bucket at `<org_id>/<candidate_id>.png` (or `.jpg`), upserted, and its key
+   to `candidates.photo_path`. The photo identifies a person in the interface and
+   nothing else: it never enters a prompt, is never read for anything, and an
+   organisation that practises anonymous CVs turns its display off
+   (`organizations.show_photos`). A failure to read, encode or upload it is logged
+   (`photo_read_failed`, `photo_write_failed`) and the document is processed all the
+   same; `candidate_written` says whether a photo was written.
 
 Any other error leaves the document `failed` with one sentence for the person ("Le
 fichier n'a pas pu être lu.", "Le modèle n'a pas répondu." or "Le traitement a
@@ -148,9 +177,12 @@ Every `MAINTENANCE_INTERVAL_MS` (and 30 s after start), in this order:
 - **Retention purge**: `expired_candidates(100)` lists the candidates past their
   organisation's `retention_months` (counted from the last contact, else the upload)
   or whose consent is withdrawn. For each: the files of its documents are removed from
-  the `cvs` bucket, then the candidate row is deleted (the cascade removes the document
-  rows, the audit trigger logs `candidate.deleted`). A candidate whose files could not
-  be removed is left for the next pass, so a row never outlives its files.
+  the `cvs` bucket and its photo (`photo_path`) from the `photos` bucket, then the
+  candidate row is deleted (the cascade removes the document rows, the audit trigger
+  logs `candidate.deleted`). A candidate whose files could not be removed is left for
+  the next pass, so a row never outlives its files. The report's `filesRemoved` counts
+  the photos with the CVs. (An erasure asked from a candidate's page is the web app's:
+  it removes the same objects before the row.)
 - **Re-embed** (with a model only): up to 100 embedding calls per pass for the active
   candidates without a vector, most recently updated first (the
   `candidates_missing_embedding_idx` index), each from the candidate's compact profile

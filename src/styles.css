@@ -76,32 +76,78 @@
 }
 
 /*
- * Design system.
+ * Design system v2 (docs/DESIGN.md is the contract, this file its source).
  *
  * The @theme inline block maps CSS custom properties to Tailwind utility
- * classes (--color-primary -> bg-primary, text-primary). :root holds the
- * light palette, .dark the dark one. Light is the product default (HR
- * teams work in daylight, on documents); dark is a choice.
+ * classes (--color-primary -> bg-primary, text-primary; --text-body ->
+ * text-body; --shadow-raised -> shadow-raised). :root holds the light
+ * palette, .dark the dark one; every token exists in both. Light is the
+ * product default (HR teams work in daylight, on documents).
  *
- * The colour of Vivier is a deep green: calm, trustworthy, a garden where
- * talent grows. Semantic colours: positive (a match, retained), caution
- * (partial, needs a look), negative (missing, dismissed), neutral (not
- * stated: never a judgement).
+ * The identity is a deep green, AA on white: calm, trustworthy, a garden
+ * where talent grows. The neutrals are warm (an off-white page, white
+ * cards, hairline borders at 8 to 10 percent) so the green reads as the
+ * one accent. Semantic colours carry meaning only: positive (met,
+ * retained), caution (partial, to check), negative (missing, dismissed),
+ * neutral (not stated: never a judgement).
  */
 
 @theme inline {
+  /* Type: Geist for text, Poppins 600 for display titles only. */
+  --font-display: "Poppins", "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* The type scale: size / line height, on a 4px rhythm. */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: 1.25rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.5rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+  --text-5xl: 3rem;
+  --text-5xl--line-height: 1;
+  --text-6xl: 3.75rem;
+  --text-6xl--line-height: 1;
+
+  /* Radii: 8 / 12 / 16 / 24; the pill is `rounded-full`. */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+
+  /* Elevation: four steps, from a hairline to a dialog. */
+  --shadow-hairline: var(--elev-hairline);
+  --shadow-raised: var(--elev-raised);
+  --shadow-float: var(--elev-float);
+  --shadow-dialog: var(--elev-dialog);
+
+  /* Motion: two easings; the durations are root tokens (see below). */
   --ease-out-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --ease-spring: cubic-bezier(0.34, 1.45, 0.64, 1);
-  --animate-card-in: card-in 0.4s var(--ease-out-soft) backwards;
-  --animate-row-in: row-in 0.28s var(--ease-out-soft) backwards;
-  --animate-pop: pop 0.36s var(--ease-spring);
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+  --animate-card-in: rise-in var(--duration-slower) var(--ease-out-soft) backwards;
+  --animate-row-in: row-in var(--duration-slow) var(--ease-out-soft) backwards;
   --animate-shimmer: shimmer 1.6s linear infinite;
-  --shadow-float: var(--float-shadow);
-  --shadow-dialog: var(--dialog-shadow);
-  @keyframes card-in {
+  @keyframes rise-in {
     from {
       opacity: 0;
-      transform: translateY(10px) scale(0.985);
+      transform: translateY(6px);
     }
     to {
       opacity: 1;
@@ -118,15 +164,12 @@
       transform: none;
     }
   }
-  @keyframes pop {
-    0% {
-      transform: scale(1);
+  @keyframes fade-in {
+    from {
+      opacity: 0;
     }
-    40% {
-      transform: scale(1.35);
-    }
-    100% {
-      transform: scale(1);
+    to {
+      opacity: 1;
     }
   }
   @keyframes shimmer {
@@ -137,9 +180,16 @@
       transform: translateX(100%);
     }
   }
-  --font-display: "Poppins", "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  @keyframes shine {
+    from {
+      transform: translateX(-150%);
+    }
+    to {
+      transform: translateX(250%);
+    }
+  }
+
+  /* Colours (each one a root token, mirrored in .dark). */
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-surface: var(--surface);
@@ -151,12 +201,6 @@
   --color-negative: var(--negative);
   --color-negative-foreground: var(--negative-foreground);
   --color-neutral: var(--neutral);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -189,92 +233,122 @@
 
 :root,
 .share-sheet {
-  --radius: 0.875rem;
-  --background: oklch(0.985 0.004 130);
-  --foreground: oklch(0.22 0.015 150);
-  --ink: oklch(0.19 0.015 150);
-  --ink-soft: oklch(0.47 0.015 150);
+  /* Motion durations: hover 120, panels and page 180, dialogs 240, lists 320. */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 240ms;
+  --duration-slower: 320ms;
+  /* The gap between two staggered rows (`rise-in` reads --i). */
+  --stagger: 40ms;
+
+  /* Layers, lowest to highest: a sticky header, a drawer or dialog, a popover above it, a toast above all. */
+  --z-sticky: 20;
+  --z-overlay: 40;
+  --z-modal: 50;
+  --z-popover: 60;
+  --z-toast: 70;
+
+  --background: oklch(0.985 0.003 100);
+  --foreground: oklch(0.22 0.012 150);
+  --ink: oklch(0.19 0.012 150);
+  --ink-soft: oklch(0.46 0.012 150);
   --surface: oklch(1 0 0);
-  --line: oklch(0 0 0 / 10%);
+  --line: oklch(0 0 0 / 9%);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.22 0.015 150);
+  --card-foreground: oklch(0.22 0.012 150);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.22 0.015 150);
-  --primary: oklch(0.46 0.1 160);
+  --popover-foreground: oklch(0.22 0.012 150);
+  --primary: oklch(0.45 0.11 158);
   --primary-foreground: oklch(0.99 0.005 150);
-  --secondary: oklch(0.96 0.008 140);
-  --secondary-foreground: oklch(0.24 0.015 150);
-  --muted: oklch(0.965 0.006 140);
-  --muted-foreground: oklch(0.5 0.015 150);
-  --accent: oklch(0.95 0.012 150);
-  --accent-foreground: oklch(0.2 0.015 150);
-  --destructive: oklch(0.55 0.18 27);
+  --secondary: oklch(0.96 0.006 110);
+  --secondary-foreground: oklch(0.24 0.012 150);
+  --muted: oklch(0.962 0.005 105);
+  --muted-foreground: oklch(0.49 0.012 150);
+  --accent: oklch(0.95 0.01 140);
+  --accent-foreground: oklch(0.2 0.012 150);
+  --destructive: oklch(0.54 0.18 27);
   --destructive-foreground: oklch(0.99 0.003 88);
-  --border: oklch(0.92 0.008 140);
-  --input: oklch(0.88 0.01 140);
-  --ring: oklch(0.62 0.1 160);
+  --border: oklch(0 0 0 / 9%);
+  --input: oklch(0 0 0 / 14%);
+  --ring: oklch(0.6 0.1 158);
   --positive: oklch(0.52 0.14 155);
   --positive-foreground: oklch(0.99 0.005 150);
   --caution: oklch(0.66 0.14 75);
-  --caution-foreground: oklch(0.2 0.03 75);
-  --negative: oklch(0.56 0.17 25);
+  --caution-foreground: oklch(0.32 0.06 70);
+  --negative: oklch(0.55 0.17 25);
   --negative-foreground: oklch(0.99 0.005 25);
   --neutral: oklch(0.6 0.01 150);
-  --sidebar: oklch(0.975 0.006 140);
-  --sidebar-foreground: oklch(0.23 0.015 150);
-  --sidebar-primary: oklch(0.46 0.1 160);
+  --sidebar: oklch(0.975 0.004 100);
+  --sidebar-foreground: oklch(0.23 0.012 150);
+  --sidebar-primary: oklch(0.45 0.11 158);
   --sidebar-primary-foreground: oklch(0.99 0.005 150);
-  --sidebar-accent: oklch(0.935 0.012 150);
-  --sidebar-accent-foreground: oklch(0.2 0.015 150);
-  --sidebar-border: oklch(0.9 0.01 140);
-  --sidebar-ring: oklch(0.62 0.1 160);
-  --brand-gradient: linear-gradient(135deg, oklch(0.62 0.12 150) 0%, oklch(0.46 0.1 160) 60%, oklch(0.4 0.09 190) 100%);
-  --float-shadow: 0 10px 28px -10px oklch(0.3 0.04 160 / 22%), 0 2px 6px oklch(0.3 0.04 160 / 6%);
-  --dialog-shadow: 0 24px 60px -20px oklch(0.3 0.04 160 / 30%), 0 4px 12px oklch(0.3 0.04 160 / 8%);
+  --sidebar-accent: oklch(0.935 0.01 140);
+  --sidebar-accent-foreground: oklch(0.2 0.012 150);
+  --sidebar-border: oklch(0 0 0 / 8%);
+  --sidebar-ring: oklch(0.6 0.1 158);
+  --brand-gradient: linear-gradient(
+    135deg,
+    oklch(0.62 0.12 150) 0%,
+    oklch(0.45 0.11 158) 60%,
+    oklch(0.4 0.09 190) 100%
+  );
+  --elev-hairline: 0 0 0 1px oklch(0 0 0 / 6%), 0 1px 2px oklch(0.3 0.04 160 / 6%);
+  --elev-raised: 0 1px 2px oklch(0.3 0.04 160 / 6%), 0 6px 16px -8px oklch(0.3 0.04 160 / 18%);
+  --elev-float: 0 10px 28px -10px oklch(0.3 0.04 160 / 22%), 0 2px 6px oklch(0.3 0.04 160 / 6%);
+  --elev-dialog: 0 24px 60px -20px oklch(0.3 0.04 160 / 30%), 0 4px 12px oklch(0.3 0.04 160 / 8%);
 }
 
 .dark {
-  --background: oklch(0.16 0.01 160);
+  --background: oklch(0.155 0.008 160);
   --foreground: oklch(0.94 0.005 140);
   --ink: oklch(0.96 0.005 140);
   --ink-soft: oklch(0.72 0.01 140);
-  --surface: oklch(0.19 0.01 160);
-  --line: oklch(1 0 0 / 12%);
-  --card: oklch(0.19 0.01 160);
+  --surface: oklch(0.19 0.008 160);
+  --line: oklch(1 0 0 / 10%);
+  --card: oklch(0.19 0.008 160);
   --card-foreground: oklch(0.94 0.005 140);
-  --popover: oklch(0.21 0.01 160);
+  --popover: oklch(0.215 0.008 160);
   --popover-foreground: oklch(0.94 0.005 140);
-  --primary: oklch(0.72 0.13 160);
+  --primary: oklch(0.74 0.13 158);
   --primary-foreground: oklch(0.16 0.03 160);
   --secondary: oklch(1 0 0 / 7%);
   --secondary-foreground: oklch(0.94 0.005 140);
   --muted: oklch(1 0 0 / 6%);
-  --muted-foreground: oklch(0.66 0.01 140);
+  --muted-foreground: oklch(0.68 0.01 140);
   --accent: oklch(1 0 0 / 9%);
   --accent-foreground: oklch(0.96 0.005 140);
-  --destructive: oklch(0.6 0.17 27);
+  --destructive: oklch(0.62 0.17 27);
   --destructive-foreground: oklch(0.985 0.006 88);
-  --border: oklch(1 0 0 / 12%);
+  --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.72 0.13 160);
+  --ring: oklch(0.74 0.13 158);
   --positive: oklch(0.74 0.14 155);
   --positive-foreground: oklch(0.16 0.03 155);
   --caution: oklch(0.8 0.13 80);
-  --caution-foreground: oklch(0.2 0.04 80);
+  --caution-foreground: oklch(0.85 0.1 80);
   --negative: oklch(0.72 0.14 25);
   --negative-foreground: oklch(0.16 0.03 25);
   --neutral: oklch(0.6 0.01 150);
-  --sidebar: oklch(0.14 0.01 160);
+  --sidebar: oklch(0.14 0.008 160);
   --sidebar-foreground: oklch(0.9 0.005 140);
-  --sidebar-primary: oklch(0.72 0.13 160);
+  --sidebar-primary: oklch(0.74 0.13 158);
   --sidebar-primary-foreground: oklch(0.16 0.03 160);
   --sidebar-accent: oklch(1 0 0 / 8%);
   --sidebar-accent-foreground: oklch(0.96 0.005 140);
-  --sidebar-border: oklch(1 0 0 / 12%);
-  --sidebar-ring: oklch(0.72 0.13 160);
-  --brand-gradient: linear-gradient(135deg, oklch(0.8 0.12 150) 0%, oklch(0.72 0.13 160) 60%, oklch(0.66 0.1 190) 100%);
-  --float-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03);
-  --dialog-shadow: 0 32px 80px -24px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.74 0.13 158);
+  --brand-gradient: linear-gradient(
+    135deg,
+    oklch(0.8 0.12 150) 0%,
+    oklch(0.74 0.13 158) 60%,
+    oklch(0.66 0.1 190) 100%
+  );
+  --elev-hairline: 0 0 0 1px oklch(1 0 0 / 6%);
+  --elev-raised:
+    0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 20px -10px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.03);
+  --elev-float: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --elev-dialog: 0 32px 80px -24px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
 .theme-switching *,
@@ -287,13 +361,22 @@
   view-transition-name: none !important;
 }
 
+/*
+ * Reduced motion: every transition and animation of the product goes
+ * through the tokens above, and this one rule neutralises them all.
+ * Animations keep their end state (`backwards` fills resolve at once),
+ * nothing shimmers, nothing slides, scrolling jumps.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -313,8 +396,20 @@
     font-size: 15px;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-primary) 22%, transparent);
+  }
+
+  /* The icon policy: lucide only, a 1.75 stroke everywhere (the attribute says 2). */
+  svg.lucide {
+    stroke-width: 1.75;
   }
 }
+
+/* ---- Type ---------------------------------------------------------- */
 
 @utility font-display {
   font-family: var(--font-display);
@@ -342,6 +437,170 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Motion -------------------------------------------------------- */
+
+/*
+ * Durations as utilities so a class reads like the charter
+ * (`duration-base`), and so tw-animate's enter/exit animations
+ * (`animate-in`) pick the same token through --tw-duration.
+ */
+@utility duration-fast {
+  --tw-duration: var(--duration-fast);
+  transition-duration: var(--duration-fast);
+}
+@utility duration-base {
+  --tw-duration: var(--duration-base);
+  transition-duration: var(--duration-base);
+}
+@utility duration-slow {
+  --tw-duration: var(--duration-slow);
+  transition-duration: var(--duration-slow);
+}
+@utility duration-slower {
+  --tw-duration: var(--duration-slower);
+  transition-duration: var(--duration-slower);
+}
+
+/* Layers by name, never by number (see the --z tokens). */
+@utility z-sticky {
+  z-index: var(--z-sticky);
+}
+@utility z-overlay {
+  z-index: var(--z-overlay);
+}
+@utility z-modal {
+  z-index: var(--z-modal);
+}
+@utility z-popover {
+  z-index: var(--z-popover);
+}
+@utility z-toast {
+  z-index: var(--z-toast);
+}
+
+/* Press feedback of a control: it gives 2 percent under the finger. */
+@utility press {
+  transition-property: color, background-color, border-color, box-shadow, opacity, scale, translate;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-out-soft);
+  &:active:not(:disabled) {
+    scale: 0.98;
+  }
+}
+
+/*
+ * A linking surface that is not a sheet (a board card, a tile drawn by a
+ * feature) rises 1px and its shadow with it; `sheet-link` below carries
+ * the same lift for sheets, so the two are never combined.
+ */
+@utility lift {
+  transition-property: translate, box-shadow, border-color, background-color;
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ease-out-soft);
+  &:hover,
+  &:focus-visible {
+    translate: 0 -1px;
+    box-shadow: var(--elev-raised);
+  }
+  &:focus-visible {
+    outline: none;
+    box-shadow:
+      var(--elev-raised),
+      0 0 0 2px var(--color-ring);
+  }
+}
+
+/*
+ * A row or a card arriving: it rises 6px while fading in, once, when it
+ * mounts. `--i` (set by `stagger` on a parent, or inline) delays it by
+ * --i times --stagger so a list unfolds instead of popping.
+ */
+@utility rise-in {
+  animation: rise-in var(--duration-slower) var(--ease-out-soft) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+/* The outlet on a route change: the new page fades in and rises 6px over 180ms. */
+@utility page-enter {
+  animation: rise-in var(--duration-base) var(--ease-out-soft) both;
+}
+
+@utility fade-in {
+  animation: fade-in var(--duration-base) var(--ease-out-soft) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+/* Sets --i on the first sixteen children, so each `rise-in` child waits its turn. */
+@utility stagger {
+  & > :nth-child(1) {
+    --i: 0;
+  }
+  & > :nth-child(2) {
+    --i: 1;
+  }
+  & > :nth-child(3) {
+    --i: 2;
+  }
+  & > :nth-child(4) {
+    --i: 3;
+  }
+  & > :nth-child(5) {
+    --i: 4;
+  }
+  & > :nth-child(6) {
+    --i: 5;
+  }
+  & > :nth-child(7) {
+    --i: 6;
+  }
+  & > :nth-child(8) {
+    --i: 7;
+  }
+  & > :nth-child(9) {
+    --i: 8;
+  }
+  & > :nth-child(10) {
+    --i: 9;
+  }
+  & > :nth-child(11) {
+    --i: 10;
+  }
+  & > :nth-child(12) {
+    --i: 11;
+  }
+  & > :nth-child(13) {
+    --i: 12;
+  }
+  & > :nth-child(14) {
+    --i: 13;
+  }
+  & > :nth-child(15) {
+    --i: 14;
+  }
+  & > :nth-child(n + 16) {
+    --i: 15;
+  }
+}
+
+/* The sheen that crosses a progress bar while work runs. */
+@utility shine {
+  position: relative;
+  overflow: hidden;
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      oklch(1 0 0 / 45%) 50%,
+      transparent 100%
+    );
+    animation: shine 1.4s var(--ease-out-soft) infinite;
+  }
+}
+
 @utility skeleton {
   position: relative;
   overflow: hidden;
@@ -361,27 +620,30 @@
   }
 }
 
+/* ---- Surfaces ------------------------------------------------------ */
+
 @utility surface-float {
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   background-color: var(--color-popover);
   color: var(--color-popover-foreground);
-  box-shadow: var(--float-shadow);
+  box-shadow: var(--elev-float);
 }
 @utility surface-dialog {
-  border-radius: 1rem;
+  border-radius: var(--radius-xl);
   border: 1px solid var(--color-border);
   background-color: var(--color-popover);
   color: var(--color-popover-foreground);
-  box-shadow: var(--dialog-shadow);
+  box-shadow: var(--elev-dialog);
 }
 
 /* Cards of the app: a white sheet with a hairline, the same everywhere. */
 @utility sheet {
-  border-radius: 1rem;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   background-color: var(--color-card);
   color: var(--color-card-foreground);
+  box-shadow: var(--elev-hairline);
 }
 
 /*
@@ -396,7 +658,7 @@
   gap: 1rem;
   padding: 1rem 1.5rem;
   min-width: 0;
-  transition: background-color 150ms var(--ease-out-soft);
+  transition: background-color var(--duration-fast) var(--ease-out-soft);
   @media (width < 40rem) {
     padding-inline: 1rem;
   }
@@ -417,21 +679,31 @@
   }
 }
 
-/* The tint of a card that leads somewhere, on hover and keyboard focus. */
+/*
+ * The tint and lift of a card that leads somewhere, on hover and keyboard
+ * focus; keyboard focus adds the 2px ring outside the card (a row that is
+ * a link draws it inset, see `sheet-row`), so a tile is never focused
+ * without a visible mark.
+ */
 @utility sheet-link {
   transition:
-    background-color 150ms var(--ease-out-soft),
-    border-color 150ms var(--ease-out-soft);
+    background-color var(--duration-fast) var(--ease-out-soft),
+    border-color var(--duration-fast) var(--ease-out-soft),
+    box-shadow var(--duration-base) var(--ease-out-soft),
+    translate var(--duration-base) var(--ease-out-soft);
   &:hover,
   &:focus-visible {
-    background-color: color-mix(in oklab, var(--color-muted) 50%, var(--color-card));
+    background-color: color-mix(in oklab, var(--color-muted) 40%, var(--color-card));
     border-color: color-mix(in oklab, var(--color-primary) 25%, var(--color-border));
-    outline: none;
+    box-shadow: var(--elev-raised);
+    translate: 0 -1px;
   }
-}
-
-@utility rise-in {
-  animation: card-in 0.4s var(--ease-out-soft) backwards;
+  &:focus-visible {
+    outline: none;
+    box-shadow:
+      var(--elev-raised),
+      0 0 0 2px var(--color-ring);
+  }
 }
 
 /* The brand name: ink at rest, the gradient on the landing page. */
@@ -442,11 +714,8 @@
   color: transparent;
 }
 
-/* A printable share page: white paper, dark ink, on any theme. */
+/* A printable share page: white paper, dark ink, on any theme (`print:hidden` hides a control). */
 @media print {
-  .no-print {
-    display: none !important;
-  }
   .share-sheet {
     color-scheme: light;
   }

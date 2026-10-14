@@ -46,6 +46,7 @@ function candidate(overrides: Partial<CandidateRow> = {}): CandidateRow {
     fingerprint: null,
     search_text: null,
     phone_digits: digits ? digits : null,
+    photo_path: null,
     created_by: null,
     created_at: NOW,
     updated_at: NOW,

@@ -43,20 +43,18 @@ export function metLabel(t: Translate, met: RequirementMet): string {
   return t(MET_KEYS[met]);
 }
 
-/** The decision as a pill with an icon, so colour is never the only signal; "not analysed" when null. */
+/** The decision as a pill with one leading icon, so colour is never the only signal; "not analysed" when null. */
 export function DecisionPill({ decision, t }: { decision: AssessmentDecision | null; t: Translate }) {
   if (!decision) {
     return (
-      <Pill tone="neutral">
-        <CircleDashed aria-hidden="true" />
+      <Pill tone="neutral" icon={<CircleDashed />}>
         {t("shares.decision.none")}
       </Pill>
     );
   }
   const { tone, icon: Icon } = DECISION_TONES[decision];
   return (
-    <Pill tone={tone}>
-      <Icon aria-hidden="true" />
+    <Pill tone={tone} icon={<Icon />}>
       {t(DECISION_KEYS[decision])}
     </Pill>
   );

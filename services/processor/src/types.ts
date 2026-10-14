@@ -86,6 +86,12 @@ export interface CandidateRow {
    * read for the phone-number deduplication, never written by anyone.
    */
   phone_digits: string | null;
+  /**
+   * `<org_id>/<candidate_id>.png` (or `.jpg`) in the private `photos`
+   * bucket, read from page 1 of the CV; it identifies a person in the
+   * interface and never reaches the model.
+   */
+  photo_path: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

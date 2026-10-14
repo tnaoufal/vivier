@@ -1,8 +1,8 @@
 /**
- * The decision of the analysis on a result as a pill with a leading
- * icon, so colour is never the only signal: matches, to check, does not
- * match, or not analysed when no model read the profile. The analysis
- * proposes; the pill never says more than that.
+ * The decision of the analysis on a result as a pill with its one
+ * leading icon, so colour is never the only signal: matches, to check,
+ * does not match, or not analysed when no model read the profile. The
+ * analysis proposes; the pill never says more than that.
  */
 import { CircleAlert, CircleCheck, CircleDashed, CircleX } from "lucide-react";
 
@@ -21,8 +21,7 @@ export function DecisionPill({ decision }: { decision: ResultDecision }) {
   const t = useT();
   const { tone, icon: Icon } = DECISIONS[decision];
   return (
-    <Pill tone={tone}>
-      <Icon aria-hidden="true" />
+    <Pill tone={tone} icon={<Icon />}>
       {t(`briefs.decision.${decision}`)}
     </Pill>
   );

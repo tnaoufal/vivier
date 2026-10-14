@@ -134,7 +134,7 @@ export interface CandidateRow {
   status: CandidateStatus;
   fingerprint: string | null;
   search_text: string | null;
-  /** `<org_id>/<candidate_id>.png` in the private `photos` bucket, read from page 1 of the CV; identification only, never sent to the model. */
+  /** `<org_id>/<candidate_id>.png` (or `.jpg` for a JPEG the OCR cut out) in the private `photos` bucket, read from page 1 of the CV; identification only, never sent to the model. */
   photo_path: string | null;
   created_by: string | null;
   created_at: string;

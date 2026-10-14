@@ -125,6 +125,22 @@ export function requirementRowsOf(
   return rows;
 }
 
+/**
+ * The labels of the required requirements the match says are not met,
+ * in the rows' order: the first thing a card names, because it is the
+ * one fact that decides most. "Unknown" is never in it: a CV that says
+ * nothing is not a CV that says no.
+ */
+export function missingRequired(
+  criteria: readonly BriefCriterion[],
+  match: MatchLike | null | undefined,
+  unknownLabel: string,
+): string[] {
+  return requirementRowsOf(criteria, match, unknownLabel)
+    .filter((row) => row.required && row.met === "no")
+    .map((row) => row.label);
+}
+
 /** The model's sentences on the match: the assessment's summary, else the search's "why"; null when no model spoke. */
 export function modelReading(match: Pick<MatchResult, "why" | "assessment"> | null | undefined): string | null {
   if (!match) return null;

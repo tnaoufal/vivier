@@ -16,12 +16,12 @@ import type { CandidateRow, SimilarCandidate } from "@/lib/db/types";
 /** How many neighbours the drawer asks for; the RPC caps at 50. */
 export const SIMILAR_LIMIT = 10;
 
-/** What a neighbour's row shows; the embedding and the contact details never travel. */
-export const SIMILAR_COLUMNS = "id, full_name, headline, location, skills, status";
+/** What a neighbour's row shows (the photo signed in the browser); the embedding and the contact details never travel. */
+export const SIMILAR_COLUMNS = "id, full_name, headline, location, skills, status, photo_path";
 
 export type SimilarProfileRow = Pick<
   CandidateRow,
-  "id" | "full_name" | "headline" | "location" | "skills" | "status"
+  "id" | "full_name" | "headline" | "location" | "skills" | "status" | "photo_path"
 >;
 
 export type SimilarMethod = SimilarCandidate["method"];

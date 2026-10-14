@@ -17,7 +17,7 @@ const B = "22222222-2222-4222-8222-222222222222";
 const C = "33333333-3333-4333-8333-333333333333";
 
 function profile(id: string, name: string): SimilarProfileRow {
-  return { id, full_name: name, headline: null, location: null, skills: [], status: "active" };
+  return { id, full_name: name, headline: null, location: null, skills: [], status: "active", photo_path: null };
 }
 
 describe("guardSimilarRow", () => {

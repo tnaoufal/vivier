@@ -1,6 +1,7 @@
 -- Evolution 4 (design): the candidate's photo, read from the first page of
 -- the CV by the processor and kept as a small PNG in the private `photos`
--- bucket (<org_id>/<candidate_id>.png). It identifies a person in the
+-- bucket (<org_id>/<candidate_id>.png, or .jpg for a JPEG the OCR cut out).
+-- It identifies a person in the
 -- interface and never reaches the model. An organisation that practises
 -- anonymous CVs turns the display off (show_photos). The photo leaves with
 -- the candidate (erasure, retention purge) and is listed in the export.

@@ -1,16 +1,20 @@
 /**
  * The page an invitation link opens, outside the app shell (no
- * organisation is loaded here): the organisation and the role, a sign-in
- * button when signed out, the accept button when signed in. Accepting
- * runs accept_invitation() in the database, which checks the token, its
- * expiry and that the address matches the account.
+ * organisation is loaded here): one centred card with the organisation
+ * and the role, a sign-in button when signed out, the accept button
+ * when signed in. Accepting runs accept_invitation() in the database,
+ * which checks the token, its expiry and that the address matches the
+ * account; a refusal is a sentence in the card, never a toast.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ShieldAlert, UserPlus } from "lucide-react";
 
-import { BrandMark } from "@/components/brand-mark";
-import { LocaleToggle, ThemeToggle } from "@/components/app-shell/toggles";
+import { Pill } from "@/components/app-shell/pill";
+import { BrandIcon } from "@/components/brand-mark";
+import { PublicFrame } from "@/components/public-frame";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth/auth-context";
 import { isSupabaseConfigured, requireSupabase } from "@/lib/auth/supabase-client";
 import type { OrgRole } from "@/lib/db/types";
@@ -39,6 +43,7 @@ function InvitePage() {
   const navigate = useNavigate();
   const [state, setState] = useState<State>({ status: "loading" });
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,8 +52,8 @@ function InvitePage() {
       .then((preview) => {
         if (!cancelled) setState({ status: "ready", preview });
       })
-      .catch((error: unknown) => {
-        console.error(error);
+      .catch((caught: unknown) => {
+        console.error(caught);
         if (!cancelled) setState({ status: "error" });
       });
     return () => {
@@ -59,20 +64,21 @@ function InvitePage() {
   async function accept(orgName: string) {
     if (busy) return;
     setBusy(true);
+    setError(null);
     try {
       const supabase = await requireSupabase();
-      const { data, error } = await supabase.rpc("accept_invitation", { p_token: token });
-      if (error) {
-        console.error(error);
-        toast.error(t(acceptErrorKey(error.message)));
+      const { data, error: rpcError } = await supabase.rpc("accept_invitation", { p_token: token });
+      if (rpcError) {
+        console.error(rpcError);
+        setError(t(acceptErrorKey(rpcError.message)));
         return;
       }
       if (typeof data === "string") rememberOrgId(data);
       toast.success(t("invite.accepted", { org: orgName }));
       void navigate({ to: "/app" });
-    } catch (error) {
-      console.error(error);
-      toast.error(t("invite.error"));
+    } catch (caught) {
+      console.error(caught);
+      setError(t("invite.error"));
     } finally {
       setBusy(false);
     }
@@ -93,9 +99,17 @@ function InvitePage() {
 
   let content: ReactNode;
   if (!isSupabaseConfigured) {
-    content = <p className="text-sm text-muted-foreground">{t("auth.notConfigured")}</p>;
+    content = <Closed text={t("auth.notConfigured")} />;
   } else if (state.status === "loading" || authLoading) {
-    content = <p className="text-sm text-muted-foreground">{t("common.loading")}</p>;
+    content = (
+      <div className="space-y-3" aria-busy="true">
+        <p className="sr-only">{t("common.loading")}</p>
+        <Skeleton className="h-7 w-2/3" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="mt-6 h-10 w-full rounded-full" />
+      </div>
+    );
   } else if (state.status === "error" || !preview) {
     content = <Closed text={t("invite.error")} />;
   } else if (preview.notFound) {
@@ -111,13 +125,24 @@ function InvitePage() {
     const wrongAccount = Boolean(user?.email && user.email.toLowerCase() !== invitedEmail.toLowerCase());
     content = (
       <>
-        <h1 className="font-display text-2xl text-ink break-words">{t("invite.title", { org: orgName })}</h1>
-        <p className="mt-2 text-[15px] leading-6 text-muted-foreground">{t("invite.text", { role: t(role.name) })}</p>
-        <p className="mt-1 text-[13px] leading-5 text-muted-foreground">{t(role.help)}</p>
+        <p className="label-caps">{t("invite.accept")}</p>
+        <h1 className="mt-1 font-display text-2xl text-ink break-words">{t("invite.title", { org: orgName })}</h1>
+        <p className="mt-3 text-body text-muted-foreground">{t("invite.text", { role: t(role.name) })}</p>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Pill tone="primary" dot>
+            {t(role.name)}
+          </Pill>
+          <span className="text-meta text-muted-foreground">{t(role.help)}</span>
+        </div>
+        {error ? (
+          <p role="alert" className="fade-in mt-6 rounded-md border border-negative/30 bg-negative/8 px-3 py-2 text-sm text-negative">
+            {error}
+          </p>
+        ) : null}
         {!user ? (
           <>
-            <p className="mt-8 text-[15px] leading-6 text-ink break-words">{t("invite.signInFirst", { email: invitedEmail })}</p>
-            <Button asChild className="mt-6 w-full">
+            <p className="mt-8 text-sm text-ink break-words">{t("invite.signInFirst", { email: invitedEmail })}</p>
+            <Button asChild className="mt-5 w-full">
               <Link to="/sign-in" search={{ next: `/invite/${token}` }}>
                 {t("auth.signIn")}
               </Link>
@@ -125,15 +150,17 @@ function InvitePage() {
           </>
         ) : wrongAccount ? (
           <>
-            <p className="mt-8 text-[15px] leading-6 text-ink break-words">{t("team.invitePage.wrongAccount", { email: invitedEmail })}</p>
-            <Button variant="outline" className="mt-6 w-full" onClick={() => void switchAccount()} disabled={busy}>
+            <p className="mt-8 rounded-md border border-caution/40 bg-caution/10 px-3 py-2 text-sm text-ink break-words">
+              {t("team.invitePage.wrongAccount", { email: invitedEmail })}
+            </p>
+            <Button variant="outline" className="mt-5 w-full" onClick={() => void switchAccount()} disabled={busy}>
               {t("common.signOut")}
             </Button>
           </>
         ) : (
           <>
-            <p className="mt-8 text-sm leading-5 text-muted-foreground break-words">{t("team.invitePage.signedInAs", { email: user.email ?? "" })}</p>
-            <Button className="mt-6 w-full" onClick={() => void accept(orgName)} disabled={busy}>
+            <p className="mt-8 text-meta text-muted-foreground break-words">{t("team.invitePage.signedInAs", { email: user.email ?? "" })}</p>
+            <Button className="mt-3 w-full" icon={<UserPlus />} onClick={() => void accept(orgName)} disabled={busy}>
               {t("invite.accept")}
             </Button>
           </>
@@ -143,18 +170,14 @@ function InvitePage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <header className="flex items-center justify-between px-4 py-4 sm:px-8">
-        <BrandMark size="sm" />
-        <div className="flex items-center gap-1">
-          <LocaleToggle />
-          <ThemeToggle />
+    <PublicFrame width="sm" center>
+      <div className="sheet rise-in p-6 sm:p-8">
+        <div className="mb-5 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <BrandIcon className="size-7" />
         </div>
-      </header>
-      <main className="flex flex-1 items-center justify-center px-4 py-10">
-        <div className="sheet w-full max-w-md p-8">{content}</div>
-      </main>
-    </div>
+        {content}
+      </div>
+    </PublicFrame>
   );
 }
 
@@ -163,8 +186,12 @@ function Closed({ text }: { text: string }) {
   const { t } = useI18n();
   return (
     <>
-      <h1 className="font-display text-2xl text-ink">{t("invite.accept")}</h1>
-      <p className="mt-2 text-[15px] leading-6 text-muted-foreground">{text}</p>
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <ShieldAlert className="size-4" aria-hidden="true" />
+        <span className="label-caps">{t("invite.accept")}</span>
+      </div>
+      <h1 className="mt-1 font-display text-2xl text-ink">{t("invite.error")}</h1>
+      <p className="mt-3 text-body text-muted-foreground">{text}</p>
       <Button asChild variant="outline" className="mt-8 w-full">
         <Link to="/app">{t("team.invitePage.goToApp")}</Link>
       </Button>

@@ -1,15 +1,16 @@
 /**
  * First step of the share dialog: which candidates go into the dossier
- * (the retained ones are ticked), the title, an introduction, whether
- * the CVs are included, when the link expires and, when this deployment
- * has a model, whether it drafts the syntheses. Laid out per the design
- * charter: the list scrolls inside the dialog, labels at 13px, fields
- * spaced evenly. The buttons are a component of their own so the dialog
- * can keep them below the scrolling box, in view whatever the height.
+ * (the retained ones are ticked, each row with the person's photo or
+ * initials), the title, an introduction, then the options as rows of
+ * one sheet: the CVs, when the link expires and, when this deployment
+ * has a model, whether it drafts the syntheses. One sentence says the
+ * dossier shows no photo. The buttons are a component of their own so
+ * the dialog can keep them below the scrolling box.
  */
 import type { ReactNode } from "react";
 import { Users } from "lucide-react";
 
+import { Avatar } from "@/components/app-shell/avatar";
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { Pill, type PillTone } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
@@ -18,15 +19,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
 import type { ShortlistItemStatus } from "@/lib/db/types";
 import { useT } from "@/lib/i18n";
+import { useOrg } from "@/lib/org/org-context";
 import { canPrepare, INTRO_MAX, TITLE_MAX, type DialogAction, type DialogState } from "@/lib/shares/dialog-state";
 import { SHARE_ITEMS_MAX } from "@/lib/shares/draft";
 import type { ShareableItem } from "@/lib/shares/queries";
 import type { ShareCapabilities } from "@/lib/shares/shares.functions";
 import { EXPIRY_CHOICES, isExpiryDays } from "@/lib/shares/state";
-
-import { FIELD_LABEL } from "./field-label";
 
 const STATUS_TONE: Record<ShortlistItemStatus, PillTone> = {
   to_review: "neutral",
@@ -34,9 +35,55 @@ const STATUS_TONE: Record<ShortlistItemStatus, PillTone> = {
   dismissed: "negative",
 };
 
+const CHECKBOX = "size-4 shrink-0 cursor-pointer accent-primary disabled:cursor-not-allowed";
+
 /** The shortlist items that still have a candidate: the ones the list offers and the footer counts. */
 export function presentItems(items: readonly ShareableItem[] | null): ShareableItem[] {
   return (items ?? []).filter((item) => item.candidates !== null);
+}
+
+/** One candidate to tick, with their photo or initials and their status on the shortlist. */
+function CandidateChoice({
+  item,
+  checked,
+  disabled,
+  onToggle,
+}: {
+  item: ShareableItem;
+  checked: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  const t = useT();
+  const { showPhotos } = useOrg();
+  const candidate = item.candidates;
+  const name = candidate?.full_name?.trim() || t("shares.item.noName");
+  const photoUrl = usePhotoUrl(candidate?.photo_path ?? null, showPhotos);
+  return (
+    <label className="flex min-h-12 cursor-pointer items-center gap-3 px-4 py-2 transition-colors duration-fast ease-out-soft hover:bg-muted/50">
+      <input type="checkbox" className={CHECKBOX} checked={checked} disabled={disabled} onChange={onToggle} />
+      <Avatar name={name} size="sm" photoUrl={photoUrl} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-ink">{name}</span>
+        {candidate?.headline ? (
+          <span className="block truncate text-meta text-muted-foreground">{candidate.headline}</span>
+        ) : null}
+      </span>
+      <Pill tone={STATUS_TONE[item.status]} dot size="sm">
+        {t(`shares.item.status.${item.status}`)}
+      </Pill>
+    </label>
+  );
+}
+
+/** A row of the options sheet: a control on the left, its help under it, a value on the right when it has one. */
+function OptionRow({ children, control }: { children: ReactNode; control?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
+      <div className="min-w-0 flex-1">{children}</div>
+      {control ? <div className="shrink-0">{control}</div> : null}
+    </div>
+  );
 }
 
 export function ContentStep({
@@ -64,41 +111,32 @@ export function ContentStep({
   } else if (loading && !items) {
     list = (
       <div className="space-y-2" aria-busy="true">
-        <div className="skeleton h-10 w-full rounded-xl" />
-        <div className="skeleton h-10 w-full rounded-xl" />
+        <div className="skeleton h-12 w-full rounded-md" />
+        <div className="skeleton h-12 w-full rounded-md" />
       </div>
     );
   } else if (!present.length) {
-    list = <EmptyState icon={<Users />} title={t("shares.content.empty.title")} text={t("shares.content.empty.text")} />;
+    list = (
+      <EmptyState
+        compact
+        icon={<Users />}
+        title={t("shares.content.empty.title")}
+        text={t("shares.content.empty.text")}
+      />
+    );
   } else {
     list = (
       <ul className="sheet max-h-[40vh] divide-y divide-border overflow-y-auto">
-        {present.map((item) => {
-          const candidate = item.candidates;
-          const checked = state.selected.includes(item.candidate_id);
-          return (
-            <li key={item.id}>
-              <label className="flex min-h-10 cursor-pointer items-center gap-3 px-4 py-2.5">
-                <input
-                  type="checkbox"
-                  className="size-4 shrink-0 accent-primary"
-                  checked={checked}
-                  disabled={busy}
-                  onChange={() => dispatch({ type: "toggleCandidate", candidateId: item.candidate_id })}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-ink">
-                    {candidate?.full_name?.trim() || t("shares.item.noName")}
-                  </span>
-                  {candidate?.headline ? (
-                    <span className="block truncate text-[13px] text-muted-foreground">{candidate.headline}</span>
-                  ) : null}
-                </span>
-                <Pill tone={STATUS_TONE[item.status]}>{t(`shares.item.status.${item.status}`)}</Pill>
-              </label>
-            </li>
-          );
-        })}
+        {present.map((item) => (
+          <li key={item.id}>
+            <CandidateChoice
+              item={item}
+              checked={state.selected.includes(item.candidate_id)}
+              disabled={busy}
+              onToggle={() => dispatch({ type: "toggleCandidate", candidateId: item.candidate_id })}
+            />
+          </li>
+        ))}
       </ul>
     );
   }
@@ -107,19 +145,19 @@ export function ContentStep({
     <div className="space-y-6">
       <section className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <Label className={FIELD_LABEL}>{t("shares.content.candidates")}</Label>
-          <span className="text-[13px] tabular-nums text-muted-foreground">
+          <Label>{t("shares.content.candidates")}</Label>
+          <span className="text-meta text-muted-foreground tabular-nums">
             {t("shares.content.selected", { count: state.selected.length })}
           </span>
         </div>
-        <p className="text-[13px] text-muted-foreground">{t("shares.content.candidates.help", { max: SHARE_ITEMS_MAX })}</p>
+        <p className="text-meta text-muted-foreground">
+          {t("shares.content.candidates.help", { max: SHARE_ITEMS_MAX })}
+        </p>
         {list}
       </section>
 
       <div className="space-y-2">
-        <Label htmlFor="share-title" className={FIELD_LABEL}>
-          {t("shares.content.title")}
-        </Label>
+        <Label htmlFor="share-title">{t("shares.content.title")}</Label>
         <Input
           id="share-title"
           value={state.title}
@@ -131,7 +169,7 @@ export function ContentStep({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="share-intro" className={FIELD_LABEL}>
+        <Label htmlFor="share-intro">
           {t("shares.content.intro")} <span className="font-normal">({t("common.optional")})</span>
         </Label>
         <Textarea
@@ -145,60 +183,75 @@ export function ContentStep({
         />
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        <label className="flex min-h-10 cursor-pointer items-start gap-3 text-sm text-ink">
-          <input
-            type="checkbox"
-            className="mt-1 size-4 shrink-0 accent-primary"
-            checked={state.includeCvs}
-            disabled={busy}
-            onChange={(event) => dispatch({ type: "setIncludeCvs", value: event.target.checked })}
-          />
-          <span className="leading-6">{t("shares.content.includeCvs")}</span>
-        </label>
-        <div className="space-y-2">
-          <Label htmlFor="share-expiry" className={FIELD_LABEL}>
-            {t("shares.content.expiry")}
-          </Label>
-          <Select
-            value={String(state.expiresInDays)}
-            disabled={busy}
-            onValueChange={(value) => {
-              const days = Number(value);
-              if (isExpiryDays(days)) dispatch({ type: "setExpiresInDays", days });
-            }}
+      <section className="space-y-2">
+        <Label>{t("shares.content.options")}</Label>
+        <div className="sheet divide-y divide-border">
+          <OptionRow>
+            <label className="flex cursor-pointer items-start gap-3 text-sm text-ink">
+              <input
+                type="checkbox"
+                className={`${CHECKBOX} mt-1`}
+                checked={state.includeCvs}
+                disabled={busy}
+                onChange={(event) => dispatch({ type: "setIncludeCvs", value: event.target.checked })}
+              />
+              <span>
+                <span className="block font-medium leading-6">{t("shares.content.includeCvs")}</span>
+                <span className="block text-meta text-muted-foreground">{t("shares.content.includeCvs.help")}</span>
+              </span>
+            </label>
+          </OptionRow>
+          <OptionRow
+            control={
+              <Select
+                value={String(state.expiresInDays)}
+                disabled={busy}
+                onValueChange={(value) => {
+                  const days = Number(value);
+                  if (isExpiryDays(days)) dispatch({ type: "setExpiresInDays", days });
+                }}
+              >
+                <SelectTrigger id="share-expiry" className="w-36" aria-label={t("shares.content.expiry")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {EXPIRY_CHOICES.map((days) => (
+                    <SelectItem key={days} value={String(days)}>
+                      {t("shares.content.expiry.days", { days })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            }
           >
-            <SelectTrigger id="share-expiry">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {EXPIRY_CHOICES.map((days) => (
-                <SelectItem key={days} value={String(days)}>
-                  {t("shares.content.expiry.days", { days })}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Label htmlFor="share-expiry" className="font-medium text-ink">
+              {t("shares.content.expiry")}
+            </Label>
+          </OptionRow>
+          {capabilities?.model ? (
+            <OptionRow>
+              <label className="flex cursor-pointer items-start gap-3 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  className={`${CHECKBOX} mt-1`}
+                  checked={state.useModel}
+                  disabled={busy}
+                  onChange={(event) => dispatch({ type: "setUseModel", value: event.target.checked })}
+                />
+                <span>
+                  <span className="block font-medium leading-6">{t("shares.content.useModel")}</span>
+                  <span className="block text-meta text-muted-foreground">{t("shares.content.useModel.help")}</span>
+                </span>
+              </label>
+            </OptionRow>
+          ) : capabilities ? (
+            <OptionRow>
+              <p className="text-meta text-muted-foreground">{t("shares.content.noModel")}</p>
+            </OptionRow>
+          ) : null}
         </div>
-      </div>
-
-      {capabilities?.model ? (
-        <label className="flex cursor-pointer items-start gap-3 text-sm text-ink">
-          <input
-            type="checkbox"
-            className="mt-1 size-4 shrink-0 accent-primary"
-            checked={state.useModel}
-            disabled={busy}
-            onChange={(event) => dispatch({ type: "setUseModel", value: event.target.checked })}
-          />
-          <span className="leading-6">
-            {t("shares.content.useModel")}
-            <span className="mt-0.5 block text-[13px] leading-5 text-muted-foreground">{t("shares.content.useModel.help")}</span>
-          </span>
-        </label>
-      ) : capabilities ? (
-        <p className="text-[13px] leading-5 text-muted-foreground">{t("shares.content.noModel")}</p>
-      ) : null}
+        <p className="text-meta text-muted-foreground">{t("shares.content.noPhotos")}</p>
+      </section>
     </div>
   );
 }
@@ -217,8 +270,12 @@ export function ContentFooter({
 }) {
   const t = useT();
   return (
-    <DialogFooter className="gap-2">
-      <Button type="button" onClick={onPrepare} disabled={!canPrepare(state) || loading || !presentItems(items).length}>
+    <DialogFooter>
+      <Button
+        type="button"
+        onClick={onPrepare}
+        disabled={!canPrepare(state) || loading || !presentItems(items).length}
+      >
         {state.busy ? t("common.loading") : t("shares.content.prepare")}
       </Button>
     </DialogFooter>

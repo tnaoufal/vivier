@@ -1,12 +1,13 @@
 /**
- * The CVs behind a profile: each with its name, size, status (and the
- * service's sentence when it failed or was set aside as not a CV), a
- * link to the file, a retry for a failed, unreadable or set-aside one
- * (a person may disagree with the service's reading), and a button to
- * add another CV to this same profile.
+ * The CVs behind a profile, in the aside: each with its name, what is
+ * known of it (size, date, pages, how it was structured), its status
+ * and the service's sentence when it failed or was set aside as not a
+ * CV, a "Read" button that opens the viewer in place, a retry for a
+ * failed, unreadable or set-aside one (a person may disagree with the
+ * service's reading), and a button to add another CV to this profile.
  */
 import { useState } from "react";
-import { ExternalLink, Paperclip, RefreshCw } from "lucide-react";
+import { FileSearch, FileText, RefreshCw, Upload } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { Pill } from "@/components/app-shell/pill";
@@ -29,11 +30,14 @@ export function DocumentsCard({
   candidate,
   documents,
   canEdit,
+  onRead,
   onChanged,
 }: {
   candidate: UploadTargetCandidate;
   documents: DocumentRow[];
   canEdit: boolean;
+  /** Opens the viewer on this document. */
+  onRead: (document: DocumentRow) => void;
   onChanged: () => void;
 }) {
   const { t, locale } = useI18n();
@@ -41,8 +45,7 @@ export function DocumentsCard({
   const actions = useDocumentActions(onChanged);
 
   const addButton = canEdit ? (
-    <Button type="button" size="sm" variant="outline" onClick={() => setUploadOpen(true)} className="gap-1.5">
-      <Paperclip />
+    <Button type="button" size="sm" variant="outline" icon={<Upload />} onClick={() => setUploadOpen(true)}>
       {t("candidates.documents.add")}
     </Button>
   ) : null;
@@ -59,77 +62,91 @@ export function DocumentsCard({
     return document.error?.trim() || t("candidates.documents.noError");
   };
 
+  const details = (document: DocumentRow): string =>
+    [
+      formatBytes(document.byte_size, locale),
+      document.page_count === null
+        ? null
+        : document.page_count === 1
+          ? t("candidates.documents.pages.one")
+          : t("candidates.documents.pages.many", { count: document.page_count }),
+      formatDate(locale, document.created_at),
+      document.structuring_method ? t(`candidates.documents.method.${document.structuring_method}`) : null,
+    ]
+      .filter((part): part is string => typeof part === "string" && part.length > 0)
+      .join(" · ");
+
   return (
     <section className="sheet p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="label-caps">{t("candidates.documents.title")}</h2>
+        <h2 className="text-base font-semibold text-ink">
+          {t("candidates.documents.title")}
+          {documents.length > 1 ? (
+            <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">{documents.length}</span>
+          ) : null}
+        </h2>
         {documents.length ? addButton : null}
       </div>
       {documents.length ? (
         <ul className="divide-y divide-border">
           {documents.map((document: DocumentRow) => (
-            <li key={document.id} className="space-y-2 py-3 first:pt-0 last:pb-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{document.file_name}</span>
-                {/* A quota refusal is a wait, not a failure: it reads as one. */}
-                {isQuotaFailure(document) ? (
-                  <Pill tone="caution">{t("candidates.documents.status.quota")}</Pill>
-                ) : (
-                  <Pill tone={documentTone(document.status)}>{t(documentStatusKey(document.status))}</Pill>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {formatBytes(document.byte_size, locale)} · {formatDate(locale, document.created_at)}
-                {document.structuring_method
-                  ? ` · ${t(`candidates.documents.method.${document.structuring_method}`)}`
-                  : ""}
-              </p>
-              {hasNote(document.status) ? (
-                // Set aside is the service's reading and a quota refusal a wait, not failures: they read in the quiet tone.
-                <p
-                  className={cn(
-                    "text-xs",
-                    document.status === "rejected" || isQuotaFailure(document) ? "text-muted-foreground" : "text-negative",
+            <li key={document.id} className="flex items-start gap-3 py-4 first:pt-0 last:pb-0">
+              <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <FileText className="size-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{document.file_name}</span>
+                  {/* A quota refusal is a wait, not a failure: it reads as one. */}
+                  {isQuotaFailure(document) ? (
+                    <Pill size="sm" tone="caution" dot>
+                      {t("candidates.documents.status.quota")}
+                    </Pill>
+                  ) : (
+                    <Pill size="sm" tone={documentTone(document.status)} dot>
+                      {t(documentStatusKey(document.status))}
+                    </Pill>
                   )}
-                >
-                  {note(document)}
-                </p>
-              ) : null}
-              <div className="flex flex-wrap gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void actions.view(document)}
-                  disabled={actions.busyId !== null}
-                  className="gap-1.5"
-                >
-                  <ExternalLink />
-                  {t("candidates.documents.view")}
-                </Button>
-                {canEdit && canRetry(document.status) ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void actions.retry(document)}
-                    disabled={actions.busyId !== null}
-                    className="gap-1.5"
+                </div>
+                <p className="mt-0.5 text-meta text-muted-foreground tabular-nums">{details(document)}</p>
+                {hasNote(document.status) ? (
+                  // Set aside is the service's reading and a quota refusal a wait, not failures: they read in the quiet tone.
+                  <p
+                    className={cn(
+                      "mt-1 text-meta",
+                      document.status === "rejected" || isQuotaFailure(document) ? "text-muted-foreground" : "text-negative",
+                    )}
                   >
-                    <RefreshCw />
-                    {t("candidates.documents.retry")}
-                  </Button>
+                    {note(document)}
+                  </p>
                 ) : null}
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" icon={<FileSearch />} onClick={() => onRead(document)}>
+                    {t("candidates.documents.read")}
+                  </Button>
+                  {canEdit && canRetry(document.status) ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      icon={<RefreshCw />}
+                      onClick={() => void actions.retry(document)}
+                      disabled={actions.busyId !== null}
+                    >
+                      {t("candidates.documents.retry")}
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </li>
           ))}
         </ul>
       ) : (
         <EmptyState
-          icon={<Paperclip />}
+          compact
+          icon={<FileText />}
           title={t("candidates.documents.empty")}
           action={addButton}
-          className="py-8"
         />
       )}
       <UploadDialog

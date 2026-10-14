@@ -1,9 +1,9 @@
 /**
  * Server functions of the talent pool: the poke that tells the processor
  * new documents are queued (best effort: it polls the queue anyway) and
- * the erasure of a candidate with their files (admin). Both read the
- * caller from the access token through requireMember() and work only
- * on the organisation it verified.
+ * the erasure of a candidate with their files, the CVs and the photo
+ * (admin). Both read the caller from the access token through
+ * requireMember() and work only on the organisation it verified.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -65,6 +65,8 @@ const eraseInput = z.object({
 export interface EraseResult {
   /** The number of CV files removed from storage. */
   removed: number;
+  /** True when the profile carried a photo and it was removed with the CVs. */
+  photoRemoved: boolean;
 }
 
 export const eraseCandidate = createServerFn({ method: "POST" })
@@ -74,13 +76,23 @@ export const eraseCandidate = createServerFn({ method: "POST" })
     const client = db();
     const org = encodeURIComponent(member.orgId);
     const id = encodeURIComponent(data.candidateId);
-    const found = await client.select<{ id: string }>(`candidates?select=id&org_id=eq.${org}&id=eq.${id}&limit=1`);
-    if (!found.length) throw new AppError("NOT_FOUND");
+    const found = await client.select<{ id: string; photo_path: string | null }>(
+      `candidates?select=id,photo_path&org_id=eq.${org}&id=eq.${id}&limit=1`,
+    );
+    const candidate = found[0];
+    if (!candidate) throw new AppError("NOT_FOUND");
     const documents = await client.select<{ storage_path: string }>(
       `documents?select=storage_path&org_id=eq.${org}&candidate_id=eq.${id}`,
     );
     const paths = documents.map((document) => document.storage_path);
     await client.removeObjects("cvs", paths);
+    // The photo goes with the CVs. The service role bypasses the bucket's policies, so only a
+    // path inside this organisation's folder is ever removed.
+    const photoPath =
+      typeof candidate.photo_path === "string" && candidate.photo_path.startsWith(`${member.orgId}/`)
+        ? candidate.photo_path
+        : null;
+    if (photoPath) await client.removeObjects("photos", [photoPath]);
     // The documents rows go with the candidate (ON DELETE CASCADE); the trigger logs candidate.deleted.
     await client.delete("candidates", { id: data.candidateId, org_id: member.orgId });
     // The trigger ran under the service role (no auth.uid()): name the administrator, best effort.
@@ -89,7 +101,13 @@ export const eraseCandidate = createServerFn({ method: "POST" })
       .catch((error: unknown) => console.warn("[candidates]", JSON.stringify({ event: "actor_stamp_failed", error: String(error).slice(0, 200) })));
     console.info(
       "[candidates]",
-      JSON.stringify({ event: "erased", orgId: member.orgId, by: member.userId, documents: paths.length }),
+      JSON.stringify({
+        event: "erased",
+        orgId: member.orgId,
+        by: member.userId,
+        documents: paths.length,
+        photo: photoPath !== null,
+      }),
     );
-    return { removed: paths.length };
+    return { removed: paths.length, photoRemoved: photoPath !== null };
   });

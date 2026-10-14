@@ -1,8 +1,9 @@
 /**
  * Criteria the model proposes from the brief's text, shown as chips the
  * person adds one by one or all at once: the model proposes, the person
- * validates, and nothing reaches the brief without their gesture.
- * Without a model, one sentence says so and the criteria are typed in.
+ * validates, and nothing reaches the brief without their gesture. The
+ * chips rise in one after the other when they land. Without a model,
+ * one sentence says so and the criteria are typed in.
  */
 import { useState } from "react";
 import { Plus, Sparkles } from "lucide-react";
@@ -64,42 +65,60 @@ export function CriteriaProposals({
 
   if (modelAvailable === null) return null;
   if (modelAvailable === false) {
-    return <p className="text-sm text-muted-foreground">{t("briefs.proposals.noModel")}</p>;
+    return <p className="text-meta text-muted-foreground">{t("briefs.proposals.noModel")}</p>;
   }
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" variant="outline" onClick={() => void propose()} disabled={busy || disabled} className="gap-1.5">
-          <Sparkles />
-          {busy ? t("briefs.proposals.busy") : proposals ? t("briefs.proposals.again") : t("briefs.proposals.button")}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          icon={<Sparkles />}
+          onClick={() => void propose()}
+          disabled={busy || disabled}
+        >
+          {busy
+            ? t("briefs.proposals.busy")
+            : proposals
+              ? t("briefs.proposals.again")
+              : t("briefs.proposals.button")}
         </Button>
-        <span className="text-[13px] text-muted-foreground">{t("briefs.proposals.help")}</span>
+        <span className="text-meta text-muted-foreground">{t("briefs.proposals.help")}</span>
       </div>
       {proposals ? (
-        <div className="rounded-2xl border border-dashed border-border p-4">
+        <div className="fade-in space-y-2">
           {proposals.length ? (
             <>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="label-caps">{t("briefs.proposals.title")}</span>
-                <Button type="button" size="sm" variant="ghost" onClick={() => accept(proposals)} disabled={disabled}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => accept(proposals)}
+                  disabled={disabled}
+                >
                   {t("briefs.proposals.addAll")}
                 </Button>
               </div>
-              <ul className="flex flex-wrap gap-1.5">
+              <ul className="stagger flex flex-wrap gap-2">
                 {proposals.map((proposal) => (
-                  <li key={proposal.id}>
+                  <li key={proposal.id} className="rise-in min-w-0">
                     <button
                       type="button"
                       onClick={() => accept([proposal])}
                       disabled={disabled}
                       title={`${t(kindKey(proposal.kind))} · ${proposal.value}`}
                       aria-label={t("briefs.proposals.add", { label: proposal.label })}
-                      className="inline-flex h-7 items-center gap-1 rounded-full bg-primary/12 pl-2.5 pr-2 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
+                      className="press inline-flex h-10 max-w-full cursor-pointer items-center gap-1.5 rounded-full bg-primary/12 pl-4 pr-3 text-meta font-medium text-primary hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <span>{proposal.label}</span>
-                      {proposal.required ? <span className="text-[10px] uppercase opacity-70">{t("common.required")}</span> : null}
-                      <Plus className="size-3" />
+                      <span className="min-w-0 truncate">{proposal.label}</span>
+                      {proposal.required ? (
+                        <span className="shrink-0 font-normal">{t("common.required")}</span>
+                      ) : null}
+                      <Plus aria-hidden="true" className="size-3.5 shrink-0" />
                     </button>
                   </li>
                 ))}
@@ -109,7 +128,7 @@ export function CriteriaProposals({
             <p className="text-sm text-muted-foreground">{t("briefs.proposals.none")}</p>
           )}
           {warnings.length || dropped > 0 ? (
-            <div className="mt-3 space-y-1 text-xs text-caution-foreground dark:text-caution">
+            <div className="space-y-1 text-meta text-caution-foreground dark:text-caution">
               {dropped > 0 ? <p>{t("briefs.proposals.dropped", { count: dropped })}</p> : null}
               {warnings.map((warning, index) => (
                 <p key={index}>{warning}</p>

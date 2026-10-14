@@ -17,7 +17,11 @@ export function LocaleChips({
     <ul className="flex flex-wrap gap-2">
       {LOCALES.map((locale) => (
         <li key={locale}>
-          <FilterChip active={value === locale} onClick={() => onChange(locale)} disabled={disabled}>
+          <FilterChip
+            active={value === locale}
+            onClick={() => onChange(locale)}
+            disabled={disabled}
+          >
             {t(`common.locale.${locale}`)}
           </FilterChip>
         </li>

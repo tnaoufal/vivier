@@ -1,9 +1,11 @@
 /**
  * The modal dialog: centred, never wider than the viewport minus a
  * gutter, 32px of padding from `sm`, `overflow-hidden` so nothing spills
- * past its corners (a long list scrolls inside, in its own box). The
- * default width is `max-w-lg`; a dialog with rows or a form passes
- * `max-w-2xl`. The close button is a 40px target.
+ * past its corners. `size` picks the width (sm 28rem, md 32rem, lg 42rem,
+ * xl 56rem); a caller's `max-w-*` in `className` still wins. The slots
+ * are `DialogHeader`, `DialogBody` (the part that scrolls) and
+ * `DialogFooter`; the content springs in over 240ms. The close button is
+ * a 40px target and stays the content's last child (callers rely on it).
  */
 "use client";
 
@@ -29,7 +31,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/45 duration-200 dark:bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-overlay bg-black/40 backdrop-blur-[2px] duration-slow dark:bg-black/70 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -37,10 +39,30 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+export type DialogSize = "sm" | "md" | "lg" | "xl";
+
+const DIALOG_SIZES: Record<DialogSize, string> = {
+  sm: "max-w-md",
+  md: "max-w-lg",
+  lg: "max-w-2xl",
+  xl: "max-w-4xl",
+};
+
+function widthOf(size: DialogSize | undefined): string {
+  return DIALOG_SIZES[size ?? "md"];
+}
+
+interface DialogContentProps extends React.ComponentPropsWithoutRef<
+  typeof DialogPrimitive.Content
+> {
+  /** The width: sm 28rem, md 32rem (default), lg 42rem, xl 56rem. */
+  size?: DialogSize | undefined;
+}
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => {
+  DialogContentProps
+>(({ className, children, size, ...props }, ref) => {
   const t = useT();
   return (
     <DialogPortal>
@@ -48,13 +70,15 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "surface-dialog fixed left-1/2 top-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-6 overflow-hidden p-6 duration-200 ease-out-soft sm:p-8 [&>*]:min-w-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+          "surface-dialog fixed left-1/2 top-1/2 z-modal grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 overflow-hidden p-6 sm:p-8 [&>*]:min-w-0",
+          "duration-slow ease-spring data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:duration-base data-[state=closed]:ease-out-soft data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+          widthOf(size),
           className,
         )}
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-3 top-3 inline-flex size-10 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none sm:right-4 sm:top-4">
+        <DialogPrimitive.Close className="press absolute right-3 top-3 inline-flex size-10 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none sm:right-4 sm:top-4">
           <X className="size-4" aria-hidden="true" />
           <span className="sr-only">{t("common.close")}</span>
         </DialogPrimitive.Close>
@@ -68,6 +92,19 @@ const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
   <div className={cn("flex min-w-0 flex-col gap-2 pr-10 text-left", className)} {...props} />
 );
 DialogHeader.displayName = "DialogHeader";
+
+/**
+ * The part of a dialog that may be taller than the screen: it scrolls
+ * inside the dialog, between a header and a footer that stay in place.
+ * The dialog itself is a grid, so the body takes the remaining height.
+ */
+const DialogBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn("-mx-6 min-h-0 overflow-y-auto px-6 sm:-mx-8 sm:px-8", className)}
+    {...props}
+  />
+);
+DialogBody.displayName = "DialogBody";
 
 /** Buttons at the end: stacked on a phone, in a wrapping row from `sm`. */
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
@@ -96,7 +133,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-[15px] leading-6 text-muted-foreground", className)}
+    className={cn("text-body text-muted-foreground", className)}
     {...props}
   />
 ));
@@ -110,6 +147,7 @@ export {
   DialogClose,
   DialogContent,
   DialogHeader,
+  DialogBody,
   DialogFooter,
   DialogTitle,
   DialogDescription,

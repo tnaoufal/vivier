@@ -24,9 +24,9 @@ together. Paths are relative to the repository root.
             ┌───────────────────────┐   ┌──────────────────────────────┐
             │ Supabase (EU)         │◀──│ Processor (Railway, Node)    │──▶ model vendor, Mistral OCR
             │ Postgres 17 + RLS     │   │ services/processor           │
-            │ Auth, Storage `cvs`,  │   │ polls documents, classifies, │
-            │ Realtime, pgvector    │   │ structures, dedups, embeds,  │
-            │                       │   │ re-embeds, purges            │
+            │ Auth, Storage (`cvs`, │   │ polls documents, classifies, │
+            │ `photos`), Realtime,  │   │ structures, dedups, photos,  │
+            │ pgvector              │   │ embeds, re-embeds, purges    │
             └───────────────────────┘   └──────────────────────────────┘
 ```
 
@@ -37,7 +37,7 @@ together. Paths are relative to the repository root.
 | Database  | `supabase/migrations`                  | Postgres with policies, triggers and SECURITY DEFINER helpers  | everything: one `org_id` on every row                                                   |
 | Processor | `services/processor/src`               | one Node process on Railway, service role                      | the service role key, the model key, the OCR key, the shared secret                     |
 | Resend    | `src/lib/email/email.server.ts`        | called by the Worker only                                      | nothing of ours beyond the emails sent                                                  |
-| Model     | `src/lib/model/model.server.ts`, `services/processor/src/model.ts` | called by the Worker and the processor only  | the text it is sent (CV text, briefs; for the screening and the second opinion a profile without name, e-mail or phone; for the tiering sheets of scores and sentences, without name or CV text) for the duration of the call |
+| Model     | `src/lib/model/model.server.ts`, `services/processor/src/model.ts` | called by the Worker and the processor only  | the text it is sent (CV text, briefs; for the screening and the second opinion a profile without name, e-mail or phone; for the tiering sheets of scores and sentences, without name or CV text) for the duration of the call; never the photo |
 
 ## Flows
 
@@ -80,6 +80,9 @@ notifyProcessor(ids) ─▶ Worker ─▶ requireMember, rate limit ─▶ POST 
                                                                   │ found? merge (reactivate) : insert     │
                                                                   └ search_text, fingerprint ──────────────┘
                                  candidates upsert        ◀─────
+                                 photos/<org>/<cand>.png  ◀─────  photo (best effort, outside the lock, once per candidate
+                                 candidates.photo_path            without one): a portrait among page 1's images (unpdf)
+                                                                  or the OCR's cut-outs, 256 px PNG; never read by a model
                                  candidates.embedding     ◀─────  embedding (best effort, 1024, outside the lock)
                                  documents processed      ◀─────  page_count, text_chars, methods, document_kind, processed_at
                                  trigger: activity document.processed | rejected | failed | needs_ocr
@@ -290,8 +293,10 @@ expired_candidates(100)                  ────────▶ candidates 
                                                    coalesce(last_contact_at, created_at) + retention_months,
                                                    or consent_status = 'withdrawn'
 for each:
-  select documents.storage_path          ────────▶
-  remove the objects from `cvs`          ────────▶ storage (missing objects are not an error)
+  select documents.storage_path,         ────────▶
+    candidates.photo_path
+  remove the objects from `cvs` and      ────────▶ storage (missing objects are not an error)
+    the photo from `photos`
   on failure: skip, leave for the next pass (a row never outlives its files)
   delete candidates row                  ────────▶ cascade: documents, shortlist_items, comments
                                                    trigger: activities candidate.deleted (name in payload)
@@ -312,8 +317,10 @@ pinned to no candidate is reached by neither pass: an administrator
 deletes it through the API (no page does yet).
 
 The same removal, on demand, is `eraseCandidate` (an administrator, from
-the profile page): files first, then the row, then one log line naming
-who erased and how many files.
+the profile page): the CVs and the photo first (a photo path outside the
+organisation's folder is never removed, since the service role bypasses
+the bucket's policies), then the row, then one log line naming who erased
+and how many files.
 
 ## Trust boundaries
 
@@ -327,8 +334,10 @@ runs beyond the caller's reach.
    the membership table itself never recurses). Column grants narrow the
    writes further: the browser cannot set `documents.error` or the processing
    result columns, `candidates.fingerprint` / `search_text` / `embedding` /
-   `confidence`, `organizations.plan` / `seat_limit` / `cv_quota_month`,
-   cannot insert `shares`, `email_sends`, `activities`, `ai_usage`,
+   `confidence` / `photo_path`, `organizations.plan` / `seat_limit` /
+   `cv_quota_month` (`organizations.show_photos` is granted on its own and
+   the `admins update` policy keeps it to administrators), cannot insert
+   `shares`, `email_sends`, `activities`, `ai_usage`,
    `invitations` or `memberships`, and only moves a document back to
    `queued` (from `failed`, `needs_ocr` or `rejected`). `candidates.phone_digits`
    is computed by the database and written by nobody; `shares.brief` and
@@ -341,9 +350,12 @@ runs beyond the caller's reach.
    owner. Supabase's default privileges (every new table granted to `anon`
    and `authenticated`) are revoked at the top of the migration, so the
    grants written in it are the whole truth. `anon` has no grant on any
-   table or function. Storage: a folder
-   per organisation, read by members, written by members, deleted by
-   admins.
+   table or function. Storage: a folder per organisation in each bucket;
+   `cvs` is read by members, written by members, deleted by admins;
+   `photos` is read by members, deleted by admins and written by the
+   processor alone (no insert policy for the browser). Both are reached
+   through signed URLs only (a CV five minutes, fifteen in the viewer; a
+   photo ten minutes, cached in the browser, one hour in an export).
 2. **The Worker's server functions.** They receive the access token in
    the call's data and nothing else about the caller. `requireMember()`
    verifies the token with Auth (cached five minutes, bounded by the JWT's
@@ -374,8 +386,8 @@ runs beyond the caller's reach.
    organisation data. It receives a token, never an id; hashes it; reads
    one `shares` row by `token_hash` with the service role; refuses expired
    and revoked shares; serves the snapshot in the row (the sheets and the
-   brief's snapshot, not the live profiles or the live brief) and mints
-   short signed URLs for the CVs it lists. It is rate
+   brief's snapshot, not the live profiles or the live brief), mints
+   short signed URLs for the CVs it lists and shows no photo. It is rate
    limited by address so a token cannot be guessed at speed; tokens are
    random bytes, hashed at rest, so a database read does not reveal a
    link.
@@ -390,7 +402,7 @@ never a body, a key or a token.
 
 | Secret                                                | Unlocks                                                                                              | Lives in                                                                                   | Never in                                   |
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
-| `SUPABASE_SERVICE_ROLE_KEY`                           | Every row of every organisation, storage signing and removal, the SECURITY DEFINER functions reserved to it (`expired_candidates`, `sync_plan_from_billing`) | Cloudflare dashboard (Worker), Railway (processor), `scripts/backup.sh` never (it uses the database URL) | the browser, git, `/status`, logs          |
+| `SUPABASE_SERVICE_ROLE_KEY`                           | Every row of every organisation, storage signing, writing and removal in both buckets, the SECURITY DEFINER functions reserved to it (`expired_candidates`, `sync_plan_from_billing`) | Cloudflare dashboard (Worker), Railway (processor), `scripts/backup.sh` never (it uses the database URL) | the browser, git, `/status`, logs          |
 | `PROCESSOR_SHARED_SECRET`                             | `POST /process`, `POST /maintenance`, `GET /metrics` on the processor                                | Cloudflare dashboard and Railway (the same value, 32+ characters)                           | git, the browser, health answers           |
 | `LLM_API_KEY` (with `LLM_BASE_URL`, models, `LLM_ASSESSMENT_MODEL` on the Worker) | The model vendor: structuring and classification, embeddings, criteria, role profiles, screenings, second opinions, tiers, dossier drafts | Cloudflare dashboard, Railway                                                     | git, the browser, `/status` (names only)   |
 | `MISTRAL_OCR_API_KEY`                                 | OCR of scanned PDFs                                                                                  | Railway                                                                                     | the Worker, git                            |

@@ -6,6 +6,7 @@
  * list page. Nothing here decides anything: it counts what people did.
  */
 import type {
+  BriefStatus,
   CriterionVerdict,
   MatchResult,
   ShortlistItemStatus,
@@ -152,6 +153,27 @@ export function countByShortlist(
     map.set(row.shortlist_id, counts);
   }
   return map;
+}
+
+export type ShortlistFilter = "all" | "active" | "closed";
+
+export const SHORTLIST_FILTERS: readonly ShortlistFilter[] = ["all", "active", "closed"];
+
+/**
+ * True when a shortlist whose brief has `status` belongs under `filter`:
+ * "active" is every brief not closed, "closed" the closed ones. A deleted
+ * brief (null) reads as active, so its shortlist never disappears from
+ * the default view.
+ */
+export function matchesFilter(status: BriefStatus | null | undefined, filter: ShortlistFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "closed") return status === "closed";
+  return status !== "closed";
+}
+
+/** True when the filter would change what the list shows: at least one closed brief among the rows. */
+export function filterUseful(statuses: readonly (BriefStatus | null | undefined)[]): boolean {
+  return statuses.some((status) => status === "closed");
 }
 
 /** The distinct people assigned on each shortlist, in the order they appear. */

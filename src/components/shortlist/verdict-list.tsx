@@ -1,84 +1,93 @@
 /**
- * The match of a shortlist item against its brief, as the drawer shows
- * it: the fit ring (the model's score, a dash when no model assessed the
- * profile) with the analysis's decision and the tier the comparative
- * pass proposed, the deterministic score as a muted second reading, one
- * row per requirement through the shared RequirementList (from the
- * assessment when there is one, else from the deterministic verdicts),
- * the model's sentences introduced as the model's, and under them the
- * recruiter's reading when the assessment carries one (the dimensions,
- * the strengths, the reservations, the interview questions). An item
- * added without a match says so instead of showing a score of zero.
+ * The decision tab of the drawer: the fit as the model reads it (the
+ * ring, the decision, the deterministic score as a muted second
+ * reading, the model's sentences), then its detailed reading when the
+ * assessment carries one (the five dimensions as meters, the rank note,
+ * the strengths, the reservations, the interview questions), then one
+ * row per requirement of the brief through the shared RequirementList
+ * (from the assessment when there is one, else from the deterministic
+ * verdicts). An item added without a match says so instead of showing
+ * a score of zero; a model's sentence is always introduced as the
+ * model's.
  */
 import { Pill } from "@/components/app-shell/pill";
 import { RequirementList } from "@/components/app-shell/requirement-list";
 import { ScoreRing } from "@/components/app-shell/score-ring";
-import { DecisionPill } from "@/components/briefs/decision-pill";
 import type { BriefCriterion, MatchResult, RequirementMet } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
-import { assessedScore, modelReading, requirementRowsOf, tierOf } from "@/lib/shortlists/requirements";
-import { coveragePercent, scorePercent } from "@/lib/shortlists/tally";
+import { assessedScore, modelReading, requirementRowsOf } from "@/lib/shortlists/requirements";
 
-import { TierPill } from "./item-bits";
+import { ScoreLine } from "./item-bits";
 import { RecruiterReading } from "./recruiter-reading";
 
-export function VerdictList({ match, criteria }: { match: MatchResult | null; criteria: BriefCriterion[] }) {
+function Heading({ title, help }: { title: string; help?: string | undefined }) {
+  return (
+    <div>
+      <h3 className="text-base font-semibold text-ink">{title}</h3>
+      {help ? <p className="mt-0.5 text-meta text-muted-foreground">{help}</p> : null}
+    </div>
+  );
+}
+
+export function VerdictList({
+  match,
+  criteria,
+}: {
+  match: MatchResult | null;
+  criteria: readonly BriefCriterion[];
+}) {
   const { t } = useI18n();
-  const heading = <h3 className="text-base font-semibold leading-6 text-ink">{t("shortlists.drawer.match")}</h3>;
   if (!match) {
     return (
       <section className="space-y-3">
-        {heading}
-        <p className="text-sm text-muted-foreground">{t("shortlists.drawer.match.none")}</p>
+        <Heading title={t("shortlists.drawer.fit")} />
+        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+          {t("shortlists.drawer.match.none")}
+        </p>
       </section>
     );
   }
   const rows = requirementRowsOf(criteria, match, t("shortlists.drawer.criterion.unknown"));
   const score = assessedScore(match);
   const scoreLabel = score === null ? t("shortlists.item.noAssessment") : t("shortlists.item.fitScore", { score });
-  const textScore = scorePercent(match);
-  const coverage = coveragePercent(match);
   const reading = modelReading(match);
-  const tier = tierOf(match);
   const markLabel = (met: RequirementMet) => t(`shortlists.met.${met}`);
   return (
-    <section className="space-y-4">
-      {heading}
-      <div className="flex items-center gap-4">
-        <ScoreRing score={score} label={scoreLabel} size="lg" />
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            {match.assessment ? <DecisionPill decision={match.assessment.decision} /> : <Pill>{t("shortlists.item.noAssessment")}</Pill>}
-            {tier ? <TierPill tier={tier} note={match.assessment?.rankNote} /> : null}
-            {match.blocked ? (
-              <Pill tone="negative" dot>
-                {t("shortlists.item.blocked")}
-              </Pill>
-            ) : null}
+    <div className="space-y-8">
+      <section className="space-y-4">
+        <Heading title={t("shortlists.drawer.fit")} help={t("shortlists.drawer.fit.help")} />
+        <div className="flex items-center gap-4">
+          <ScoreRing score={score} label={scoreLabel} size="lg" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {match.blocked ? (
+                <Pill tone="negative" dot>
+                  {t("shortlists.item.blocked")}
+                </Pill>
+              ) : null}
+              {score === null ? <Pill tone="neutral">{t("shortlists.item.noAssessment")}</Pill> : null}
+            </div>
+            <ScoreLine match={match} className="block" />
           </div>
-          <p className="text-[13px] leading-5 text-muted-foreground tabular-nums">
-            {textScore === null ? t("shortlists.item.noScore") : t("shortlists.item.score", { score: textScore })}
-            {coverage !== null ? ` · ${t("shortlists.item.coverage", { coverage })}` : ""}
+        </div>
+        <div>
+          <h4 className="label-caps">{t("shortlists.drawer.assessment")}</h4>
+          <p className="mt-1 whitespace-pre-line text-body text-ink">
+            {reading ?? <span className="text-muted-foreground">{t("shortlists.drawer.match.noWhy")}</span>}
           </p>
         </div>
-      </div>
-      {rows.length ? (
-        <RequirementList
-          rows={rows}
-          markLabel={markLabel}
-          requiredLabel={t("shortlists.drawer.required")}
-          className="rounded-2xl border border-border px-4"
-        />
-      ) : (
-        <p className="text-sm text-muted-foreground">{t("shortlists.drawer.match.empty")}</p>
-      )}
-      <div>
-        <h4 className="label-caps">{t("shortlists.drawer.assessment")}</h4>
-        <p className="mt-1 whitespace-pre-line text-[15px] leading-6 text-ink">
-          {reading ?? <span className="text-muted-foreground">{t("shortlists.drawer.match.noWhy")}</span>}
-        </p>
-      </div>
+      </section>
+
       <RecruiterReading match={match} />
-    </section>
+
+      <section className="space-y-3">
+        <Heading title={t("shortlists.drawer.match")} />
+        {rows.length ? (
+          <RequirementList rows={rows} markLabel={markLabel} requiredLabel={t("shortlists.drawer.required")} />
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("shortlists.drawer.match.empty")}</p>
+        )}
+      </section>
+    </div>
   );
 }

@@ -45,7 +45,7 @@ export function EraseCandidateDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>{t("candidates.erase.title", { name })}</DialogTitle>
           <DialogDescription>{t("candidates.erase.text", { count: documentCount })}</DialogDescription>

@@ -66,6 +66,8 @@ export const fr = {
   "common.previous": "Précédent",
   "common.locale.fr": "Français",
   "common.locale.en": "English",
+  "common.locale.code.fr": "FR",
+  "common.locale.code.en": "EN",
 
   // nav
   "nav.dashboard": "Tableau de bord",
@@ -113,6 +115,22 @@ export const fr = {
   "auth.terms": "En continuant, vous acceptez les conditions d'utilisation et la politique de confidentialité.",
   "auth.title": "Bienvenue",
   "auth.subtitle": "Votre vivier de talents, en équipe.",
+  "auth.continue": "Continuer",
+  "auth.changeEmail": "Modifier l'adresse",
+  "auth.step.password.signIn": "Entrez votre mot de passe",
+  "auth.step.password.signUp": "Choisissez un mot de passe",
+  "auth.signUp.title": "Créez votre compte",
+  "auth.signUp.subtitle": "Une adresse, un mot de passe : votre équipe vous attend.",
+  "auth.reset.title": "Réinitialiser le mot de passe",
+  "auth.reset.text": "Un lien de réinitialisation sera envoyé à {email}.",
+  "auth.reset.send": "Envoyer le lien",
+  "auth.reset.back": "Retour à la connexion",
+  "auth.checkInbox": "Vérifiez votre boîte mail",
+  "auth.email.invalid": "Saisissez une adresse email valide.",
+  "auth.password.show": "Afficher le mot de passe",
+  "auth.password.hide": "Masquer le mot de passe",
+  "auth.password.short": "Huit caractères au moins.",
+  "auth.footer.human": "Le modèle propose, l'équipe retient : aucune décision n'est prise par une machine.",
 
   // onboarding
   "onboarding.title": "Créez votre organisation",
@@ -136,6 +154,21 @@ export const fr = {
   "invite.expired": "Cette invitation a expiré. Demandez-en une nouvelle.",
   "invite.emailMismatch": "Cette invitation est adressée à une autre adresse email.",
   "invite.error": "L'invitation n'a pas pu être acceptée.",
+
+  // landing page (the hero and the feature cards live in features/shell.ts)
+  "landing.eyebrow": "Pour les équipes RH",
+  "landing.how.title": "Comment ça marche",
+  "landing.how.text": "Trois étapes, de l'import des CV au dossier envoyé au manager.",
+  "landing.how.step1.title": "Importez vos CV",
+  "landing.how.step1.text":
+    "Par lots, en PDF. Chaque CV devient une fiche structurée ; ce qui n'y est pas écrit reste non renseigné.",
+  "landing.how.step2.title": "Décrivez le poste",
+  "landing.how.step2.text":
+    "Le modèle lit chaque profil comme un recruteur senior et propose qui présenter, avec ses raisons.",
+  "landing.how.step3.title": "Décidez et envoyez",
+  "landing.how.step3.text":
+    "L'équipe retient, commente et vote ; le manager reçoit un dossier soigné par email.",
+  "landing.footer.links": "Liens",
 } as const;
 
 export type MessageKey = keyof typeof fr;
@@ -201,6 +234,8 @@ export const en = {
   "common.previous": "Previous",
   "common.locale.fr": "Français",
   "common.locale.en": "English",
+  "common.locale.code.fr": "FR",
+  "common.locale.code.en": "EN",
 
   "nav.dashboard": "Dashboard",
   "nav.candidates": "Talent pool",
@@ -245,6 +280,22 @@ export const en = {
   "auth.terms": "By continuing you accept the terms of use and the privacy policy.",
   "auth.title": "Welcome",
   "auth.subtitle": "Your talent pool, as a team.",
+  "auth.continue": "Continue",
+  "auth.changeEmail": "Change the address",
+  "auth.step.password.signIn": "Enter your password",
+  "auth.step.password.signUp": "Choose a password",
+  "auth.signUp.title": "Create your account",
+  "auth.signUp.subtitle": "An address, a password: your team is waiting.",
+  "auth.reset.title": "Reset the password",
+  "auth.reset.text": "A reset link will be sent to {email}.",
+  "auth.reset.send": "Send the link",
+  "auth.reset.back": "Back to sign-in",
+  "auth.checkInbox": "Check your inbox",
+  "auth.email.invalid": "Enter a valid email address.",
+  "auth.password.show": "Show the password",
+  "auth.password.hide": "Hide the password",
+  "auth.password.short": "At least eight characters.",
+  "auth.footer.human": "The model proposes, the team retains: no decision is made by a machine.",
 
   "onboarding.title": "Create your organisation",
   "onboarding.text": "An organisation holds your team, your CVs and your shortlists. You can invite colleagues afterwards.",
@@ -266,4 +317,18 @@ export const en = {
   "invite.expired": "This invitation has expired. Ask for a new one.",
   "invite.emailMismatch": "This invitation is addressed to another email address.",
   "invite.error": "The invitation could not be accepted.",
+
+  "landing.eyebrow": "For HR teams",
+  "landing.how.title": "How it works",
+  "landing.how.text": "Three steps, from the uploaded CVs to the dossier the manager receives.",
+  "landing.how.step1.title": "Upload your CVs",
+  "landing.how.step1.text":
+    "In batches, as PDFs. Every CV becomes a structured profile; what is not written stays not stated.",
+  "landing.how.step2.title": "Describe the role",
+  "landing.how.step2.text":
+    "The model reads every profile like a senior recruiter and proposes whom to present, with its reasons.",
+  "landing.how.step3.title": "Decide and send",
+  "landing.how.step3.text":
+    "The team retains, comments and votes; the manager receives a polished dossier by email.",
+  "landing.footer.links": "Links",
 } as const satisfies Record<MessageKey, string>;

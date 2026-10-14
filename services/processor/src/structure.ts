@@ -175,8 +175,16 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/**
+ * Skills kept from one reading: the prompt asks for 8 to 20, the most
+ * central first, so the first eight the interface shows are the ones a
+ * recruiter would name. A candidate read before this rule keeps the long
+ * list their row holds (the merge unions, it never trims).
+ */
+export const MAX_SKILLS = 24;
+
 function toSkills(items: unknown[] | null | undefined): string[] {
-  return dedupeLabels((items ?? []).map(normaliseSkill), 100);
+  return dedupeLabels((items ?? []).map(normaliseSkill), MAX_SKILLS);
 }
 
 function toTags(items: unknown[] | null | undefined): string[] {
@@ -394,7 +402,7 @@ Rules:
 - "summary": 2 to 3 factual sentences in the CV's own language, restating what the CV says (role, domain, seniority); no opinion, no praise.
 - "headline": the current or most recent title as written, or null.
 - "location": the city or region as written, or null.
-- "skills": a deduplicated list of short labels, lowercase except acronyms and proper names (e.g. "gestion de projet", "SQL", "Excel").
+- "skills": the 8 to 20 skills that define the profile, from the most central to the least, as a recruiter would list them: domains of expertise, tools, methods, certifications. Never document names, never generic words like "communication", "teamwork" or "motivation" unless the CV insists on them. Short deduplicated labels, lowercase except acronyms and proper names (e.g. "gestion de projet", "SQL", "Excel").
 - "languages": [{ "name", "level" }] with the CEFR level (A1..C2) when stated, "native" when stated as such, else the level as written or null.
 - "experiences": newest first, [{ "title", "company", "start", "end", "description" }]; "start" and "end" are "YYYY-MM" or "YYYY" as written, null when unknown; an ongoing position ("present", "current", "aujourd'hui") has "end": null. Do not infer availability from an ongoing position: "availability" is only what the CV states (a date, a notice period, "immediate").
 - "education": [{ "degree", "school", "year" }].

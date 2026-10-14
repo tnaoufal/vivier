@@ -7,7 +7,7 @@ provider accounts. Work it in one block before the first real CV.
 
 - [ ] Create the project `vivier_prod` in `eu-west-1` (or Frankfurt); note the
       project ref, the URL and the publishable key.
-- [ ] Apply the five files of `supabase/migrations` in order (`supabase link`
+- [ ] Apply the six files of `supabase/migrations` in order (`supabase link`
       then `supabase db push`, or the SQL editor): `20261013090000_vivier_init`,
       then evolution 2: `20261013180000_vivier_assessment` (status `rejected`,
       `documents.document_kind`, `similar_candidates()`),
@@ -18,15 +18,19 @@ provider accounts. Work it in one block before the first real CV.
       evolution 3: `20261014090000_vivier_role_profile` (`briefs.role_profile`,
       JSONB, with its `UPDATE` grant to members; the screening's dimensions,
       the second opinion and the tier travel as JSON in `searches.results` and
-      `shortlist_items.match`, no other column). All five are safe to re-run.
+      `shortlist_items.match`, no other column), then evolution 4:
+      `20261014130000_vivier_photos` (`candidates.photo_path`,
+      `organizations.show_photos` with its `UPDATE` grant, the private bucket
+      `photos` with its read and delete policies). All six are safe to re-run.
       The dev project `vivier_dev` (ref `qtujdeolcdvlzwvpqpuv`, eu-west-1, free
-      tier) carries all five (checked on its schema on 2026-10-13:
+      tier) carries all six (checked on its schema on 2026-10-13:
       `document_kind`, `shares.brief`, `phone_digits`, `similar_candidates()`,
       `searches.pool_size` exist and the quota function excludes `rejected`;
-      `briefs.role_profile` applied on 2026-10-14). The four later files were
-      applied outside the CLI, so `supabase_migrations.schema_migrations` lists
-      only `vivier_init`: run `supabase migration repair --status applied
-      20261013180000 20261013190000 20261013200000 20261014090000` before a
+      `briefs.role_profile` and `20261014130000` applied on 2026-10-14). The
+      five later files were applied outside the CLI, so
+      `supabase_migrations.schema_migrations` lists only `vivier_init`: run
+      `supabase migration repair --status applied 20261013180000
+      20261013190000 20261013200000 20261014090000 20261014130000` before a
       `db push`, or let the push re-run them. Reset the dev database password
       in the dashboard before using it from a machine.
 - [ ] Default privileges for `anon` and `authenticated` are revoked by the
@@ -35,7 +39,9 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Auth: enable Email (confirmation on) and Google; add
       `https://<site>/app`, `https://<site>/app/account` and
       `https://<site>/invite/*` to the redirect allow list; set the site URL.
-- [ ] Storage: the migration created the private bucket `cvs` (25 MB, PDF only).
+- [ ] Storage: the migration created the private bucket `cvs` (25 MB, PDF only)
+      and evolution 4 the private bucket `photos` (2 MB, PNG and JPEG; read by
+      members, deleted by admins, written by the processor alone).
 - [ ] Realtime: the migration added the collaborative tables to the
       `supabase_realtime` publication; check Realtime is on for the project.
 - [ ] Enable Point-in-Time Recovery (Pro plan) and read `docs/BACKUPS.md`.
@@ -72,6 +78,13 @@ provider accounts. Work it in one block before the first real CV.
       hourly re-embed pass then gives the existing candidates a vector (100 a
       pass); `POST /maintenance` with the bearer runs it now.
 - [ ] After the first deploy: check the logs show `polling: true` and `/status` sees it.
+- [ ] The photo needs unpdf 0.12.2 at least (`extractImages` answering sized
+      images; the floor in `services/processor/package.json`, to keep when the
+      lockfile is generated). An older unpdf logs `photo_images_unsupported`
+      and gives no photo, never a failed document; after the first CVs the logs
+      show `photo_written` lines and `candidate_written` says `photo: true`.
+      Candidates read before this deploy have no photo until a new CV of
+      theirs with a portrait is processed.
 
 ## Model vendor
 
@@ -128,6 +141,13 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Decide the default retention (24 months) and tell customers to inform
       candidates (the dossier page and the privacy policy already say a model is
       used; the notice in `docs/RGPD.md` now describes the assessment).
+- [ ] Photos: `organizations.show_photos` is on by default; an administrator
+      turns it off per organisation on `/app/settings` (a team that practises
+      anonymous CVs). Tell customers the photo read from a CV is kept to
+      identify the person in the interface only, never sent to the model nor
+      shown on a dossier, erased with the candidate and linked from the export
+      (the notice in `docs/RGPD.md` and the privacy policy in
+      `src/components/legal-page.tsx` already say so).
 - [ ] A document set aside as "not a CV" that is pinned to no candidate (an
       identity document uploaded by mistake) is purged by nothing and deleted
       by no button yet: until that evolution, delete such rows with the service
@@ -175,3 +195,8 @@ provider accounts. Work it in one block before the first real CV.
       schedule after sixty days without a commit).
 - [ ] Cloudflare's DPA covers R2 as a sub-processor and the privacy policy lists backups
       (docs/RGPD.md "Who is who").
+- [ ] The backup mirrors the `cvs` bucket only (`scripts/backup.sh`, one bucket under
+      `storage/cvs`): `photos` is not copied. After a restore, a profile whose photo
+      object is gone shows initials; its `photo_path` stays and no later CV replaces it.
+      Decide whether to accept that or to extend the script and `docs/BACKUPS.md` to a
+      second bucket.
