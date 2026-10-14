@@ -91,7 +91,8 @@ export function earliestOf(a: string | null, b: string | null): string | null {
   const timeB = b === null ? Number.NaN : Date.parse(b);
   if (Number.isNaN(timeA)) return Number.isNaN(timeB) ? null : b;
   if (Number.isNaN(timeB)) return a;
-  return timeA <= timeB ? a : b;
+  // The same instant written two ways (the database's offset, the browser's Z) keeps the one held.
+  return timeA < timeB ? a : b;
 }
 
 /** What the progress block shows, every number already rounded for a sentence. */
