@@ -96,7 +96,7 @@ export function CommentsCard({
             const mine = user?.id === comment.author_id;
             return (
               <li key={comment.id} className="flex gap-3 rise-in">
-                <Avatar name={author} size="sm" className="mt-1" />
+                <Avatar name={author} size="sm" className="mt-1" decorative />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 text-meta text-muted-foreground">
                     <span className="font-medium text-ink">{author}</span>
@@ -104,13 +104,13 @@ export function CommentsCard({
                     {mine || can("admin") ? (
                       <Button
                         type="button"
-                        size="icon-sm"
+                        size="icon"
                         variant="ghost"
                         icon={<Trash2 />}
                         onClick={() => setDeleting(comment)}
                         disabled={busy}
                         aria-label={t("common.delete")}
-                        className="-my-1.5 ml-auto text-muted-foreground hover:text-negative"
+                        className="-my-2.5 ml-auto text-muted-foreground hover:text-negative"
                       />
                     ) : null}
                   </div>
@@ -121,7 +121,7 @@ export function CommentsCard({
           })}
         </ul>
       ) : (
-        <EmptyState compact icon={<MessageSquare />} title={t("candidates.comments.empty")} />
+        <EmptyState compact inset icon={<MessageSquare />} title={t("candidates.comments.empty")} />
       )}
       {canComment ? (
         <form onSubmit={(event) => void submit(event)} className="mt-4 space-y-2">
@@ -135,7 +135,7 @@ export function CommentsCard({
             aria-label={t("candidates.comments.title")}
           />
           <div className="flex justify-end">
-            <Button type="submit" size="sm" variant="outline" icon={<Send />} disabled={busy || !body.trim()}>
+            <Button type="submit" variant="outline" icon={<Send />} disabled={busy || !body.trim()}>
               {t("common.send")}
             </Button>
           </div>

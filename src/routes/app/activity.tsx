@@ -36,7 +36,7 @@ function ActivityPage() {
 
   return (
     <>
-      <PageHeader eyebrow={org.name} title={t("nav.activity")} description={t("activity.subtitle")} />
+      <PageHeader eyebrow={org.name} title={t("nav.activity")} />
       <div className="mb-6">
         <FamilyFilter value={family} onChange={setFamily} />
       </div>
@@ -49,9 +49,8 @@ function ActivityPage() {
         rows={feed.rows}
         names={names}
         loading={feed.loading}
-        emptyState={
-          <EmptyState icon={<Activity />} title={family ? t("activity.emptyFiltered") : t("activity.empty")} text={t("dashboard.activity.empty.text")} />
-        }
+        headingLevel={2}
+        emptyState={<EmptyState icon={<Activity />} title={family ? t("activity.emptyFiltered") : t("activity.empty")} />}
       />
       {feed.hasMore ? (
         <div className="mt-6 flex justify-center">

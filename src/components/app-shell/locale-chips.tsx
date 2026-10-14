@@ -1,4 +1,8 @@
-/** The two working languages as chips, one of them on: for an organisation, an account, a new organisation. */
+/**
+ * The two working languages as chips, one of them on: for an
+ * organisation, an account, a new organisation. Each name is written in
+ * its own language and says so (`lang`), so a reader pronounces it right.
+ */
 import { LOCALES, useT, type Locale } from "@/lib/i18n";
 
 import { FilterChip } from "./filter-chip";
@@ -22,7 +26,7 @@ export function LocaleChips({
             onClick={() => onChange(locale)}
             disabled={disabled}
           >
-            {t(`common.locale.${locale}`)}
+            <span lang={locale}>{t(`common.locale.${locale}`)}</span>
           </FilterChip>
         </li>
       ))}

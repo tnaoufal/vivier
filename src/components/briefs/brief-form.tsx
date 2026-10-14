@@ -106,7 +106,6 @@ export function BriefForm({
           rows={7}
           disabled={!canEdit || busy}
         />
-        <p className="text-meta text-muted-foreground">{t("briefs.form.description.help")}</p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="brief-status">{t("briefs.form.status")}</Label>

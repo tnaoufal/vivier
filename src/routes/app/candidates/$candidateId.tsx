@@ -1,7 +1,8 @@
 /**
  * /app/candidates/:candidateId: one profile, laid out like a CV a
  * recruiter reads. The detail skeleton of the charter: a sticky page
- * header (the way back as its eyebrow, the name, the status pills, the
+ * header (the way back as its eyebrow, the name, the pills that set it
+ * apart: archived, typed by hand, consent withdrawn; the
  * page's actions: read the CV in place, the similar profiles, edit, and
  * a menu for export, archive and erasure), then the head of the CV as a
  * card (the photo, the name editable in place, the position held today,
@@ -23,6 +24,7 @@ import {
   Ellipsis,
   FileText,
   Pencil,
+  RefreshCw,
   Trash2,
   TriangleAlert,
   Users,
@@ -302,18 +304,36 @@ function CandidatePage() {
     );
   }
 
+  // The header stays in place when the profile cannot be shown: the way back is where it always is.
   if (!row) {
     return (
-      <EmptyState
-        icon={candidate.error ? <TriangleAlert /> : <Users />}
-        title={candidate.error ? t("common.error") : t("candidates.notFound.title")}
-        text={candidate.error ? undefined : t("candidates.notFound.text")}
-        action={
-          <Button asChild variant="outline" icon={<ArrowLeft />}>
-            <Link to="/app/candidates">{t("candidates.back")}</Link>
-          </Button>
-        }
-      />
+      <div>
+        <PageHeader
+          sticky
+          eyebrow={eyebrow}
+          title={candidate.error ? t("common.errorPage") : t("candidates.notFound.title")}
+        />
+        <EmptyState
+          icon={candidate.error ? <TriangleAlert /> : <Users />}
+          title={candidate.error ? t("common.error") : t("candidates.notFound.text")}
+          action={
+            candidate.error ? (
+              <Button
+                type="button"
+                variant="outline"
+                icon={<RefreshCw />}
+                onClick={() => void refreshCandidate()}
+              >
+                {t("common.retry")}
+              </Button>
+            ) : (
+              <Button asChild variant="outline" icon={<ArrowLeft />}>
+                <Link to="/app/candidates">{t("candidates.back")}</Link>
+              </Button>
+            )
+          }
+        />
+      </div>
     );
   }
 
@@ -394,13 +414,6 @@ function CandidatePage() {
     </>
   );
 
-  const consentTone =
-    row.consent_status === "given"
-      ? "positive"
-      : row.consent_status === "withdrawn"
-        ? "negative"
-        : "neutral";
-
   return (
     <div>
       <PageHeader
@@ -408,17 +421,26 @@ function CandidatePage() {
         eyebrow={eyebrow}
         title={name}
         meta={
-          <>
-            <Pill size="sm" tone={row.status === "active" ? "positive" : "neutral"} dot>
-              {t(`candidates.status.${row.status}`)}
-            </Pill>
-            <Pill size="sm" tone={consentTone} dot>
-              {t(`candidates.consent.${row.consent_status}`)}
-            </Pill>
-            <Pill size="sm" dot>
-              {t(`candidates.source.${row.source}`)}
-            </Pill>
-          </>
+          // Only what sets this profile apart, as on its row in the pool: the consent card says the rest.
+          row.status === "archived" ||
+          row.source === "manual" ||
+          row.consent_status === "withdrawn" ? (
+            <>
+              {row.status === "archived" ? (
+                <Pill size="sm" dot>
+                  {t("candidates.status.archived")}
+                </Pill>
+              ) : null}
+              {row.source === "manual" ? (
+                <Pill size="sm">{t("candidates.source.manual")}</Pill>
+              ) : null}
+              {row.consent_status === "withdrawn" ? (
+                <Pill size="sm" tone="negative" dot>
+                  {t("candidates.consent.withdrawn")}
+                </Pill>
+              ) : null}
+            </>
+          ) : undefined
         }
         actions={actions}
       />

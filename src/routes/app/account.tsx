@@ -1,8 +1,9 @@
 /**
  * The person's account: the profile (display name next to the sign-in
  * address), the preferences (language, appearance), the password (the
- * new-password form leads after a reset link), the session, and the
- * deletion of the account behind a confirmation.
+ * new-password form leads after a reset link) and the deletion of the
+ * account behind a confirmation that states its consequence. Signing
+ * out is the header's action. Labels and fields, no help lines.
  */
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -143,20 +144,26 @@ function AccountPage() {
 
   return (
     <>
-      <PageHeader eyebrow={email} title={t("nav.account")} description={t("account.subtitle")} />
+      <PageHeader
+        eyebrow={email}
+        title={t("nav.account")}
+        actions={
+          <Button variant="outline" icon={<LogOut />} onClick={() => void doSignOut()} disabled={signingOut}>
+            {t("common.signOut")}
+          </Button>
+        }
+      />
 
       <div className="space-y-8">
         {passwordRecovery ? passwordForm : null}
 
         <form onSubmit={saveName} className="sheet p-6 sm:p-8" aria-labelledby="account-profile-title">
           <div className="flex items-center gap-4">
-            <Avatar name={shownName} size="lg" />
-            <div className="min-w-0">
-              <h2 id="account-profile-title" className="font-display text-xl text-ink">
-                {t("account.profile")}
-              </h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">{t("account.displayName.help")}</p>
-            </div>
+            {/* The name is in the field beside it: the avatar is not read a second time. */}
+            <Avatar name={shownName} size="lg" decorative />
+            <h2 id="account-profile-title" className="min-w-0 text-base font-semibold text-ink">
+              {t("account.profile")}
+            </h2>
           </div>
           <div className="mt-6 grid gap-6 sm:grid-cols-2">
             <div className="min-w-0 space-y-2">
@@ -183,7 +190,7 @@ function AccountPage() {
         </form>
 
         <section className="sheet p-6 sm:p-8" aria-labelledby="account-preferences-title">
-          <h2 id="account-preferences-title" className="font-display text-xl text-ink">
+          <h2 id="account-preferences-title" className="text-base font-semibold text-ink">
             {t("account.preferences")}
           </h2>
           <div className="mt-6 grid gap-8 sm:grid-cols-2">
@@ -192,7 +199,6 @@ function AccountPage() {
               <div role="group" aria-labelledby={localeLabelId}>
                 <LocaleChips value={savedLocale} onChange={(next) => void chooseLocale(next)} disabled={savingLocale || profile.loading} />
               </div>
-              <p className="text-meta text-muted-foreground">{t("account.locale.help")}</p>
             </div>
             <div className="min-w-0 space-y-2">
               <Label>{t("account.theme")}</Label>
@@ -205,32 +211,23 @@ function AccountPage() {
                   { value: "dark", label: t("common.theme.dark"), icon: <Moon /> },
                 ]}
               />
-              <p className="text-meta text-muted-foreground">{t("account.theme.help")}</p>
             </div>
           </div>
         </section>
 
         {!passwordRecovery ? passwordForm : null}
 
-        <section className="sheet p-6 sm:p-8" aria-labelledby="account-session-title">
-          <h2 id="account-session-title" className="font-display text-xl text-ink">
-            {t("account.session")}
+        <section
+          className="sheet flex flex-wrap items-center justify-between gap-4 border-negative/40 p-6 sm:p-8"
+          aria-labelledby="account-danger-title"
+        >
+          <h2 id="account-danger-title" className="text-base font-semibold text-negative">
+            {t("settings.danger")}
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground break-words">{t("account.session.help", { email })}</p>
-          <Button variant="outline" className="mt-6" icon={<LogOut />} onClick={() => void doSignOut()} disabled={signingOut}>
-            {t("common.signOut")}
-          </Button>
-        </section>
-
-        <section className="sheet border-negative/40 p-6 sm:p-8" aria-labelledby="account-danger-title">
-          <h2 id="account-danger-title" className="font-display text-xl text-negative">
-            {t("account.danger")}
-          </h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t("account.danger.text")}</p>
           <Button
             variant="outline"
             icon={<Trash2 />}
-            className="mt-6 border-negative/40 text-negative hover:bg-negative/10 hover:text-negative"
+            className="border-negative/40 text-negative hover:bg-negative/10 hover:text-negative"
             onClick={() => setDeleteOpen(true)}
             disabled={deleting}
           >
@@ -265,7 +262,7 @@ function PasswordForm({ lead, onSubmit }: { lead: boolean; onSubmit: (password: 
     event.preventDefault();
     if (busy) return;
     if (password.length < PASSWORD_MIN) {
-      setError(t("auth.password.help"));
+      setError(t("auth.password.short"));
       return;
     }
     if (password !== confirm) {
@@ -287,10 +284,9 @@ function PasswordForm({ lead, onSubmit }: { lead: boolean; onSubmit: (password: 
 
   return (
     <form onSubmit={submit} className={lead ? "sheet border-primary/40 p-6 sm:p-8" : "sheet p-6 sm:p-8"} aria-labelledby="account-password-title">
-      <h2 id="account-password-title" className="font-display text-xl text-ink">
+      <h2 id="account-password-title" className="text-base font-semibold text-ink">
         {lead ? t("auth.newPassword") : t("account.password.change")}
       </h2>
-      <p className="mt-1 text-sm text-muted-foreground">{lead ? t("account.password.recovery") : t("auth.password.help")}</p>
       <div className="mt-6 grid gap-6 sm:grid-cols-2">
         <div className="min-w-0 space-y-2">
           <Label htmlFor="new-password">{t("auth.newPassword")}</Label>

@@ -3,15 +3,25 @@
  * analysis itself (assessment.ts and its rules are the frozen part):
  * the muted line of a brief card, the status filter of the list, the
  * newest analysis of each brief and what it counted (kept current from
- * the realtime rows themselves), the tier a result card names only when
- * its group does not already say it, and the turn each card takes when
- * a list unfolds (a batch that lands rises in one card after the other,
- * a card already on screen never moves again). Tested in
+ * the realtime rows themselves), and what the brief page's
+ * "Correspondances" tab reads off an analysis: the state its band is in,
+ * the four figures of its funnel, the matches and the near profiles in
+ * their order, the one line each row shows, the split by tier, the step
+ * a running stage belongs to, the time left, and the turn each row
+ * takes when a list unfolds (a batch that lands rises in one row after
+ * the other, a row already on screen never moves again). Tested in
  * presentation.test.ts.
  */
-import type { AssessmentTier, BriefRow, BriefStatus, MatchResult } from "@/lib/db/types";
+import type {
+  AssessmentTier,
+  BriefRow,
+  BriefStatus,
+  MatchResult,
+  SearchMethod,
+} from "@/lib/db/types";
 
-import { bucketResults } from "./assessment";
+import { compareTiered, decisionOf, tierOf } from "./assessment";
+import type { AnalysisStep } from "./stages";
 
 /** The first non-empty line of a text, trimmed; "" when there is none. */
 export function firstLine(text: string | null | undefined): string {
@@ -73,7 +83,7 @@ export function latestPerBrief<T extends { brief_id: string | null; created_at: 
   return latest;
 }
 
-/** What an analysis counted: its results, how many the model read, how many are to present. */
+/** What an analysis counted: its results, how many the model read, how many match (decision fit, whatever their tier). */
 export interface AnalysisDigest {
   total: number;
   assessed: number;
@@ -81,12 +91,13 @@ export interface AnalysisDigest {
 }
 
 export function digestResults(results: readonly MatchResult[]): AnalysisDigest {
-  const buckets = bucketResults(results);
-  return {
-    total: results.length,
-    assessed: results.length - buckets.unassessed.length,
-    present: buckets.present.length,
-  };
+  let assessed = 0;
+  let present = 0;
+  for (const result of results) {
+    if (result.assessment) assessed += 1;
+    if (decisionOf(result) === "fit") present += 1;
+  }
+  return { total: results.length, assessed, present };
 }
 
 /** The newest analysis of a brief as its card says it: when it ran and what it counted. */
@@ -95,12 +106,20 @@ export interface LatestAnalysis extends AnalysisDigest {
   createdAt: string;
 }
 
+/** A count column of a row: a finite number, never below zero; null when the row does not carry it. */
+function countColumn(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : null;
+}
+
 /**
  * The analysis a realtime change of a search carries, read off the row
- * itself (an analysis patches its results batch after batch): its
- * brief, when it ran and what it counted. Null when the row lacks one
- * of them (realtime leaves out a value too large to carry), so the
- * caller reads the analyses again instead.
+ * itself (an analysis writes its results batch after batch): its brief,
+ * when it ran and what it counted. The summary columns the database
+ * keeps (result_count, assessed_count, match_count) are read first, so
+ * a row whose results realtime could not carry still counts; a row
+ * without them is counted from its results. Null when the row lacks its
+ * id, its brief or its date, or carries neither, so the caller reads
+ * the analyses again instead.
  */
 export function analysisOfRow(
   row: Readonly<Record<string, unknown>>,
@@ -108,9 +127,14 @@ export function analysisOfRow(
   const id = row["id"];
   const briefId = row["brief_id"];
   const createdAt = row["created_at"];
-  const results: unknown = row["results"];
   if (typeof id !== "string" || typeof briefId !== "string" || typeof createdAt !== "string")
     return null;
+  const total = countColumn(row["result_count"]);
+  const assessed = countColumn(row["assessed_count"]);
+  const present = countColumn(row["match_count"]);
+  if (total !== null && assessed !== null && present !== null)
+    return { briefId, analysis: { searchId: id, createdAt, total, assessed, present } };
+  const results: unknown = row["results"];
   if (!Array.isArray(results)) return null;
   return {
     briefId,
@@ -141,26 +165,256 @@ export function withAnalysis(
   return next;
 }
 
-/** The groups the results of an analysis sit in, each under its own title. */
-export type ResultGroupName = "present" | "deeper" | "setAside" | "unassessed" | "ranked";
+// ---------------------------------------------------------------------
+// the "Correspondances" tab of a brief
+// ---------------------------------------------------------------------
+
+/** The matches of an analysis (decision fit) and nothing else, tier first, then score. */
+export function matchesOf(results: readonly MatchResult[]): MatchResult[] {
+  return results.filter((result) => decisionOf(result) === "fit").sort(compareTiered);
+}
+
+/** The near profiles (decision borderline), worth a look by a person, in the same order. */
+export function nearOf(results: readonly MatchResult[]): MatchResult[] {
+  return results.filter((result) => decisionOf(result) === "borderline").sort(compareTiered);
+}
+
+/** How many matches each tier holds; a match the tiering has not reached yet counts in none. */
+export function tierCounts(results: readonly MatchResult[]): Record<AssessmentTier, number> {
+  const counts: Record<AssessmentTier, number> = { A: 0, B: 0, C: 0 };
+  for (const result of results) {
+    if (decisionOf(result) !== "fit") continue;
+    const tier = tierOf(result);
+    if (tier) counts[tier] += 1;
+  }
+  return counts;
+}
+
+/** What a whole-pool search's triage counted (the read profiles and their verdicts), as the funnel needs it. */
+export interface TriageTally {
+  read: number;
+  yes: number;
+  close: number;
+  unknown: number;
+}
 
 /**
- * The group whose title a tier repeats: "to present" for A, "to dig
- * into" for B; null for C, which no group is named after. A card shows
- * its tier only when it sits in another group, so the pill never says
- * what the heading above it already said.
+ * The four figures of the funnel: the profiles the triage read, the
+ * ones it kept (yes, close, unknown: a card too thin to judge is read
+ * rather than dropped), the ones read in full, the matches. Without a
+ * triage (an analysis stored before it, or the text path), every
+ * result counts as read and kept.
  */
-export function tierGroup(tier: AssessmentTier): ResultGroupName | null {
-  if (tier === "A") return "present";
-  if (tier === "B") return "deeper";
-  return null;
+export interface Funnel {
+  analysed: number;
+  kept: number;
+  assessed: number;
+  matches: number;
+}
+
+export function funnelOf(results: readonly MatchResult[], triage: TriageTally | null): Funnel {
+  let assessed = 0;
+  let matches = 0;
+  for (const result of results) {
+    if (result.assessment) assessed += 1;
+    if (decisionOf(result) === "fit") matches += 1;
+  }
+  if (!triage) return { analysed: results.length, kept: results.length, assessed, matches };
+  return {
+    analysed: Math.max(0, triage.read),
+    kept: Math.max(0, triage.yes + triage.close + triage.unknown),
+    assessed,
+    matches,
+  };
+}
+
+/**
+ * The first sentence of a text, trimmed: up to the first full stop,
+ * question or exclamation mark followed by a space or the end (so
+ * "3.5 ans" never splits); the whole text when it has none; "" for a
+ * blank one.
+ */
+export function firstSentence(text: string | null | undefined): string {
+  const trimmed = text?.trim() ?? "";
+  if (!trimmed) return "";
+  const match = /^[\s\S]*?[.!?…](?=\s|$)/.exec(trimmed);
+  return (match ? match[0] : trimmed).trim();
+}
+
+/** A sentence that says something, trimmed; null for a blank or missing one. */
+function sentence(value: string | null | undefined): string | null {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * The one line a match row shows: the tiering's note (why this rank
+ * among the others), else the first sentence of the reading's summary;
+ * null when the model wrote neither (a profile no model read).
+ */
+export function synthesisLine(result: Pick<MatchResult, "assessment">): string | null {
+  const assessment = result.assessment;
+  if (!assessment) return null;
+  return sentence(assessment.rankNote) ?? sentence(firstSentence(assessment.summary));
+}
+
+/**
+ * The one line a near profile's row shows: its main reservation, the
+ * second opinion's doubt first, then the first reservation the reading
+ * named, else the synthesis line.
+ */
+export function reservationLine(result: Pick<MatchResult, "assessment">): string | null {
+  const assessment = result.assessment;
+  if (!assessment) return null;
+  const challenge = assessment.challenge;
+  const doubt = challenge?.verdict === "doubt" ? sentence(challenge.reason) : null;
+  return doubt ?? sentence(assessment.concerns?.[0]) ?? synthesisLine(result);
+}
+
+/** How many of a result's criteria the deterministic pass found, out of how many: the line of a row ranked on the text alone. */
+export function requirementTally(result: Pick<MatchResult, "verdicts">): {
+  met: number;
+  total: number;
+} {
+  return {
+    met: result.verdicts.filter((verdict) => verdict.verdict === "match").length,
+    total: result.verdicts.length,
+  };
+}
+
+/**
+ * The results once a stage's answer is in, as the database merges it
+ * (merge_search_results): an entry of the answer replaces the entry of
+ * the same candidate where it stands, an entry the results lack is
+ * appended. The list given is left untouched; it is answered as is
+ * when the answer is empty.
+ */
+export function mergeResults(
+  results: readonly MatchResult[],
+  answered: readonly MatchResult[],
+): readonly MatchResult[] {
+  if (!answered.length) return results;
+  const updated = new Map(answered.map((entry) => [entry.candidateId, entry] as const));
+  const merged = results.map((entry) => {
+    const next = updated.get(entry.candidateId);
+    if (next) updated.delete(entry.candidateId);
+    return next ?? entry;
+  });
+  return [...merged, ...updated.values()];
+}
+
+/** The most rows the deterministic ranking shows when no model reads the profiles. */
+export const TEXT_RANKING_MAX = 20;
+
+/**
+ * The state the analysis band is in:
+ * - "running": a search or a stage is being sent from this page;
+ * - "empty": no analysis on screen;
+ * - "needsCheck": the model wrote the understanding of the job this
+ *   search rests on, and the team checks it before a profile is read;
+ * - "textOnly": an analysis no model can read (no model on this
+ *   deployment, or a brief without criteria), ranked on the text;
+ * - "legacy": an analysis stored before the whole pool was read, which
+ *   read only the profiles closest to the brief (or a pool of unknown
+ *   size);
+ * - "incomplete": profiles of the pool still wait for the triage, the
+ *   promotion or a stage (interrupted, or batches that failed);
+ * - "done": every stage ran on every profile it could send.
+ */
+export type BandState =
+  | "empty"
+  | "running"
+  | "needsCheck"
+  | "incomplete"
+  | "done"
+  | "legacy"
+  | "textOnly";
+
+export interface BandInputs {
+  /** Whether the deployment has a model; null while unknown (never read as "no model"). */
+  model: boolean | null;
+  /** The method of the analysis on screen; null when none is. */
+  method: SearchMethod | null;
+  /** True while this page sends the search or a stage. */
+  running: boolean;
+  /** True when the analysis on screen waits for the team's check. */
+  needsCheck: boolean;
+  /** The criteria the analysis on screen was run with. */
+  criteriaCount: number;
+  /** Its results. */
+  resultCount: number;
+  /** The active profiles of the pool when it ran; null for rows stored before that was recorded. */
+  poolSize: number | null;
+  /** Profiles of the snapshot the triage has not read (0 without a triage). */
+  triagePending: number;
+  /** True when the triage kept profiles the results do not hold yet. */
+  promotionPending: boolean;
+  /** What the stages after the triage still have to send. */
+  stagePending: number;
+}
+
+export function bandStateOf(inputs: BandInputs): BandState {
+  if (inputs.running) return "running";
+  if (inputs.method === null) return "empty";
+  if (inputs.needsCheck) return "needsCheck";
+  const wholePool = inputs.method === "triage";
+  if (!wholePool && (inputs.model === false || inputs.criteriaCount === 0)) return "textOnly";
+  if (!wholePool && (inputs.poolSize === null || inputs.resultCount < inputs.poolSize))
+    return "legacy";
+  if (inputs.triagePending > 0 || inputs.promotionPending || inputs.stagePending > 0)
+    return "incomplete";
+  return "done";
+}
+
+/** The four steps the stepper names, in order. */
+export const BAND_STEPS = ["triage", "read", "challenge", "rank"] as const;
+export type BandStep = (typeof BAND_STEPS)[number];
+
+/** The step of the stepper (0 to 3) a stage belongs to: the promotion closes the triage, the final comparison is part of the tiering. */
+export function stepOf(stage: AnalysisStep): number {
+  switch (stage) {
+    case "triage":
+    case "promote":
+      return 0;
+    case "read":
+      return 1;
+    case "challenge":
+      return 2;
+    case "rank":
+    case "final":
+      return 3;
+  }
+}
+
+/** The shortest a stage must have run before its pace says anything about the time left. */
+export const ETA_MIN_ELAPSED_MS = 5000;
+
+/**
+ * The time a stage has left, in milliseconds, at the pace this page saw
+ * since it started it (`doneAtStart` profiles already settled then);
+ * null while that pace is not known (nothing came back yet, or too
+ * soon), 0 once nothing is left.
+ */
+export function remainingMs(progress: {
+  done: number;
+  total: number;
+  doneAtStart: number;
+  startedAt: number;
+  now: number;
+}): number | null {
+  const left = progress.total - progress.done;
+  if (left <= 0) return 0;
+  const advanced = progress.done - progress.doneAtStart;
+  const elapsed = progress.now - progress.startedAt;
+  if (advanced <= 0 || elapsed < ETA_MIN_ELAPSED_MS) return null;
+  return Math.round((left * elapsed) / advanced);
 }
 
 /**
  * The turn each key takes in a list that unfolds: a key already known
- * keeps the turn it was given (so a card on screen never animates
+ * keeps the turn it was given (so a row on screen never animates
  * again), the new keys count from 0 in the order given (so a batch
- * that lands rises in one card after the other). Keys known before but
+ * that lands rises in one row after the other). Keys known before but
  * absent now are forgotten.
  */
 export function arrivalIndexes(

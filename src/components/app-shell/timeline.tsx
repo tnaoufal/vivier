@@ -58,7 +58,7 @@ export function TimelineItem({
         <h3 className="text-body font-semibold text-ink break-words">{title}</h3>
         {subtitle ? <p className="text-sm text-muted-foreground break-words">{subtitle}</p> : null}
         {children ? (
-          <div className="mt-2 text-sm leading-6 text-ink/85 break-words">{children}</div>
+          <div className="mt-2 text-sm leading-6 text-ink break-words">{children}</div>
         ) : null}
       </div>
     </li>

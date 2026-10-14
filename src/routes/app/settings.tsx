@@ -1,15 +1,17 @@
 /**
  * Organisation settings, for administrators and owners: the name, the
  * working language and the retention of candidates (CNIL: two years at
- * most) in one form; the candidates' photos switch, saved at once, with
- * the sentence that says why a team may turn it off; and for the owner
- * the deletion of the organisation behind a typed confirmation. The
- * plan and its meters live on the team page.
+ * most, the rule behind an info icon, an error line only when the value
+ * is out of range) in one form; the candidates' photos switch, saved at
+ * once; and for the owner the deletion of the organisation behind a
+ * typed confirmation that states what goes with it. The plan and its
+ * meters live on the team page.
  */
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Trash2 } from "lucide-react";
 
+import { InfoTip } from "@/components/app-shell/info-tip";
 import { LocaleChips } from "@/components/app-shell/locale-chips";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Pill } from "@/components/app-shell/pill";
@@ -37,7 +39,6 @@ const RETENTION_MAX = 24;
 function PhotosCard({ orgId, initial, onSaved }: { orgId: string; initial: boolean; onSaved: () => Promise<void> }) {
   const { t } = useI18n();
   const labelId = useId();
-  const helpId = useId();
   const [shown, setShown] = useState(initial);
   const [saving, setSaving] = useState(false);
 
@@ -65,21 +66,18 @@ function PhotosCard({ orgId, initial, onSaved }: { orgId: string; initial: boole
 
   return (
     <section className="sheet p-6 sm:p-8" aria-labelledby={labelId}>
-      <div className="flex items-start justify-between gap-6">
-        <div className="min-w-0">
-          <h2 className="font-display text-xl text-ink">{t("settings.photos")}</h2>
-          <p id={labelId} className="mt-3 text-sm font-medium text-ink">
-            {t("settings.photos.toggle")}
-          </p>
-          <p id={helpId} className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            {t("settings.photos.help")}
-          </p>
+      <div className="flex items-center justify-between gap-6">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 id={labelId} className="min-w-0 text-base font-semibold text-ink">
+            {t("settings.photos")}
+          </h2>
+          <InfoTip label={t("settings.photos")}>{t("settings.photos.help")}</InfoTip>
         </div>
-        <div className="-mt-1.5 flex shrink-0 flex-col items-end gap-1">
-          <Switch checked={shown} onCheckedChange={(next) => void toggle(next)} disabled={saving} aria-labelledby={labelId} aria-describedby={helpId} />
+        <div className="flex shrink-0 items-center gap-3">
           <span className="text-meta text-muted-foreground" aria-live="polite">
             {shown ? t("settings.photos.on") : t("settings.photos.off")}
           </span>
+          <Switch checked={shown} onCheckedChange={(next) => void toggle(next)} disabled={saving} aria-labelledby={labelId} />
         </div>
       </div>
     </section>
@@ -111,8 +109,8 @@ function SettingsPage() {
   if (!allowed) {
     return (
       <>
-        <PageHeader eyebrow={org.name} title={t("nav.settings")} description={t("settings.subtitle")} />
-        <NotAllowed text={t("settings.notAllowed")} />
+        <PageHeader eyebrow={org.name} title={t("nav.settings")} />
+        <NotAllowed />
       </>
     );
   }
@@ -161,7 +159,6 @@ function SettingsPage() {
       <PageHeader
         eyebrow={org.name}
         title={t("nav.settings")}
-        description={t("settings.subtitle")}
         meta={
           <Pill tone="primary" dot>
             {t(`shell.org.plan.${org.plan}`)}
@@ -176,10 +173,9 @@ function SettingsPage() {
 
       <div className="space-y-8">
         <form onSubmit={save} className="sheet p-6 sm:p-8" aria-labelledby="settings-org-title">
-          <h2 id="settings-org-title" className="font-display text-xl text-ink">
+          <h2 id="settings-org-title" className="text-base font-semibold text-ink">
             {t("settings.org")}
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t("settings.org.help")}</p>
           <div className="mt-6 space-y-6">
             <div className="space-y-2">
               <Label htmlFor="org-name">{t("common.name")}</Label>
@@ -192,7 +188,12 @@ function SettingsPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="org-retention">{t("settings.retention")}</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="org-retention">{t("settings.retention")}</Label>
+                <InfoTip label={t("settings.retention")}>
+                  {t("settings.retention.help", { months: monthsValid ? months : org.retention_months })}
+                </InfoTip>
+              </div>
               <Input
                 id="org-retention"
                 type="number"
@@ -206,11 +207,13 @@ function SettingsPage() {
                 required
                 disabled={saving}
                 aria-invalid={monthsValid ? undefined : true}
-                aria-describedby="org-retention-help"
+                aria-describedby={monthsValid ? undefined : "org-retention-error"}
               />
-              <p id="org-retention-help" className="max-w-2xl text-meta text-muted-foreground">
-                {t("settings.retention.help", { months: monthsValid ? months : org.retention_months })}
-              </p>
+              {monthsValid ? null : (
+                <p id="org-retention-error" role="alert" className="fade-in text-meta text-negative">
+                  {t("settings.retention.range", { min: RETENTION_MIN, max: RETENTION_MAX })}
+                </p>
+              )}
             </div>
           </div>
           <div className="mt-8">
@@ -222,23 +225,25 @@ function SettingsPage() {
 
         <PhotosCard orgId={org.id} initial={readShowPhotos(org)} onSaved={refresh} />
 
-        <section className="sheet border-negative/40 p-6 sm:p-8" aria-labelledby="settings-danger-title">
-          <h2 id="settings-danger-title" className="font-display text-xl text-negative">
+        <section
+          className="sheet flex flex-wrap items-center justify-between gap-4 border-negative/40 p-6 sm:p-8"
+          aria-labelledby="settings-danger-title"
+        >
+          <h2 id="settings-danger-title" className="text-base font-semibold text-negative">
             {t("settings.danger")}
           </h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t("settings.danger.text")}</p>
           {owner ? (
             <Button
               variant="outline"
               icon={<Trash2 />}
-              className="mt-6 border-negative/40 text-negative hover:bg-negative/10 hover:text-negative"
+              className="border-negative/40 text-negative hover:bg-negative/10 hover:text-negative"
               onClick={() => setDeleteOpen(true)}
               disabled={deleting}
             >
               {t("settings.delete")}
             </Button>
           ) : (
-            <p className="mt-4 text-sm text-muted-foreground">{t("settings.danger.ownerOnly")}</p>
+            <p className="text-sm text-muted-foreground">{t("settings.danger.ownerOnly")}</p>
           )}
         </section>
       </div>

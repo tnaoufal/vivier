@@ -7,12 +7,13 @@
  * aside because it did not take them for a CV, and how many it refused
  * at the organisation's monthly quota
  * (not broken: waiting). The last three unfold on demand, the quota
- * refusals apart from the real failures, each with the sentence the
- * service left, a link to the file and a retry (a person may disagree
- * with the service's reading), since a document that never produced a
- * profile has no page of its own. When the month has room again (the
- * quota was raised or renewed), one button re-queues the waiting CVs up
- * to that room, oldest first.
+ * refusals apart from the real failures, each with its status pill, the
+ * service's sentence for a real failure (the pill says the rest), a link
+ * to the file and a retry (a person may disagree with the service's
+ * reading), since a document that never produced a profile has no page
+ * of its own. The month's quota is one line of figures. When the month
+ * has room again (the quota was raised or renewed), one button re-queues
+ * the waiting CVs up to that room, oldest first.
  */
 import { useEffect, useState } from "react";
 import {
@@ -28,6 +29,7 @@ import {
 import { Pill } from "@/components/app-shell/pill";
 import { ProcessingProgress } from "@/components/candidates/processing-progress";
 import { Button } from "@/components/ui/button";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { notifyProcessor } from "@/lib/candidates/candidates.functions";
 import { documentStatusKey, documentTone, formatBytes, formatCount } from "@/lib/candidates/format";
@@ -184,13 +186,11 @@ export function ProcessingBanner({
   ].filter((part): part is { key: string; text: string } => part !== null);
 
   /**
-   * A set-aside file is the service's reading and a quota refusal its
-   * state, both said in the person's language; a failure keeps the
-   * service's own sentence.
+   * A set-aside file and a quota refusal are said by their pill alone; a
+   * real failure keeps the service's own sentence (why it failed).
    */
-  const sentence = (document: DocumentRow): string => {
-    if (document.status === "rejected") return t("candidates.documents.rejectedNote");
-    if (isQuotaFailure(document)) return t("candidates.documents.quotaNote");
+  const sentence = (document: DocumentRow): string | null => {
+    if (document.status === "rejected" || isQuotaFailure(document)) return null;
     return document.error?.trim() || t("candidates.documents.noError");
   };
 
@@ -256,12 +256,13 @@ export function ProcessingBanner({
               {formatBytes(document.byte_size, locale)}
             </span>
           </div>
-          <p className="text-meta text-muted-foreground">{sentence(document)}</p>
+          {sentence(document) ? (
+            <p className="text-meta text-muted-foreground">{sentence(document)}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-1">
           <Button
             variant="ghost"
-            size="sm"
             icon={<ExternalLink />}
             onClick={() => void actions.view(document)}
             disabled={actions.busyId !== null}
@@ -271,7 +272,6 @@ export function ProcessingBanner({
           {canEdit && retryAllowed && canRetry(document.status) ? (
             <Button
               variant="outline"
-              size="sm"
               icon={<RefreshCw />}
               onClick={() => void actions.retry(document)}
               disabled={actions.busyId !== null || requeuing}
@@ -333,7 +333,6 @@ export function ProcessingBanner({
             {canEdit && requeueable > 0 ? (
               <Button
                 variant="outline"
-                size="sm"
                 icon={<RefreshCw />}
                 onClick={() => void requeue()}
                 disabled={requeuing || actions.busyId !== null}
@@ -343,7 +342,6 @@ export function ProcessingBanner({
             ) : null}
             <Button
               variant="ghost"
-              size="sm"
               icon={
                 <ChevronDown
                   className={cn("transition-transform duration-base ease-out-soft", open && "rotate-180")}
@@ -357,9 +355,6 @@ export function ProcessingBanner({
           </div>
         ) : null}
       </div>
-      <p className="mt-1 text-meta text-muted-foreground">
-        {t("candidates.processing.help")}
-      </p>
       {quotaSentence ? (
         <p
           className={cn(
@@ -375,10 +370,13 @@ export function ProcessingBanner({
           {setAside > 0 ? (
             <section>
               <h3 className="label-caps">{t("candidates.processing.group.other")}</h3>
+              {others.loading && !others.data ? (
+                <>
+                  <p className="sr-only">{t("common.loading")}</p>
+                  <SkeletonRows rows={2} avatar={false} className="-mx-4 sm:-mx-6" />
+                </>
+              ) : null}
               <ul className="divide-y divide-border">
-                {others.loading && !others.data ? (
-                  <li className="py-3 text-muted-foreground">{t("common.loading")}</li>
-                ) : null}
                 {others.error ? (
                   <li className="py-3 text-negative">{t("candidates.listError")}</li>
                 ) : null}
@@ -390,10 +388,13 @@ export function ProcessingBanner({
           {counts.quota > 0 ? (
             <section>
               <h3 className="label-caps">{t("candidates.processing.group.quota")}</h3>
+              {waiting.loading && !waiting.data ? (
+                <>
+                  <p className="sr-only">{t("common.loading")}</p>
+                  <SkeletonRows rows={2} avatar={false} className="-mx-4 sm:-mx-6" />
+                </>
+              ) : null}
               <ul className="divide-y divide-border">
-                {waiting.loading && !waiting.data ? (
-                  <li className="py-3 text-muted-foreground">{t("common.loading")}</li>
-                ) : null}
                 {waiting.error ? (
                   <li className="py-3 text-negative">{t("candidates.listError")}</li>
                 ) : null}

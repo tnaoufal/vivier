@@ -4,7 +4,9 @@
  * on. Never the filled primary, which a page keeps for its one main
  * action. 40px high like the field and the tabs it sits beside. One 16px
  * icon at most, a count in tabular digits at full strength (lighter by
- * weight, never by alpha, so it keeps AA contrast on the card).
+ * weight, never by alpha, so it keeps AA contrast on the card). A chip
+ * that opens a panel (the pool's "Filtres") passes `expanded` and
+ * `controls`: it then says open or closed, not pressed.
  */
 import type { ReactNode } from "react";
 
@@ -17,6 +19,8 @@ export function FilterChip({
   icon,
   count,
   disabled = false,
+  expanded,
+  controls,
   className,
 }: {
   active: boolean;
@@ -25,14 +29,21 @@ export function FilterChip({
   icon?: ReactNode;
   count?: number | undefined;
   disabled?: boolean;
+  /** Set when the chip shows or hides a panel: aria-expanded replaces aria-pressed. */
+  expanded?: boolean | undefined;
+  /** The id of the panel an `expanded` chip shows. */
+  controls?: string | undefined;
   className?: string;
 }) {
+  const toggles = expanded !== undefined;
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-pressed={active}
+      aria-pressed={toggles ? undefined : active}
+      aria-expanded={toggles ? expanded : undefined}
+      aria-controls={toggles ? controls : undefined}
       className={cn(
         "press inline-flex h-10 max-w-full shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-4 text-meta font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
         active

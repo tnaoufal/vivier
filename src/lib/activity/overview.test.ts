@@ -5,18 +5,18 @@ import { countByShortlist, countItems, isProposed, latestPerBrief } from "./over
 describe("latestPerBrief", () => {
   it("keeps the newest search of each brief whatever the order", () => {
     const latest = latestPerBrief([
-      { brief_id: "a", result_count: 10, created_at: "2026-10-01T10:00:00Z" },
-      { brief_id: "a", result_count: 42, created_at: "2026-10-03T10:00:00Z" },
-      { brief_id: "b", result_count: 7, created_at: "2026-10-02T10:00:00Z" },
-      { brief_id: "a", result_count: 20, created_at: "2026-10-02T10:00:00Z" },
+      { brief_id: "a", match_count: 10, created_at: "2026-10-01T10:00:00Z" },
+      { brief_id: "a", match_count: 42, created_at: "2026-10-03T10:00:00Z" },
+      { brief_id: "b", match_count: 7, created_at: "2026-10-02T10:00:00Z" },
+      { brief_id: "a", match_count: 20, created_at: "2026-10-02T10:00:00Z" },
     ]);
-    expect(latest.get("a")?.result_count).toBe(42);
-    expect(latest.get("b")?.result_count).toBe(7);
+    expect(latest.get("a")?.match_count).toBe(42);
+    expect(latest.get("b")?.match_count).toBe(7);
     expect(latest.size).toBe(2);
   });
 
   it("ignores a search without a brief", () => {
-    expect(latestPerBrief([{ brief_id: null, result_count: 1, created_at: "2026-10-01T10:00:00Z" }]).size).toBe(0);
+    expect(latestPerBrief([{ brief_id: null, match_count: 1, created_at: "2026-10-01T10:00:00Z" }]).size).toBe(0);
   });
 });
 

@@ -385,9 +385,37 @@ export interface MatchResult {
    * them) and in items stored before.
    */
   criteria?: BriefCriterion[];
+  /**
+   * The triage's verdict on the profile's métier and its short reason,
+   * set when a whole-pool search promoted the entry for the full
+   * reading; absent on results of older searches and of the text or
+   * hybrid paths.
+   */
+  triage?: { verdict: TriageVerdict; reason: string | null };
 }
 
-export type SearchMethod = "hybrid" | "text";
+/** "triage": the whole active pool sorted by métier first, then only the kept profiles read in full. */
+export type SearchMethod = "hybrid" | "text" | "triage";
+
+/**
+ * The triage's answer on one profile: the job itself or the same job
+ * under another name (yes), an adjacent background or the job held
+ * earlier (close), another job (no), a card too thin to judge (unknown,
+ * read in full rather than dropped).
+ */
+export type TriageVerdict = "yes" | "close" | "no" | "unknown";
+
+/** One profile of a whole-pool search's snapshot (search_triage); verdict null until the triage read it. Written by the service role only. */
+export interface SearchTriageRow {
+  search_id: string;
+  org_id: string;
+  candidate_id: string;
+  verdict: TriageVerdict | null;
+  /** At most 300 characters in the database; the triage clips it shorter. */
+  reason: string | null;
+  model: string | null;
+  read_at: string | null;
+}
 
 export interface SearchRow {
   id: string;
@@ -572,7 +600,15 @@ export interface EmailSendRow {
   created_at: string;
 }
 
-export type AiUsageKind = "structure" | "embed" | "ocr" | "brief" | "explain" | "summary" | "assess";
+export type AiUsageKind =
+  | "structure"
+  | "embed"
+  | "ocr"
+  | "brief"
+  | "explain"
+  | "summary"
+  | "assess"
+  | "triage";
 
 export interface AiUsageRow {
   id: number;

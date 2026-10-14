@@ -4,15 +4,17 @@
  * vector, else by the words of the headline and the skills; every row
  * shows who (the photo when the organisation shows photos), the
  * position held today, the first skills, and the proximity as a meter
- * that names the measure that spoke. The list loads when the drawer
- * opens, its rows rising in once. A proximity is a reading aid: the
- * person opens the profiles and compares, nothing is decided here.
+ * that names the measure that spoke; how it is measured sits behind an
+ * info icon. The list loads when the drawer opens, its rows rising in
+ * once. A proximity is a reading aid: the person opens the profiles and
+ * compares, nothing is decided here.
  */
 import { Link } from "@tanstack/react-router";
 import { RefreshCw, Users } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { EmptyState } from "@/components/app-shell/empty-state";
+import { InfoTip } from "@/components/app-shell/info-tip";
 import { Meter } from "@/components/app-shell/meter";
 import { Pill } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
@@ -48,7 +50,7 @@ export function SimilarDrawer({
   onOpenChange: (open: boolean) => void;
   orgId: string;
   candidateId: string;
-  /** The name of the profile the neighbours are near, for the help sentence. */
+  /** The name of the profile the neighbours are near, under the title. */
   name: string;
   showPhotos: boolean;
 }) {
@@ -67,8 +69,11 @@ export function SimilarDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" size="md" className="flex flex-col gap-6 overflow-y-hidden">
         <SheetHeader>
-          <SheetTitle>{t("similar.title")}</SheetTitle>
-          <SheetDescription>{t("similar.help", { name })}</SheetDescription>
+          <div className="flex items-center gap-2 pr-12">
+            <SheetTitle>{t("similar.title")}</SheetTitle>
+            <InfoTip label={t("similar.title")}>{t("similar.help")}</InfoTip>
+          </div>
+          <SheetDescription className="truncate">{t("similar.subtitle", { name })}</SheetDescription>
         </SheetHeader>
 
         <SheetBody>
@@ -80,7 +85,7 @@ export function SimilarDrawer({
           ) : similar.error !== null ? (
             <div className="space-y-3">
               <p className="text-sm text-negative">{t("similar.loadError")}</p>
-              <Button type="button" size="sm" variant="outline" icon={<RefreshCw />} onClick={() => void similar.refresh()}>
+              <Button type="button" variant="outline" icon={<RefreshCw />} onClick={() => void similar.refresh()}>
                 {t("common.retry")}
               </Button>
             </div>
@@ -97,7 +102,6 @@ export function SimilarDrawer({
               compact
               icon={<Users />}
               title={t("similar.empty.title")}
-              text={t("similar.empty.text")}
             />
           )}
         </SheetBody>
@@ -127,7 +131,7 @@ function SimilarRow({
 
   return (
     <div className="flex gap-3 py-4 first:pt-0">
-      <Avatar name={name} photoUrl={photoUrl} className="mt-0.5" />
+      <Avatar name={name} photoUrl={photoUrl} className="mt-0.5" decorative />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Link
@@ -156,12 +160,7 @@ function SimilarRow({
             ))}
           </ul>
         ) : null}
-        <Meter
-          className="mt-3"
-          label={t(`similar.method.${profile.method}`)}
-          value={percent}
-          hint={t(`similar.similarity.${profile.method}`, { percent })}
-        />
+        <Meter className="mt-3" label={t(`similar.method.${profile.method}`)} value={percent} />
       </div>
     </div>
   );

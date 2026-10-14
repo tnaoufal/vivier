@@ -194,7 +194,7 @@ export function ItemDrawer({
           <>
             <SheetHeader className="shrink-0 gap-3">
               <div className="flex items-start gap-4">
-                <Avatar name={candidateName} size="xl" variant="profile" photoUrl={photoUrl} />
+                <Avatar name={candidateName} size="xl" variant="profile" photoUrl={photoUrl} decorative />
                 <div className="min-w-0 flex-1">
                   <SheetTitle>{candidateName}</SheetTitle>
                   <SheetDescription className="mt-0.5 truncate">
@@ -228,7 +228,11 @@ export function ItemDrawer({
                 <TabsTrigger value="team">
                   {t("shortlists.drawer.tab.team")}
                   {commentCount ? (
-                    <span className="text-muted-foreground tabular-nums">{commentCount}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {/* Keeps the label and the count two words in the tab's name ("Team, 3"). */}
+                      <span className="sr-only">, </span>
+                      {commentCount}
+                    </span>
                   ) : null}
                 </TabsTrigger>
               </TabsList>
@@ -246,19 +250,13 @@ export function ItemDrawer({
                 </TabsContent>
                 <TabsContent value="team" className="mt-0 fade-in space-y-8">
                   <section className="space-y-3">
-                    <h3 className="text-base font-semibold text-ink">
-                      {t("shortlists.vote.title")}
-                      <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">
-                        {t("shortlists.vote.tally", { up: tally.up, down: tally.down })}
-                      </span>
-                    </h3>
+                    <h3 className="text-base font-semibold text-ink">{t("shortlists.vote.title")}</h3>
                     <VoteButtons
                       tally={item ? tally : NO_VOTES}
                       canVote={canAct && item !== null}
                       busy={actions.busy}
                       onVote={(value) => void actions.vote(value, tally.mine)}
                     />
-                    {canAct ? <p className="text-meta text-muted-foreground">{t("shortlists.vote.help")}</p> : null}
                   </section>
 
                   <section className="space-y-3">

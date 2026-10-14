@@ -1,8 +1,8 @@
 /**
  * The page an invitation link opens, outside the app shell (no
  * organisation is loaded here): one centred card with the organisation
- * and the role, a sign-in button when signed out, the accept button
- * when signed in. Accepting runs accept_invitation() in the database,
+ * and the role (a pill and its few words), a sign-in button when signed
+ * out, the accept button when signed in. Accepting runs accept_invitation() in the database,
  * which checks the token, its expiry and that the address matches the
  * account; a refusal is a sentence in the card, never a toast.
  */
@@ -125,9 +125,7 @@ function InvitePage() {
     const wrongAccount = Boolean(user?.email && user.email.toLowerCase() !== invitedEmail.toLowerCase());
     content = (
       <>
-        <p className="label-caps">{t("invite.accept")}</p>
-        <h1 className="mt-1 font-display text-2xl text-ink break-words">{t("invite.title", { org: orgName })}</h1>
-        <p className="mt-3 text-body text-muted-foreground">{t("invite.text", { role: t(role.name) })}</p>
+        <h1 className="font-display text-2xl text-ink break-words">{t("invite.title", { org: orgName })}</h1>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Pill tone="primary" dot>
             {t(role.name)}
@@ -181,17 +179,13 @@ function InvitePage() {
   );
 }
 
-/** An invitation that cannot be accepted: the reason and a way out. */
+/** An invitation that cannot be accepted: the reason as the title and a way out. */
 function Closed({ text }: { text: string }) {
   const { t } = useI18n();
   return (
     <>
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <ShieldAlert className="size-4" aria-hidden="true" />
-        <span className="label-caps">{t("invite.accept")}</span>
-      </div>
-      <h1 className="mt-1 font-display text-2xl text-ink">{t("invite.error")}</h1>
-      <p className="mt-3 text-body text-muted-foreground">{text}</p>
+      <ShieldAlert className="size-5 text-muted-foreground" aria-hidden="true" />
+      <h1 className="mt-3 font-display text-2xl text-ink break-words">{text}</h1>
       <Button asChild variant="outline" className="mt-8 w-full">
         <Link to="/app">{t("team.invitePage.goToApp")}</Link>
       </Button>

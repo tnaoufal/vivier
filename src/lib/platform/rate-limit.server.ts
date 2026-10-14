@@ -10,7 +10,14 @@
  */
 import { getRequestHeaders } from "@tanstack/react-start/server";
 
-export type RateLimitScope = "model" | "email" | "share" | "processor" | "search" | "assess";
+export type RateLimitScope =
+  | "model"
+  | "email"
+  | "share"
+  | "processor"
+  | "search"
+  | "assess"
+  | "triage";
 
 export interface RateLimiterBinding {
   limit(options: { key: string }): Promise<{ success: boolean }>;

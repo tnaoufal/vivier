@@ -1,8 +1,9 @@
 /**
  * The dashboard's "open briefs" column: for the few most recently
  * touched open briefs, where each one stands. The last analysis is read
- * from the searches' summaries (when, how many profiles were read: the
- * results themselves stay in the database, they weigh megabytes); the
+ * from the searches' summary columns (when, how many profiles match:
+ * `match_count`, kept by merge_search_results; the results themselves
+ * stay in the database, they weigh megabytes); the
  * shortlist's counts come from its items' three small columns (the
  * status the team gave, the decision and the tier the model gave), so
  * the card can say "3 to present, 1 retained" without loading a board.
@@ -16,10 +17,10 @@ import type { BriefRow, ShortlistItemStatus } from "@/lib/db/types";
 /** The most open briefs the dashboard shows. */
 export const OVERVIEW_BRIEFS = 4;
 
-/** A search's summary: the brief it ran for, when, and how many profiles it read. */
+/** A search's summary: the brief it ran for, when, and how many profiles match. */
 export interface SearchGlance {
   brief_id: string | null;
-  result_count: number;
+  match_count: number;
   created_at: string;
 }
 
@@ -44,8 +45,8 @@ export interface ShortlistCounts {
 
 export interface BriefOverview {
   brief: Pick<BriefRow, "id" | "title" | "status" | "criteria" | "updated_at">;
-  /** The latest analysis, null when none ran. */
-  lastSearch: { at: string; read: number } | null;
+  /** The latest analysis (when, how many matches), null when none ran. */
+  lastSearch: { at: string; matches: number } | null;
   /** The shortlist's counts, null when the brief has no shortlist yet. */
   shortlist: ShortlistCounts | null;
 }
@@ -110,7 +111,7 @@ export async function readBriefsOverview(
   const [searches, shortlists] = await Promise.all([
     supabase
       .from("searches")
-      .select("brief_id, result_count, created_at")
+      .select("brief_id, match_count, created_at")
       .eq("org_id", orgId)
       .in("brief_id", ids)
       .order("created_at", { ascending: false })
@@ -142,7 +143,7 @@ export async function readBriefsOverview(
     const shortlistId = shortlistOf.get(brief.id);
     return {
       brief: { id: brief.id, title: brief.title, status: brief.status, criteria: brief.criteria, updated_at: brief.updated_at },
-      lastSearch: search ? { at: search.created_at, read: search.result_count } : null,
+      lastSearch: search ? { at: search.created_at, matches: search.match_count } : null,
       shortlist: shortlistId ? (counts.get(shortlistId) ?? { present: 0, retained: 0, toReview: 0, total: 0 }) : null,
     };
   });

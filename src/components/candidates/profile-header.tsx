@@ -67,7 +67,7 @@ export function ProfileHeader({
   return (
     <section className="sheet mb-8 p-6 sm:p-8" aria-label={name}>
       <div className="flex items-start gap-5">
-        <Avatar name={name} size="xl" variant="profile" photoUrl={photoUrl} />
+        <Avatar name={name} size="xl" variant="profile" photoUrl={photoUrl} decorative />
         <div className="min-w-0 flex-1">
         {editing ? (
           <form onSubmit={(event) => void submit(event)} className="flex flex-wrap items-center gap-2">
@@ -81,21 +81,21 @@ export function ProfileHeader({
               disabled={busy}
               className="max-w-sm"
             />
-            <Button type="submit" size="sm" variant="outline" icon={<Check />} disabled={busy}>
+            <Button type="submit" variant="outline" icon={<Check />} disabled={busy}>
               {t("common.save")}
             </Button>
-            <Button type="button" size="sm" variant="ghost" icon={<X />} onClick={() => setEditing(false)} disabled={busy}>
+            <Button type="button" variant="ghost" icon={<X />} onClick={() => setEditing(false)} disabled={busy}>
               {t("common.cancel")}
             </Button>
           </form>
         ) : (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="min-w-0 break-words text-xl font-semibold text-ink">{name}</p>
+            <p className="min-w-0 break-words text-base font-semibold text-ink">{name}</p>
             <ConfidenceHint value={candidate.confidence.full_name} />
             {canEdit ? (
               <Button
                 type="button"
-                size="icon-sm"
+                size="icon"
                 variant="ghost"
                 icon={<Pencil />}
                 onClick={() => setEditing(true)}
@@ -109,7 +109,9 @@ export function ProfileHeader({
           {position ? (
             <>
               <span className="font-medium text-ink">{position.title}</span>
-              {position.company ? <span className="text-muted-foreground"> @ {position.company}</span> : null}
+              {position.company ? (
+                <span className="text-muted-foreground"> {t("candidates.atCompany", { company: position.company })}</span>
+              ) : null}
             </>
           ) : (
             <span className="text-muted-foreground">{t("common.unknown")}</span>

@@ -6,6 +6,7 @@
  */
 import { History } from "lucide-react";
 
+import { EmptyState } from "@/components/app-shell/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { describeActivity, type ActivityNames } from "@/lib/activity/describe";
 import type { ActivityRow } from "@/lib/db/types";
@@ -35,10 +36,7 @@ export function ItemHistory({
           ))}
         </div>
       ) : rows.length === 0 ? (
-        <div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
-          <History className="size-4 shrink-0" aria-hidden="true" />
-          {t("shortlists.history.empty")}
-        </div>
+        <EmptyState compact inset icon={<History />} title={t("shortlists.history.empty")} />
       ) : (
         <ol className="stagger relative border-l border-border pl-5">
           {rows.map((row) => (

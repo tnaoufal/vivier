@@ -5,8 +5,7 @@
  * negative at it, with one line under it saying what is left. Counters
  * come from the database functions; one that could not be read shows a
  * dash with the reason on hover and as its text for assistive
- * technologies, an empty track and no hint: never a zero. Billing is
- * the owner's, since there is no checkout yet.
+ * technologies, an empty track and no hint: never a zero.
  */
 import type { ReactNode } from "react";
 
@@ -90,7 +89,7 @@ export function PlanCard({
   return (
     <section className={cn("sheet p-6", className)} aria-labelledby="plan-card-title">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="plan-card-title" className="font-display text-xl text-ink">
+        <h2 id="plan-card-title" className="text-base font-semibold text-ink">
           {t("settings.plan")}
         </h2>
         <Pill tone="primary" dot>
@@ -126,7 +125,6 @@ export function PlanCard({
         />
       </dl>
       {unread ? <p className="mt-4 text-meta text-caution-foreground dark:text-caution">{t("settings.plan.unread")}</p> : null}
-      <p className="mt-6 text-meta text-muted-foreground">{t("settings.plan.billing")}</p>
     </section>
   );
 }

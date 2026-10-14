@@ -13,12 +13,11 @@ import { useState } from "react";
 import {
   Check,
   Ellipsis,
-  ExternalLink,
   FileSearch,
   MessageSquare,
   RotateCcw,
   Trash2,
-  UserCheck,
+  UserRound,
   X,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -132,7 +131,7 @@ export function ItemCard({
   return (
     <article className="sheet p-6">
       <div className="flex items-start gap-3">
-        <Avatar name={name} size="md" photoUrl={photoUrl} className="mt-0.5" />
+        <Avatar name={name} size="md" photoUrl={photoUrl} className="mt-0.5" decorative />
         <div className="min-w-0 flex-1">
           <button
             type="button"
@@ -151,10 +150,10 @@ export function ItemCard({
             <Button
               type="button"
               variant="ghost"
-              size="icon-sm"
+              size="icon"
               aria-label={t("shortlists.item.menu")}
               title={t("shortlists.item.menu")}
-              className="-mr-2 -mt-1 text-muted-foreground"
+              className="-mr-3 -mt-2 text-muted-foreground"
             >
               <Ellipsis />
             </Button>
@@ -176,8 +175,8 @@ export function ItemCard({
                   );
                 })}
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger disabled={actions.busy}>
-                    <UserCheck />
+                  {/* The sub-menu's chevron is its one mark: no leading icon, the label aligned with the others. */}
+                  <DropdownMenuSubTrigger inset disabled={actions.busy}>
                     {t("shortlists.assign.menu")}
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="min-w-48">
@@ -213,7 +212,7 @@ export function ItemCard({
             {candidate ? (
               <DropdownMenuItem asChild>
                 <Link to="/app/candidates/$candidateId" params={{ candidateId: candidate.id }}>
-                  <ExternalLink />
+                  <UserRound />
                   {t("shortlists.drawer.openCandidate")}
                 </Link>
               </DropdownMenuItem>
@@ -301,7 +300,7 @@ export function ItemCard({
             className="ml-auto flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground"
             title={t("shortlists.item.assignedTo", { name: nameOf(item.assigned_to) })}
           >
-            <Avatar name={nameOf(item.assigned_to)} size="sm" />
+            <Avatar name={nameOf(item.assigned_to)} size="sm" decorative />
             <span className="max-w-28 truncate">{nameOf(item.assigned_to)}</span>
           </span>
         ) : null}

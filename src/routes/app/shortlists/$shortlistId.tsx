@@ -1,21 +1,22 @@
 /**
  * /app/shortlists/:shortlistId: the board of one shortlist. The brief in
- * the header with the three counts as pills, a way to the brief's search
- * to add candidates and the share dialog (members), folded to their
- * icons on a phone; the one sentence of the page under it; three
- * columns from lg, stacked before: to review, retained, dismissed, each
- * a list of cards; a drawer for one item, in three tabs; the shares
+ * the header (a link to it, its status when not open, "read only" for a
+ * viewer), a way to the brief's search to add candidates and the share
+ * dialog (members), folded to their icons on a phone; three columns from
+ * lg, stacked before: to review, retained, dismissed, each with its count
+ * and a list of cards; a drawer for one item, in three tabs; the shares
  * under the board. Live through realtime on the shortlist's items, the
  * organisation's votes and comments, each change debounced into one
  * re-read.
  */
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { Share2, UserPlus } from "lucide-react";
+import { Eye, ListChecks, RefreshCw, Share2, TriangleAlert, UserPlus } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
-import { Pill, type PillTone } from "@/components/app-shell/pill";
+import { Pill } from "@/components/app-shell/pill";
+import { BriefStatusPill } from "@/components/briefs/brief-status-pill";
 import { ShareDialog } from "@/components/share/share-dialog";
 import { SharesPanel } from "@/components/share/shares-panel";
 import { ItemCard } from "@/components/shortlist/item-card";
@@ -28,14 +29,12 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
-import type { BriefStatus, ShortlistItemStatus } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
 import { useCurrentOrg, useOrg } from "@/lib/org/org-context";
 import { readBoard, readShortlist } from "@/lib/shortlists/queries";
 import {
   ITEM_STATUSES,
   NO_VOTES,
-  countByStatus,
   groupByStatus,
   tallyVotes,
   votesByItem,
@@ -45,16 +44,6 @@ export const Route = createFileRoute("/app/shortlists/$shortlistId")({
   component: ShortlistPage,
 });
 
-const BRIEF_TONES: Record<BriefStatus, PillTone> = {
-  draft: "neutral",
-  open: "positive",
-  closed: "neutral",
-};
-const COUNT_TONES: Record<ShortlistItemStatus, PillTone> = {
-  to_review: "primary",
-  retained: "positive",
-  dismissed: "negative",
-};
 /** A labelled header button folded to its 40px icon under `sm`. */
 const PHONE_ICON = "max-sm:size-10 max-sm:px-0";
 
@@ -98,7 +87,6 @@ function ShortlistPage() {
   const items = useMemo(() => board.data?.items ?? [], [board.data]);
   const groups = useMemo(() => groupByStatus(items), [items]);
   const votes = useMemo(() => votesByItem(board.data?.votes ?? []), [board.data]);
-  const counts = useMemo(() => countByStatus(items), [items]);
   const commentCounts = board.data?.commentCounts;
   const userId = user?.id ?? null;
   const openItem = opened ? (items.find((item) => item.id === opened.id) ?? null) : null;
@@ -147,12 +135,23 @@ function ShortlistPage() {
       <div>
         <PageHeader sticky eyebrow={eyebrow} title={t("shortlists.title")} />
         <EmptyState
+          icon={shortlist.error ? <TriangleAlert /> : <ListChecks />}
           title={shortlist.error ? t("shortlists.boardError") : t("shortlists.notFound.title")}
-          text={shortlist.error ? undefined : t("shortlists.notFound.text")}
           action={
-            <Button asChild variant="outline">
-              <Link to="/app/shortlists">{t("shortlists.back")}</Link>
-            </Button>
+            shortlist.error ? (
+              <Button
+                type="button"
+                variant="outline"
+                icon={<RefreshCw />}
+                onClick={() => void shortlist.refresh()}
+              >
+                {t("common.retry")}
+              </Button>
+            ) : (
+              <Button asChild variant="outline">
+                <Link to="/app/shortlists">{t("shortlists.back")}</Link>
+              </Button>
+            )
           }
         />
       </div>
@@ -181,6 +180,7 @@ function ShortlistPage() {
         eyebrow={eyebrow}
         title={title}
         meta={
+          // The counts are the columns' own headings below; the header keeps the way to the brief.
           <>
             {briefId ? (
               <Link
@@ -190,18 +190,14 @@ function ShortlistPage() {
                 {t("shortlists.openBrief")}
               </Link>
             ) : null}
-            {brief ? (
-              <Pill tone={BRIEF_TONES[brief.status]} dot size="sm">
-                {t(`shortlists.brief.status.${brief.status}`)}
+            {brief && brief.status !== "open" ? (
+              <BriefStatusPill status={brief.status} size="sm" />
+            ) : null}
+            {!canAct ? (
+              <Pill size="sm" icon={<Eye />}>
+                {t("shortlists.readOnly")}
               </Pill>
             ) : null}
-            {ITEM_STATUSES.map((status) => (
-              <Fragment key={status}>
-                <Pill tone={counts[status] === 0 ? "neutral" : COUNT_TONES[status]} dot size="sm">
-                  {t(`shortlists.pill.${status}`, { count: counts[status] })}
-                </Pill>
-              </Fragment>
-            ))}
           </>
         }
         actions={
@@ -221,17 +217,17 @@ function ShortlistPage() {
         }
       />
 
-      {/* The sticky header folds its description away: the page's sentence reads under it. */}
-      <p className="mb-6 max-w-2xl text-body text-muted-foreground">
-        {t("shortlists.board.subtitle")}
-        {!canAct ? ` ${t("shortlists.viewer")}` : null}
-      </p>
-
       {board.error ? (
         <EmptyState
+          icon={<TriangleAlert />}
           title={t("shortlists.boardError")}
           action={
-            <Button type="button" variant="outline" onClick={() => void refreshBoard()}>
+            <Button
+              type="button"
+              variant="outline"
+              icon={<RefreshCw />}
+              onClick={() => void refreshBoard()}
+            >
               {t("common.retry")}
             </Button>
           }
@@ -250,7 +246,6 @@ function ShortlistPage() {
         <EmptyState
           icon={<UserPlus />}
           title={t("shortlists.board.empty.title")}
-          text={t("shortlists.board.empty.text")}
           action={canAct ? addLink : undefined}
         />
       ) : (
@@ -278,7 +273,7 @@ function ShortlistPage() {
         </div>
       )}
 
-      <div className="mt-12">
+      <div className="mt-8">
         <SharesPanel shortlistId={shortlistId} />
       </div>
 

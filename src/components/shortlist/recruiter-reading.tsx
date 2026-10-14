@@ -71,10 +71,7 @@ export function RecruiterReading({ match }: { match: MatchResult | null }) {
   if (!hasReading(reading)) return null;
   return (
     <section className="space-y-5">
-      <div>
-        <h3 className="text-base font-semibold text-ink">{t("shortlists.reading.title")}</h3>
-        <p className="mt-0.5 text-meta text-muted-foreground">{t("shortlists.reading.help")}</p>
-      </div>
+      <h3 className="text-base font-semibold text-ink">{t("shortlists.reading.title")}</h3>
       {reading.dimensions.length ? (
         <div>
           <h4 className="label-caps">{t("shortlists.reading.dimensions")}</h4>

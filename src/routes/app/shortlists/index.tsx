@@ -1,20 +1,23 @@
 /**
  * /app/shortlists: the organisation's shortlists, one per brief, newest
  * change first. Each row is the link to its board and shows what tells
- * shortlists apart: the brief's title and status, the three counts (to
- * review, retained, dismissed) as small pills, the people assigned on
- * it and when it last moved. A filter on the brief's state appears only
+ * shortlists apart: the brief's title (and its status when the brief is
+ * not open: the brief's own pill), the three counts (to review,
+ * retained, dismissed) as small pills, the people assigned on it and
+ * when it last moved. A filter on the brief's state appears only
  * once a brief is closed, so it never takes room it does not earn. Live
  * through realtime on shortlists and shortlist_items of the organisation.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { ListChecks, X } from "lucide-react";
+import { ListChecks, RefreshCw, TriangleAlert, X } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
-import { Pill, type PillTone } from "@/components/app-shell/pill";
+import { Pill } from "@/components/app-shell/pill";
+import { BriefStatusPill } from "@/components/briefs/brief-status-pill";
+import { STATUS_TONES } from "@/components/shortlist/item-bits";
 import { Button } from "@/components/ui/button";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { Segmented } from "@/components/ui/tabs";
@@ -22,7 +25,7 @@ import { BRIEFS_PATH } from "@/lib/activity/links";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
-import type { BriefStatus, ShortlistItemStatus } from "@/lib/db/types";
+import type { ShortlistItemStatus } from "@/lib/db/types";
 import { formatDateTime, formatRelative, useI18n } from "@/lib/i18n";
 import { useCurrentOrg } from "@/lib/org/org-context";
 import { listItemSummaries, listShortlists, type ShortlistListRow } from "@/lib/shortlists/queries";
@@ -50,12 +53,6 @@ interface ListData {
   assignees: Map<string, string[]>;
 }
 
-const BRIEF_TONES: Record<BriefStatus, PillTone> = { draft: "neutral", open: "positive", closed: "neutral" };
-const COUNT_TONES: Record<ShortlistItemStatus, PillTone> = {
-  to_review: "primary",
-  retained: "positive",
-  dismissed: "negative",
-};
 
 const MAX_AVATARS = 4;
 
@@ -106,9 +103,12 @@ function ShortlistsPage() {
   return (
     <div>
       <PageHeader
-        eyebrow={t("nav.shortlists")}
         title={t("shortlists.title")}
-        description={`${t("shortlists.subtitle")} ${countText}`}
+        meta={
+          <span role="status" className="text-meta font-medium text-muted-foreground tabular-nums">
+            {countText}
+          </span>
+        }
       />
 
       {showFilter ? (
@@ -128,9 +128,10 @@ function ShortlistsPage() {
 
       {list.error ? (
         <EmptyState
+          icon={<TriangleAlert />}
           title={t("shortlists.listError")}
           action={
-            <Button type="button" variant="outline" onClick={() => void refresh()}>
+            <Button type="button" variant="outline" icon={<RefreshCw />} onClick={() => void refresh()}>
               {t("common.retry")}
             </Button>
           }
@@ -143,7 +144,6 @@ function ShortlistsPage() {
         <EmptyState
           icon={<ListChecks />}
           title={t("shortlists.empty.title")}
-          text={t("shortlists.empty.text")}
           action={
             <Button asChild variant="outline">
               <Link to={BRIEFS_PATH}>{t("shortlists.empty.action")}</Link>
@@ -177,12 +177,19 @@ function ShortlistsPage() {
   );
 }
 
+/** "1 retenu", "3 retenus": one count of a shortlist, singular for one. */
+function useCountText(): (status: ShortlistItemStatus, count: number) => string {
+  const { t } = useI18n();
+  return (status, count) =>
+    count === 1 ? t(`shortlists.pill.${status}.one`) : t(`shortlists.pill.${status}`, { count });
+}
+
 /** A count as a small pill in its tone; a zero reads neutral so the eye lands on the real numbers. */
 function CountPill({ status, count }: { status: ShortlistItemStatus; count: number }) {
-  const { t } = useI18n();
+  const countText = useCountText();
   return (
-    <Pill tone={count === 0 ? "neutral" : COUNT_TONES[status]} dot size="sm">
-      {t(`shortlists.pill.${status}`, { count })}
+    <Pill tone={count === 0 ? "neutral" : STATUS_TONES[status]} dot size="sm">
+      {countText(status, count)}
     </Pill>
   );
 }
@@ -199,6 +206,7 @@ function ShortlistLine({
 }) {
   const { t, locale } = useI18n();
   const nameOf = useMemberNamer();
+  const countText = useCountText();
   const brief = row.briefs;
   const total = totalOf(counts);
   const profilesText =
@@ -213,11 +221,7 @@ function ShortlistLine({
       : assignees.length === 1
         ? t("shortlists.members.one")
         : t("shortlists.members.many", { count: assignees.length });
-  const countsText = t("shortlists.counts.line", {
-    to_review: counts.to_review,
-    retained: counts.retained,
-    dismissed: counts.dismissed,
-  });
+  const countsText = ITEM_STATUSES.map((status) => countText(status, counts[status])).join(" · ");
   return (
     <Link
       to="/app/shortlists/$shortlistId"
@@ -229,11 +233,8 @@ function ShortlistLine({
           <span className="min-w-0 truncate text-base font-semibold text-ink">
             {brief ? brief.title : t("shortlists.noBrief")}
           </span>
-          {brief ? (
-            <Pill tone={BRIEF_TONES[brief.status]} dot size="sm">
-              {t(`shortlists.brief.status.${brief.status}`)}
-            </Pill>
-          ) : null}
+          {/* Most briefs are open: only a draft or a closed one tells this row apart. */}
+          {brief && brief.status !== "open" ? <BriefStatusPill status={brief.status} size="sm" /> : null}
         </div>
         <p className="mt-0.5 text-meta text-muted-foreground" title={formatDateTime(locale, row.updated_at)}>
           {t("shortlists.updated", { when: formatRelative(locale, row.updated_at) })} · {profilesText}

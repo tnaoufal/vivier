@@ -47,7 +47,7 @@ function RemoveButton({ onClick, disabled }: { onClick: () => void; disabled: bo
 
 function AddButton({ label, onClick, disabled }: { label: string; onClick: () => void; disabled: boolean }) {
   return (
-    <Button type="button" size="sm" variant="outline" icon={<Plus />} onClick={onClick} disabled={disabled}>
+    <Button type="button" variant="outline" icon={<Plus />} onClick={onClick} disabled={disabled}>
       {label}
     </Button>
   );

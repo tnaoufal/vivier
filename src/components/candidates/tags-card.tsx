@@ -30,13 +30,13 @@ export function TagsCard({
         {canEdit ? (
           <Button
             type="button"
-            size="icon-sm"
+            size="icon"
             variant="ghost"
             icon={editing ? <Check /> : <Pencil />}
             onClick={() => setEditing((value) => !value)}
             aria-label={editing ? t("candidates.skills.done") : t("candidates.tags.edit")}
             aria-pressed={editing}
-            className="-my-1 text-muted-foreground hover:text-ink"
+            className="-my-2 text-muted-foreground hover:text-ink"
           />
         ) : null}
       </div>

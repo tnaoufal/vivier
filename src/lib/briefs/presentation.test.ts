@@ -1,20 +1,40 @@
 import { describe, expect, it } from "vitest";
 
-import type { Assessment, BriefRow, MatchResult, RoleProfile } from "@/lib/db/types";
+import type {
+  Assessment,
+  BriefRow,
+  CriterionResult,
+  MatchResult,
+  RoleProfile,
+} from "@/lib/db/types";
 
 import {
   analysisOfRow,
   arrivalIndexes,
+  BAND_STEPS,
+  bandStateOf,
   BRIEF_FILTERS,
   briefSubtitle,
   countByFilter,
   digestResults,
+  ETA_MIN_ELAPSED_MS,
   filterBriefs,
   firstLine,
+  firstSentence,
+  funnelOf,
   isBriefFilter,
   latestPerBrief,
-  tierGroup,
+  matchesOf,
+  mergeResults,
+  nearOf,
+  remainingMs,
+  requirementTally,
+  reservationLine,
+  stepOf,
+  synthesisLine,
+  tierCounts,
   withAnalysis,
+  type BandInputs,
   type LatestAnalysis,
 } from "./presentation";
 
@@ -136,7 +156,7 @@ describe("latestPerBrief", () => {
 });
 
 describe("digestResults", () => {
-  it("counts the results, the ones the model read and the ones to present", () => {
+  it("counts the results, the ones the model read and the ones that match, whatever their tier", () => {
     const digest = digestResults([
       result("a", assessed("fit", { tier: "A" })),
       result("b", assessed("fit")),
@@ -145,7 +165,7 @@ describe("digestResults", () => {
       result("e", assessed("no_fit")),
       result("f"),
     ]);
-    expect(digest).toEqual({ total: 6, assessed: 5, present: 2 });
+    expect(digest).toEqual({ total: 6, assessed: 5, present: 3 });
   });
 
   it("reads an empty analysis as zeros", () => {
@@ -176,6 +196,37 @@ describe("analysisOfRow", () => {
         assessed: 2,
         present: 1,
       },
+    });
+  });
+
+  it("prefers the summary columns the database keeps, so a row without its results still counts", () => {
+    expect(
+      analysisOfRow({
+        ...row,
+        results: "too large",
+        result_count: 140,
+        assessed_count: 96,
+        match_count: 12,
+      }),
+    ).toEqual({
+      briefId: "b1",
+      analysis: {
+        searchId: "s1",
+        createdAt: "2026-10-03T10:00:00+00:00",
+        total: 140,
+        assessed: 96,
+        present: 12,
+      },
+    });
+  });
+
+  it("counts the results when a summary column is missing or not a number", () => {
+    expect(analysisOfRow({ ...row, result_count: 3, assessed_count: null })?.analysis).toEqual({
+      searchId: "s1",
+      createdAt: "2026-10-03T10:00:00+00:00",
+      total: 3,
+      assessed: 2,
+      present: 1,
     });
   });
 
@@ -212,14 +263,6 @@ describe("withAnalysis", () => {
   });
 });
 
-describe("tierGroup", () => {
-  it("names the group a tier repeats, none for the tier no group is named after", () => {
-    expect(tierGroup("A")).toBe("present");
-    expect(tierGroup("B")).toBe("deeper");
-    expect(tierGroup("C")).toBeNull();
-  });
-});
-
 describe("arrivalIndexes", () => {
   it("gives the first list its turns in order", () => {
     const turns = arrivalIndexes(new Map(), ["a", "b", "c"]);
@@ -246,5 +289,289 @@ describe("arrivalIndexes", () => {
     expect(next.get("b")).toBe(1);
     expect(next.get("c")).toBe(0);
     expect(next.size).toBe(2);
+  });
+});
+
+function tiered(
+  id: string,
+  decision: Assessment["decision"],
+  score: number,
+  extra: Partial<Assessment> = {},
+): MatchResult {
+  return result(id, assessed(decision, { score, ...extra }));
+}
+
+describe("matchesOf and nearOf", () => {
+  const results = [
+    tiered("c", "fit", 90, { tier: "C" }),
+    tiered("near-low", "borderline", 55),
+    tiered("a2", "fit", 70, { tier: "A" }),
+    tiered("none", "fit", 99),
+    tiered("out", "no_fit", 20),
+    result("unread"),
+    tiered("a1", "fit", 85, { tier: "A" }),
+    tiered("near-high", "borderline", 68, { tier: "B" }),
+    tiered("b", "fit", 95, { tier: "B" }),
+  ];
+
+  it("keeps only the matches, tier first, then the score, an untiered one last", () => {
+    expect(matchesOf(results).map((entry) => entry.candidateId)).toEqual([
+      "a1",
+      "a2",
+      "b",
+      "c",
+      "none",
+    ]);
+  });
+
+  it("keeps only the near profiles, in the same order", () => {
+    expect(nearOf(results).map((entry) => entry.candidateId)).toEqual(["near-high", "near-low"]);
+  });
+
+  it("answers empty lists for an analysis no model read", () => {
+    expect(matchesOf([result("x")])).toEqual([]);
+    expect(nearOf([])).toEqual([]);
+  });
+
+  it("splits the matches by tier, an untiered match and the other decisions in none", () => {
+    expect(tierCounts(results)).toEqual({ A: 2, B: 1, C: 1 });
+    expect(tierCounts([])).toEqual({ A: 0, B: 0, C: 0 });
+  });
+});
+
+describe("funnelOf", () => {
+  const results = [
+    tiered("a", "fit", 90),
+    tiered("b", "fit", 80),
+    tiered("c", "borderline", 60),
+    tiered("d", "no_fit", 20),
+    result("e"),
+  ];
+
+  it("reads the first two figures off the triage and the last two off the results", () => {
+    expect(funnelOf(results, { read: 1091, yes: 30, close: 12, unknown: 4 })).toEqual({
+      analysed: 1091,
+      kept: 46,
+      assessed: 4,
+      matches: 2,
+    });
+  });
+
+  it("counts every result as read and kept without a triage", () => {
+    expect(funnelOf(results, null)).toEqual({ analysed: 5, kept: 5, assessed: 4, matches: 2 });
+  });
+
+  it("reads an empty analysis as zeros", () => {
+    expect(funnelOf([], { read: 0, yes: 0, close: 0, unknown: 0 })).toEqual({
+      analysed: 0,
+      kept: 0,
+      assessed: 0,
+      matches: 0,
+    });
+  });
+});
+
+describe("firstSentence", () => {
+  it("stops at the first full stop followed by a space", () => {
+    expect(firstSentence("  Huit ans en contrôle de gestion. Puis un poste de DAF.  ")).toBe(
+      "Huit ans en contrôle de gestion.",
+    );
+  });
+
+  it("never splits a number, and stops at a question or exclamation mark", () => {
+    expect(firstSentence("Environ 3.5 ans dans le métier ? Oui.")).toBe(
+      "Environ 3.5 ans dans le métier ?",
+    );
+  });
+
+  it("answers the whole text without an end, and nothing for a blank one", () => {
+    expect(firstSentence("Un parcours commercial B2B")).toBe("Un parcours commercial B2B");
+    expect(firstSentence("   ")).toBe("");
+    expect(firstSentence(null)).toBe("");
+  });
+});
+
+describe("synthesisLine and reservationLine", () => {
+  it("prefers the tiering's note, then the summary's first sentence", () => {
+    expect(
+      synthesisLine(tiered("a", "fit", 90, { rankNote: "  Le plus proche du poste.  " })),
+    ).toBe("Le plus proche du poste.");
+    expect(
+      synthesisLine(tiered("a", "fit", 90, { rankNote: " ", summary: "Six ans. Puis autre." })),
+    ).toBe("Six ans.");
+    expect(synthesisLine(tiered("a", "fit", 90, { rankNote: null, summary: "" }))).toBeNull();
+  });
+
+  it("answers null for a profile no model read", () => {
+    expect(synthesisLine(result("x"))).toBeNull();
+    expect(reservationLine(result("x"))).toBeNull();
+  });
+
+  it("names the main reservation: the second opinion's doubt, then the first concern", () => {
+    const doubt = tiered("a", "borderline", 60, {
+      concerns: ["Pas de management"],
+      challenge: { verdict: "doubt", reason: "Postes très courts", evidence: null },
+    });
+    expect(reservationLine(doubt)).toBe("Postes très courts");
+    const concern = tiered("a", "borderline", 60, {
+      concerns: ["  Pas de management "],
+      challenge: { verdict: "confirmed", reason: "ignored", evidence: null },
+    });
+    expect(reservationLine(concern)).toBe("Pas de management");
+    expect(reservationLine(tiered("a", "borderline", 60, { summary: "Un profil voisin." }))).toBe(
+      "Un profil voisin.",
+    );
+  });
+});
+
+describe("requirementTally", () => {
+  function verdict(id: string, value: CriterionResult["verdict"]): CriterionResult {
+    return { criterionId: id, verdict: value, evidence: null };
+  }
+
+  it("counts the criteria found out of every criterion", () => {
+    expect(
+      requirementTally({
+        verdicts: [
+          verdict("1", "match"),
+          verdict("2", "partial"),
+          verdict("3", "not_stated"),
+          verdict("4", "match"),
+        ],
+      }),
+    ).toEqual({ met: 2, total: 4 });
+    expect(requirementTally({ verdicts: [] })).toEqual({ met: 0, total: 0 });
+  });
+});
+
+describe("bandStateOf", () => {
+  const settled: BandInputs = {
+    model: true,
+    method: "triage",
+    running: false,
+    needsCheck: false,
+    criteriaCount: 4,
+    resultCount: 40,
+    poolSize: 1091,
+    triagePending: 0,
+    promotionPending: false,
+    stagePending: 0,
+  };
+
+  it("says running first, whatever else holds", () => {
+    expect(bandStateOf({ ...settled, running: true, method: null })).toBe("running");
+    expect(bandStateOf({ ...settled, running: true, needsCheck: true })).toBe("running");
+  });
+
+  it("says empty without an analysis, then the check before anything else", () => {
+    expect(bandStateOf({ ...settled, method: null })).toBe("empty");
+    expect(bandStateOf({ ...settled, needsCheck: true, triagePending: 1091 })).toBe("needsCheck");
+  });
+
+  it("reads a whole-pool analysis as done once nothing waits, incomplete otherwise", () => {
+    expect(bandStateOf(settled)).toBe("done");
+    expect(bandStateOf({ ...settled, resultCount: 0 })).toBe("done");
+    expect(bandStateOf({ ...settled, triagePending: 3 })).toBe("incomplete");
+    expect(bandStateOf({ ...settled, promotionPending: true })).toBe("incomplete");
+    expect(bandStateOf({ ...settled, stagePending: 6 })).toBe("incomplete");
+  });
+
+  it("never reads a whole-pool analysis as text only, even without a model now", () => {
+    expect(bandStateOf({ ...settled, model: false })).toBe("done");
+    expect(bandStateOf({ ...settled, model: false, criteriaCount: 0 })).toBe("done");
+  });
+
+  it("reads an analysis on the text alone without a model or without criteria", () => {
+    expect(bandStateOf({ ...settled, method: "hybrid", model: false })).toBe("textOnly");
+    expect(bandStateOf({ ...settled, method: "text", criteriaCount: 0, resultCount: 1091 })).toBe(
+      "textOnly",
+    );
+  });
+
+  it("reads an older analysis that read part of the pool as legacy", () => {
+    expect(bandStateOf({ ...settled, method: "hybrid", resultCount: 120 })).toBe("legacy");
+    expect(bandStateOf({ ...settled, method: "text", poolSize: null })).toBe("legacy");
+    expect(bandStateOf({ ...settled, method: "text", model: null, resultCount: 120 })).toBe(
+      "legacy",
+    );
+  });
+
+  it("reads an older analysis of the whole pool like any other", () => {
+    expect(bandStateOf({ ...settled, method: "text", resultCount: 150, poolSize: 150 })).toBe(
+      "done",
+    );
+    expect(
+      bandStateOf({
+        ...settled,
+        method: "text",
+        resultCount: 150,
+        poolSize: 150,
+        stagePending: 2,
+      }),
+    ).toBe("incomplete");
+  });
+});
+
+describe("stepOf", () => {
+  it("puts the six stages on the four steps of the stepper", () => {
+    expect(BAND_STEPS).toEqual(["triage", "read", "challenge", "rank"]);
+    expect(stepOf("triage")).toBe(0);
+    expect(stepOf("promote")).toBe(0);
+    expect(stepOf("read")).toBe(1);
+    expect(stepOf("challenge")).toBe(2);
+    expect(stepOf("rank")).toBe(3);
+    expect(stepOf("final")).toBe(3);
+  });
+});
+
+describe("remainingMs", () => {
+  const start = 1_000_000;
+
+  it("answers null until a batch came back and the stage ran long enough", () => {
+    expect(
+      remainingMs({ done: 40, total: 100, doneAtStart: 40, startedAt: start, now: start + 60_000 }),
+    ).toBeNull();
+    expect(
+      remainingMs({
+        done: 80,
+        total: 100,
+        doneAtStart: 40,
+        startedAt: start,
+        now: start + ETA_MIN_ELAPSED_MS - 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("projects the pace seen since the stage started onto what is left", () => {
+    expect(
+      remainingMs({ done: 80, total: 200, doneAtStart: 40, startedAt: start, now: start + 20_000 }),
+    ).toBe(60_000);
+  });
+
+  it("answers 0 once nothing is left", () => {
+    expect(
+      remainingMs({ done: 100, total: 100, doneAtStart: 0, startedAt: start, now: start + 1 }),
+    ).toBe(0);
+  });
+});
+
+describe("mergeResults", () => {
+  it("replaces an entry in place and appends the ones the results lack", () => {
+    const before = [result("a"), result("b"), result("c")];
+    const merged = mergeResults(before, [tiered("b", "fit", 90), tiered("d", "no_fit", 10)]);
+    expect(merged.map((entry) => entry.candidateId)).toEqual(["a", "b", "c", "d"]);
+    expect(merged[1]?.assessment?.decision).toBe("fit");
+    expect(before[1]?.assessment).toBeUndefined();
+  });
+
+  it("answers the same list for an empty answer", () => {
+    const before = [result("a")];
+    expect(mergeResults(before, [])).toBe(before);
+  });
+
+  it("appends a repeated new entry once, the last one given", () => {
+    const merged = mergeResults([], [tiered("x", "borderline", 50), tiered("x", "fit", 80)]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.assessment?.decision).toBe("fit");
   });
 });

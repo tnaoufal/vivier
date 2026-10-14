@@ -7,11 +7,12 @@
  * row per requirement of the brief through the shared RequirementList
  * (from the assessment when there is one, else from the deterministic
  * verdicts). An item added without a match says so instead of showing
- * a score of zero; a model's sentence is always introduced as the
- * model's.
+ * a score of zero; the fit is marked as the model's reading by a pill
+ * next to its heading, never a paragraph.
  */
-import { CircleDashed } from "lucide-react";
+import { CircleDashed, Sparkles } from "lucide-react";
 
+import { EmptyState } from "@/components/app-shell/empty-state";
 import { Pill } from "@/components/app-shell/pill";
 import { RequirementList } from "@/components/app-shell/requirement-list";
 import { ScoreRing } from "@/components/app-shell/score-ring";
@@ -22,11 +23,17 @@ import { assessedScore, modelReading, requirementRowsOf } from "@/lib/shortlists
 import { ScoreLine } from "./item-bits";
 import { RecruiterReading } from "./recruiter-reading";
 
-function Heading({ title, help }: { title: string; help?: string | undefined }) {
+/** A section title, with the "model's reading" pill when what follows is the model's. */
+function Heading({ title, byModel = false }: { title: string; byModel?: boolean }) {
+  const { t } = useI18n();
   return (
-    <div>
+    <div className="flex flex-wrap items-center gap-2">
       <h3 className="text-base font-semibold text-ink">{title}</h3>
-      {help ? <p className="mt-0.5 text-meta text-muted-foreground">{help}</p> : null}
+      {byModel ? (
+        <Pill size="sm" tone="primary" icon={<Sparkles />}>
+          {t("shortlists.drawer.assessment")}
+        </Pill>
+      ) : null}
     </div>
   );
 }
@@ -43,9 +50,7 @@ export function VerdictList({
     return (
       <section className="space-y-3">
         <Heading title={t("shortlists.drawer.fit")} />
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-          {t("shortlists.drawer.match.none")}
-        </p>
+        <EmptyState compact inset icon={<CircleDashed />} title={t("shortlists.drawer.match.none")} />
       </section>
     );
   }
@@ -57,7 +62,7 @@ export function VerdictList({
   return (
     <div className="space-y-8">
       <section className="space-y-4">
-        <Heading title={t("shortlists.drawer.fit")} help={t("shortlists.drawer.fit.help")} />
+        <Heading title={t("shortlists.drawer.fit")} byModel />
         <div className="flex items-center gap-4">
           <ScoreRing score={score} label={scoreLabel} size="lg" />
           <div className="min-w-0 flex-1 space-y-1.5">
@@ -76,12 +81,9 @@ export function VerdictList({
             <ScoreLine match={match} className="block" />
           </div>
         </div>
-        <div>
-          <h4 className="label-caps">{t("shortlists.drawer.assessment")}</h4>
-          <p className="mt-1 whitespace-pre-line text-body text-ink">
-            {reading ?? <span className="text-muted-foreground">{t("shortlists.drawer.match.noWhy")}</span>}
-          </p>
-        </div>
+        <p className="whitespace-pre-line text-body text-ink">
+          {reading ?? <span className="text-muted-foreground">{t("shortlists.drawer.match.noWhy")}</span>}
+        </p>
       </section>
 
       <RecruiterReading match={match} />
@@ -89,7 +91,7 @@ export function VerdictList({
       <section className="space-y-3">
         <Heading title={t("shortlists.drawer.match")} />
         {rows.length ? (
-          <RequirementList rows={rows} markLabel={markLabel} requiredLabel={t("shortlists.drawer.required")} />
+          <RequirementList rows={rows} markLabel={markLabel} requiredLabel={t("shortlists.drawer.required")} stagger />
         ) : (
           <p className="text-sm text-muted-foreground">{t("shortlists.drawer.match.empty")}</p>
         )}

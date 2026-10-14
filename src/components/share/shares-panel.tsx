@@ -7,7 +7,7 @@
  * activities of the organisation (realtime) and on demand.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Eye, RefreshCw, Share2 } from "lucide-react";
+import { Eye, RefreshCw, Share2, TriangleAlert } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { EmptyState } from "@/components/app-shell/empty-state";
@@ -99,7 +99,6 @@ export function SharesPanel({ shortlistId }: { shortlistId: string }) {
     <Section
       title={t("shares.panel.title")}
       count={query.data ? shares.length : undefined}
-      description={t("shares.panel.text")}
       action={
         <Button
           type="button"
@@ -118,9 +117,10 @@ export function SharesPanel({ shortlistId }: { shortlistId: string }) {
       {query.error ? (
         <EmptyState
           compact
+          icon={<TriangleAlert />}
           title={t("shares.panel.error")}
           action={
-            <Button type="button" variant="outline" onClick={() => void query.refresh()}>
+            <Button type="button" variant="outline" icon={<RefreshCw />} onClick={() => void query.refresh()}>
               {t("common.retry")}
             </Button>
           }
@@ -130,7 +130,7 @@ export function SharesPanel({ shortlistId }: { shortlistId: string }) {
           <SkeletonRows rows={2} avatar={false} />
         </div>
       ) : !shares.length ? (
-        <EmptyState compact icon={<Share2 />} title={t("shares.panel.empty.title")} text={t("shares.panel.empty.text")} />
+        <EmptyState compact icon={<Share2 />} title={t("shares.panel.empty.title")} />
       ) : (
         <ul className="sheet stagger divide-y divide-border overflow-hidden">
           {shares.map((share) => {
@@ -193,7 +193,7 @@ export function SharesPanel({ shortlistId }: { shortlistId: string }) {
                   )}
                 </div>
                 {canAct && state === "active" ? (
-                  <Button type="button" variant="outline" size="sm" onClick={() => setPending(share)} disabled={busy}>
+                  <Button type="button" variant="outline" onClick={() => setPending(share)} disabled={busy}>
                     {t("shares.panel.revoke")}
                   </Button>
                 ) : null}

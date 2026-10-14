@@ -117,11 +117,10 @@ function Paragraphs({ text, className }: { text: string; className: string }) {
 }
 
 /** A section title inside a sheet: the label scale, with a hairline under it. */
-function Caption({ children, help }: { children: string; help?: string | undefined }) {
+function Caption({ children }: { children: string }) {
   return (
     <div className="mb-3 border-b border-border pb-2">
       <h3 className="label-caps text-ink">{children}</h3>
-      {help ? <p className="mt-0.5 text-meta text-muted-foreground">{help}</p> : null}
     </div>
   );
 }
@@ -239,9 +238,6 @@ function Cover({ share, t }: { share: OpenShare; t: Translate }) {
             value={formatDate(share.locale, share.expiresAt)}
           />
         </dl>
-        <p className="mt-3 text-meta text-muted-foreground print:hidden">
-          {t("shares.page.print.help")}
-        </p>
       </div>
       {share.intro.trim() ? (
         <Paragraphs text={share.intro} className="max-w-3xl space-y-3 text-body text-foreground" />
@@ -278,14 +274,9 @@ function MetCell({ item, t }: { item: ShareItem; t: Translate }) {
 function Overview({ items, t }: { items: ShareItem[]; t: Translate }) {
   return (
     <section className="space-y-4 print:break-after-page" aria-labelledby="dossier-overview">
-      <div>
-        <h2 id="dossier-overview" className="font-display text-xl text-ink">
-          {t("shares.page.overview")}
-        </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          {t("shares.page.overview.text")} {t("shares.page.requirements.help")}
-        </p>
-      </div>
+      <h2 id="dossier-overview" className="font-display text-xl text-ink">
+        {t("shares.page.overview")}
+      </h2>
       <div className="sheet overflow-hidden print:border-0 print:shadow-none">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -319,7 +310,7 @@ function Overview({ items, t }: { items: ShareItem[]; t: Translate }) {
                   </td>
                   <td className="px-4 py-3 sm:px-6">
                     <span className="flex min-w-0 items-center gap-3">
-                      <Avatar name={item.name} size="sm" className="print:hidden" />
+                      <Avatar name={item.name} size="sm" className="print:hidden" decorative />
                       <span className="min-w-0">
                         <span className="block max-w-xs truncate font-medium text-ink">
                           {item.name}
@@ -360,17 +351,15 @@ function Points({
   title,
   points,
   empty,
-  help,
 }: {
   title: string;
   points: string[];
   empty?: string | undefined;
-  help?: string | undefined;
 }) {
   if (!points.length && !empty) return null;
   return (
     <section>
-      <Caption help={help}>{title}</Caption>
+      <Caption>{title}</Caption>
       {points.length ? (
         <ul className="list-disc space-y-1.5 pl-5 text-body text-foreground">
           {points.map((point, index) => (
@@ -405,7 +394,13 @@ function Sheet({
     <article className="sheet space-y-8 p-6 sm:p-8 print:border-0 print:p-0 print:shadow-none">
       <header className="flex flex-wrap items-start justify-between gap-6">
         <div className="flex min-w-0 flex-1 items-start gap-4">
-          <Avatar name={item.name} size="lg" variant="profile" className="mt-1 print:hidden" />
+          <Avatar
+            name={item.name}
+            size="lg"
+            variant="profile"
+            className="mt-1 print:hidden"
+            decorative
+          />
           <div className="min-w-0 flex-1">
             <p className="label-caps">{t("shares.page.sheet", { index: index + 1, count })}</p>
             <h2 className="mt-1 font-display text-2xl text-ink break-words">{item.name}</h2>
@@ -430,7 +425,7 @@ function Sheet({
       </section>
 
       <section>
-        <Caption help={t("shares.page.requirements.help")}>{t("shares.page.requirements")}</Caption>
+        <Caption>{t("shares.page.requirements")}</Caption>
         {rows.length ? (
           <>
             <p className="mb-1 text-meta text-muted-foreground tabular-nums">
@@ -462,11 +457,7 @@ function Sheet({
       </div>
 
       {/* Only when the analysis named some: a sheet without questions says nothing rather than "none". */}
-      <Points
-        title={t("shares.page.questions")}
-        points={item.questions}
-        help={t("shares.page.questions.help")}
-      />
+      <Points title={t("shares.page.questions")} points={item.questions} />
 
       <section>
         <Caption>{t("shares.page.facts")}</Caption>
@@ -507,7 +498,7 @@ function Sheet({
 
       {item.documentId ? (
         <div>
-          <Button asChild variant="outline" size="sm" icon={<FileText />} className="print:hidden">
+          <Button asChild variant="outline" icon={<FileText />} className="print:hidden">
             <a href={shareCvPath(token, item.documentId)} target="_blank" rel="noopener noreferrer">
               {t("shares.page.cv")}
             </a>

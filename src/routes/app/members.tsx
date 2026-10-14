@@ -2,14 +2,15 @@
  * The team page, for administrators and owners: the members with their
  * roles and the pending invitations on the left, the invite form (the
  * page's one primary action) and the plan card with its meters on the
- * right. A member or a viewer sees one sentence instead. Every removal
+ * right. A member or a viewer sees the refusal instead. Every removal
  * is confirmed; the database keeps the last owner.
  */
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { UserPlus } from "lucide-react";
+import { RefreshCw, TriangleAlert, UserPlus } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
+import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Pill } from "@/components/app-shell/pill";
 import { Section } from "@/components/app-shell/section";
@@ -63,7 +64,7 @@ function MembersPage() {
   const allowed = can("admin");
   const userId = user?.id ?? "";
 
-  const { data, loading, refresh } = useQuery(
+  const { data, loading, error, refresh } = useQuery(
     `members:${org.id}`,
     async () => {
       const supabase = await requireSupabase();
@@ -90,8 +91,8 @@ function MembersPage() {
   if (!allowed) {
     return (
       <>
-        <PageHeader eyebrow={org.name} title={t("nav.members")} description={t("members.subtitle", { org: org.name })} />
-        <NotAllowed text={t("members.notAllowed")} />
+        <PageHeader eyebrow={org.name} title={t("nav.members")} />
+        <NotAllowed />
       </>
     );
   }
@@ -175,7 +176,6 @@ function MembersPage() {
       <PageHeader
         eyebrow={org.name}
         title={t("nav.members")}
-        description={t("members.subtitle", { org: org.name })}
         meta={
           ready && seatsUsed !== null ? (
             <Pill tone={seatsFull ? "caution" : "neutral"} dot {...(seatsText ? { title: seatsText } : {})}>
@@ -191,26 +191,39 @@ function MembersPage() {
       />
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
-        <div className="space-y-8">
-          <Section title={t("nav.members")} count={ready ? members.length : undefined}>
-            {!ready ? (
-              <ListSkeleton />
-            ) : (
-              <MembersTable
-                members={members}
-                currentUserId={userId}
-                actorRole={role}
-                busyUserId={busyUserId}
-                onRoleChange={(member, next) => void handleRoleChange(member, next)}
-                onRemove={setRemoving}
-              />
-            )}
-          </Section>
+        {/* A failed read is said as such: an empty team would be a false fact. */}
+        {error && !data ? (
+          <EmptyState
+            icon={<TriangleAlert />}
+            title={t("common.error")}
+            action={
+              <Button type="button" variant="outline" icon={<RefreshCw />} onClick={() => void refresh()}>
+                {t("common.retry")}
+              </Button>
+            }
+          />
+        ) : (
+          <div className="space-y-8">
+            <Section title={t("nav.members")} count={ready ? members.length : undefined}>
+              {!ready ? (
+                <ListSkeleton />
+              ) : (
+                <MembersTable
+                  members={members}
+                  currentUserId={userId}
+                  actorRole={role}
+                  busyUserId={busyUserId}
+                  onRoleChange={(member, next) => void handleRoleChange(member, next)}
+                  onRemove={setRemoving}
+                />
+              )}
+            </Section>
 
-          <Section title={t("members.invitations")} count={ready ? invitations.length : undefined}>
-            {!ready ? <ListSkeleton /> : <InvitationsList invitations={invitations} busyId={busyInvitationId} onRevoke={setRevoking} />}
-          </Section>
-        </div>
+            <Section title={t("members.invitations")} count={ready ? invitations.length : undefined}>
+              {!ready ? <ListSkeleton /> : <InvitationsList invitations={invitations} busyId={busyInvitationId} onRevoke={setRevoking} />}
+            </Section>
+          </div>
+        )}
 
         <aside className="space-y-6 lg:sticky lg:top-8">
           <InviteForm id={INVITE_ANCHOR} orgId={org.id} disabled={seatsFull} onInvited={() => void refresh()} />

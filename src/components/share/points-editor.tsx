@@ -69,7 +69,6 @@ export function PointsEditor({
       <Button
         type="button"
         variant="outline"
-        size="sm"
         icon={<Plus />}
         disabled={disabled || points.length >= max}
         onClick={onAdd}

@@ -6,9 +6,9 @@
  * and recorded as a queued document. After each lot the processor is
  * poked with the ids stored, so profiles appear while the import runs;
  * a missed poke is quiet (the service polls its queue). The dialog
- * shows the overall progress, four counters, the current lot alone (the
- * list never holds 10 000 rows) and, once over, the failed files with a
- * retry. Closing is refused while a lot runs; between lots the person
+ * shows the overall progress, four counters (the summary: no sentence
+ * repeats them), the current lot alone (the list never holds 10 000
+ * rows) and, once over, the failed files with a retry. Closing is refused while a lot runs; between lots the person
  * may stop, and resume later. With a `candidate`, every new document is
  * attached to that profile so the processor merges into it. On opening,
  * the dialog reads what the month's quota has left (the CVs processed
@@ -326,6 +326,12 @@ export function UploadDialog({
         ? t("candidates.upload.quota.beyond.one")
         : t("candidates.upload.quota.beyond.many", { count: formatCount(locale, beyond) });
   const title = candidate ? t("candidates.upload.titleFor", { name: candidate.name }) : t("candidates.upload.title");
+  const stoppedText =
+    phase !== "stopped"
+      ? null
+      : summary.skipped === 1
+        ? t("candidates.upload.stopped.one")
+        : t("candidates.upload.stopped.many", { count: formatCount(locale, summary.skipped) });
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -360,6 +366,10 @@ export function UploadDialog({
 
         {/* Scrolls only when a short screen cannot hold the whole dialog; the lists scroll on their own. */}
         <DialogBody className="space-y-6">
+          {/* Mounted with the dialog, so the outcome of a run is announced when it lands. */}
+          <p className="sr-only" role="status">
+            {over ? [stoppedText, note].filter((part) => part).join(" ") : ""}
+          </p>
           {phase === "pick" ? (
             <div
               onDragOver={(event) => {
@@ -475,20 +485,7 @@ export function UploadDialog({
 
           {over ? (
             <div className="space-y-3 text-sm">
-              <p className="text-ink">
-                {t("candidates.upload.summary", {
-                  uploaded: formatCount(locale, summary.uploaded),
-                  duplicate: formatCount(locale, summary.duplicate),
-                  failed: formatCount(locale, summary.failed),
-                })}
-              </p>
-              {phase === "stopped" ? (
-                <p className="text-ink">
-                  {summary.skipped === 1
-                    ? t("candidates.upload.stopped.one")
-                    : t("candidates.upload.stopped.many", { count: formatCount(locale, summary.skipped) })}
-                </p>
-              ) : null}
+              {stoppedText ? <p className="text-ink">{stoppedText}</p> : null}
               {note ? <p className="text-muted-foreground">{note}</p> : null}
 
               {failedItems.length ? (
@@ -513,7 +510,7 @@ export function UploadDialog({
                           : t("candidates.upload.failed.show", { count: formatCount(locale, failedItems.length) })}
                       </span>
                     </button>
-                    <Button type="button" variant="outline" size="sm" icon={<RefreshCw />} onClick={() => void retry()}>
+                    <Button type="button" variant="outline" icon={<RefreshCw />} onClick={() => void retry()}>
                       {t("candidates.upload.retryFailed")}
                     </Button>
                   </div>

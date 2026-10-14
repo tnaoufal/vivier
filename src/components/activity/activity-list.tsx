@@ -5,8 +5,10 @@
  * (relative, the exact time on hover) and a link to the brief or the
  * candidate the row points at. A row without an actor (the service read
  * a document) shows its family's icon instead of a face. Shared by the
- * dashboard (the last few) and the activity page (paged). Rows rise in
- * once, one after the other; a refresh keeps the rows that are there.
+ * dashboard (the last few, under its section's h2: days are h3) and the
+ * activity page (paged, under the page's h1: days are h2, so headings
+ * never skip a level). Rows rise in once, one after the other; a refresh
+ * keeps the rows that are there.
  */
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
@@ -34,6 +36,7 @@ export function ActivityList({
   loading,
   emptyState,
   grouped = true,
+  headingLevel = 3,
   className,
 }: {
   rows: ActivityRow[];
@@ -43,9 +46,12 @@ export function ActivityList({
   emptyState: ReactNode;
   /** Day headings between the rows; off for a short list that fits one glance. */
   grouped?: boolean;
+  /** The level of the day headings: 2 directly under a page title, 3 inside a section. */
+  headingLevel?: 2 | 3;
   className?: string;
 }) {
   const { locale, t } = useI18n();
+  const DayHeading = headingLevel === 2 ? "h2" : "h3";
   if (loading && rows.length === 0) {
     return (
       <div className={cn("sheet overflow-hidden", className)}>
@@ -60,9 +66,9 @@ export function ActivityList({
       {groups.map((group) => (
         <section key={group.key} className="border-t border-border first:border-t-0">
           {group.label ? (
-            <h3 className="label-caps border-b border-border bg-muted/40 px-4 py-2 sm:px-6">
+            <DayHeading className="label-caps border-b border-border bg-muted/40 px-4 py-2 sm:px-6">
               {dayTitle(group.label, locale, t)}
-            </h3>
+            </DayHeading>
           ) : null}
           <ol className="stagger">
             {group.rows.map((row) => (
@@ -71,8 +77,8 @@ export function ActivityList({
                 className={cn(
                   "sheet-row rise-in relative items-start",
                   // The rail: a hairline above the disc (not on the first row) and below it (not on the last), through the padding, so the rows read as one timeline.
-                  "before:absolute before:left-[30px] before:top-0 before:h-[18px] before:w-px before:bg-border first:before:hidden sm:before:left-[38px]",
-                  "after:absolute after:bottom-0 after:left-[30px] after:top-[46px] after:w-px after:bg-border last:after:hidden sm:after:left-[38px]",
+                  "before:absolute before:left-7.5 before:top-0 before:h-4.5 before:w-px before:bg-border first:before:hidden sm:before:left-9.5",
+                  "after:absolute after:bottom-0 after:left-7.5 after:top-11.5 after:w-px after:bg-border last:after:hidden sm:after:left-9.5",
                 )}
               >
                 <ActivityItem row={row} names={names} />
@@ -94,7 +100,7 @@ function ActivityItem({ row, names }: { row: ActivityRow; names: ActivityNames }
   return (
     <>
       {actorName ? (
-        <Avatar name={actorName} size="sm" className="relative mt-0.5" />
+        <Avatar name={actorName} size="sm" className="relative mt-0.5" decorative />
       ) : (
         <span
           className="relative mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground [&_svg]:size-3.5"

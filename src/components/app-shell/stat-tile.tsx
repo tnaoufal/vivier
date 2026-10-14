@@ -8,13 +8,15 @@
  * assistive technologies, as the text in its place; never a zero that
  * would look like a fact. A tile that follows work in progress
  * draws a thin bar under its number (`progress`: done out of total);
- * `hint` is one short sentence under the number (a trend, a period).
+ * `hint` is a few words under the number, only when the label alone
+ * does not say what is counted. Digits follow the person's language.
  */
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { useT } from "@/lib/i18n";
+import { formatCount } from "@/lib/candidates/format";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 import { ProgressBar } from "./progress-bar";
@@ -41,7 +43,7 @@ export function StatTile({
   hint?: ReactNode;
   className?: string;
 }) {
-  const t = useT();
+  const { t, locale } = useI18n();
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
@@ -63,7 +65,7 @@ export function StatTile({
               <span className="sr-only">{t("dashboard.statsUnread")}</span>
             </>
           ) : (
-            value.toLocaleString()
+            formatCount(locale, value)
           )}
         </span>
       )}

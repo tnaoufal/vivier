@@ -1,6 +1,7 @@
 /**
  * The criteria of a brief as rows (criterion-row.tsx), with the model's
- * proposals above them (criteria-proposals.tsx). Rows are edited
+ * proposals above them (criteria-proposals.tsx) and how they are read
+ * behind an info icon beside the title. Rows are edited
  * locally and saved together to briefs.criteria; a row without a label
  * or a value is not saved, nor is a second role (a brief is one job:
  * the row says so under itself). When the brief has a role profile, the
@@ -12,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 
+import { InfoTip } from "@/components/app-shell/info-tip";
 import { Button } from "@/components/ui/button";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import {
@@ -131,7 +133,7 @@ export function CriteriaEditor({
 
   return (
     <section className="sheet space-y-5 p-6">
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-1">
         <h2 className="text-base font-semibold text-ink">
           {t("briefs.criteria.title")}
           {rows.length ? (
@@ -140,7 +142,7 @@ export function CriteriaEditor({
             </span>
           ) : null}
         </h2>
-        <p className="mt-1 text-meta text-muted-foreground">{t("briefs.criteria.help")}</p>
+        <InfoTip label={t("briefs.criteria.title")}>{t("briefs.criteria.help")}</InfoTip>
       </div>
       {canEdit ? (
         <CriteriaProposals
