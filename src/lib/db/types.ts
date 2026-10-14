@@ -400,6 +400,10 @@ export interface SearchRow {
   method: SearchMethod;
   /** Active candidates in the pool when the search ran; null for rows stored before the column existed. */
   pool_size: number | null;
+  /** Profiles read in full, matches (decision fit) and near profiles (borderline), kept by merge_search_results so a list never reads the results. */
+  assessed_count: number;
+  match_count: number;
+  near_count: number;
   ran_by: string | null;
   created_at: string;
 }
