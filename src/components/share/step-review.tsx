@@ -5,15 +5,15 @@
  * of the synthesis) and opened on demand to edit the prose (headline,
  * synthesis, strengths, points of attention, the points the interview
  * should verify) under the assessment read only (the requirement table
- * with its evidence). A sentence says where the words come from and
- * that the person sending them answers for them. "Create the link"
- * stores the share; it sits in a footer of its own that the dialog
- * keeps below the scrolling sheets.
+ * with its evidence). A pill says where the words come from (the model
+ * or the profiles). "Create the link" stores the share; it sits in a
+ * footer of its own that the dialog keeps below the scrolling sheets.
  */
 import { useState } from "react";
-import { ChevronDown, FileText, Trash2 } from "lucide-react";
+import { ChevronDown, FileText, Sparkles, Trash2 } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
+import { Pill } from "@/components/app-shell/pill";
 import { RequirementList } from "@/components/app-shell/requirement-list";
 import { ScoreRing } from "@/components/app-shell/score-ring";
 import { Button } from "@/components/ui/button";
@@ -43,10 +43,7 @@ function AssessmentBlock({ item, t }: { item: ShareItem; t: Translate }) {
   const rows = requirementRowsOf(item);
   return (
     <section className="space-y-2">
-      <div>
-        <Label>{t("shares.review.assessment")}</Label>
-        <p className="text-meta text-muted-foreground">{t("shares.review.assessment.help")}</p>
-      </div>
+      <Label>{t("shares.review.assessment")}</Label>
       {rows.length ? (
         <RequirementList
           rows={rows}
@@ -85,7 +82,7 @@ function SheetCard({
   return (
     <div className="sheet">
       <div className="flex items-start gap-3 p-4 sm:p-5">
-        <Avatar name={item.name} size="md" className="mt-0.5" />
+        <Avatar name={item.name} size="md" className="mt-0.5" decorative />
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-base font-semibold text-ink">
             <span className="mr-1.5 text-muted-foreground tabular-nums">{index + 1}.</span>
@@ -101,7 +98,7 @@ function SheetCard({
             </span>
           </div>
           {!open ? (
-            <p className={cn("mt-2 line-clamp-2 text-sm", preview ? "text-ink/85" : "text-muted-foreground")}>
+            <p className={cn("mt-2 line-clamp-2 text-sm", preview ? "text-ink" : "text-muted-foreground")}>
               {preview || t("shares.review.summary.empty")}
             </p>
           ) : null}
@@ -110,12 +107,12 @@ function SheetCard({
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
+          size="icon"
           disabled={busy}
           onClick={() => dispatch({ type: "removeItem", index })}
           aria-label={t("shares.review.removeItem")}
           title={t("shares.review.removeItem")}
-          className="-mr-2 -mt-1 text-muted-foreground hover:text-negative"
+          className="-mr-3 -mt-2 text-muted-foreground hover:text-negative"
         >
           <Trash2 />
         </Button>
@@ -183,7 +180,6 @@ function SheetCard({
           <PointsEditor
             id={`${id}-question`}
             label={t("shares.review.questions")}
-            help={t("shares.review.questions.help")}
             points={item.questions}
             max={QUESTIONS_MAX}
             disabled={busy}
@@ -212,12 +208,20 @@ export function ReviewStep({ state, dispatch }: { state: DialogState; dispatch: 
   const count = state.items.length;
   return (
     <div className="space-y-6">
-      <div className="space-y-1 rounded-lg bg-muted/50 px-4 py-3 text-sm text-ink">
-        <p>{state.modelUsed ? t("shares.review.modelDrafted") : t("shares.review.fromProfiles")}</p>
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {/* Where the words come from, as a mark, not a paragraph: the model drafts, a person sends. */}
+          {state.modelUsed ? (
+            <Pill tone="primary" icon={<Sparkles />}>
+              {t("shares.review.modelDrafted")}
+            </Pill>
+          ) : (
+            <Pill>{t("shares.review.fromProfiles")}</Pill>
+          )}
+        </div>
         {state.modelFailed ? (
-          <p className="text-caution-foreground dark:text-caution">{t("shares.review.modelFailed")}</p>
+          <p className="text-sm text-caution-foreground dark:text-caution">{t("shares.review.modelFailed")}</p>
         ) : null}
-        <p className="text-muted-foreground">{t("shares.review.responsibility")}</p>
       </div>
 
       {brief ? (

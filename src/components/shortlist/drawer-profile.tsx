@@ -1,14 +1,15 @@
 /**
  * The profile tab of the drawer: who this person is, in short. The three
  * facts that place a profile (location, years of experience,
- * availability), each "not stated" when the CV gave nothing; the summary
- * the structuring read; eight skills, the ones the brief names first,
+ * availability), each "not stated" when the CV gave nothing (so is a
+ * missing summary, skill list or language); the summary the structuring
+ * read; eight skills, the ones the brief names first,
  * with the rest counted, never a wall of chips; the languages; and the
  * way to the full profile page. Falls back to the board's columns while
  * the full row loads.
  */
 import { Link } from "@tanstack/react-router";
-import { ExternalLink } from "lucide-react";
+import { UserRound } from "lucide-react";
 
 import { Pill } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
@@ -76,7 +77,7 @@ export function DrawerProfile({
           </div>
         ) : (
           <p className="whitespace-pre-line text-body text-ink break-words">
-            {summary || <span className="text-muted-foreground">{t("shortlists.drawer.summary.none")}</span>}
+            {summary || <span className="text-muted-foreground">{t("common.unknown")}</span>}
           </p>
         )}
       </section>
@@ -92,12 +93,12 @@ export function DrawerProfile({
             ))}
             {more > 0 ? (
               <li className="text-meta text-muted-foreground tabular-nums">
-                {t("shortlists.drawer.skills.more", { count: more })}
+                {more === 1 ? t("candidates.skills.more.one") : t("candidates.skills.more", { count: more })}
               </li>
             ) : null}
           </ul>
         ) : (
-          <p className="text-sm text-muted-foreground">{t("shortlists.drawer.skills.none")}</p>
+          <p className="text-sm text-muted-foreground">{t("common.unknown")}</p>
         )}
       </section>
 
@@ -109,7 +110,7 @@ export function DrawerProfile({
       </section>
 
       <div>
-        <Button asChild variant="outline" size="sm" icon={<ExternalLink />}>
+        <Button asChild variant="outline" icon={<UserRound />}>
           <Link to="/app/candidates/$candidateId" params={{ candidateId }}>
             {t("shortlists.drawer.openCandidate")}
           </Link>

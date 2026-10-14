@@ -112,7 +112,7 @@ function NavLinks({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
               "press relative z-10 flex h-10 items-center gap-3 rounded-md px-3 text-body font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-5 [&_svg]:shrink-0",
               active
                 ? "text-primary"
-                : "text-sidebar-foreground/75 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
+                : "text-ink-soft hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
               // Without a measured mark (first paint), the active link still reads as active.
               active && !mark && "bg-primary/10",
             )}

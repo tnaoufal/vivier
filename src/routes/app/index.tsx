@@ -2,11 +2,12 @@
  * The dashboard: the date and a greeting, four counts read under RLS
  * (candidates, CVs being read with their progress, open briefs, retained
  * this month), then two columns from lg: the open briefs with where
- * each stands (the last analysis, what the model proposes, what the
- * team retained) and the recent activity as a timeline. A "to begin"
- * card shows only while the pool is empty. Everything refreshes when
- * the activity log, the documents or the searches change. The page's
- * one primary action is a new brief.
+ * each stands (the matches of the last analysis, what the model
+ * proposes, what the team retained) and the recent activity as a
+ * timeline. Figures, no sentences. A "to begin" card shows only while
+ * the pool is empty and then holds the page's one filled button (import);
+ * otherwise that button is a new brief. Everything refreshes when the
+ * activity log, the documents or the searches change.
  */
 import { useEffect, useMemo, type ReactNode } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -17,8 +18,10 @@ import {
   FileText,
   ListChecks,
   Plus,
+  RefreshCw,
   Share2,
   Sparkles,
+  TriangleAlert,
   Upload,
   Users,
 } from "lucide-react";
@@ -26,7 +29,7 @@ import {
 import { ActivityList } from "@/components/activity/activity-list";
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
-import { Pill, type PillTone } from "@/components/app-shell/pill";
+import { Pill } from "@/components/app-shell/pill";
 import { Section } from "@/components/app-shell/section";
 import { StatGrid, StatTile } from "@/components/app-shell/stat-tile";
 import { Button } from "@/components/ui/button";
@@ -44,9 +47,9 @@ import { readBriefsOverview, type BriefOverview } from "@/lib/activity/overview"
 import { readDashboardStats } from "@/lib/activity/stats";
 import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
+import { formatCount } from "@/lib/candidates/format";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
-import type { BriefStatus } from "@/lib/db/types";
 import { formatRelative, useI18n, type Locale } from "@/lib/i18n";
 import { memberName, useCurrentOrg, useOrg } from "@/lib/org/org-context";
 
@@ -55,12 +58,6 @@ export const Route = createFileRoute("/app/")({
 });
 
 const RECENT = 8;
-
-const STATUS_TONES: Record<BriefStatus, PillTone> = {
-  draft: "neutral",
-  open: "positive",
-  closed: "caution",
-};
 
 /** "mardi 14 octobre 2026", with a capital, in the person's language. */
 function longDate(locale: Locale, now: Date = new Date()): string {
@@ -73,94 +70,77 @@ function longDate(locale: Locale, now: Date = new Date()): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** One of the three steps of the "to begin" card: a number, a title, a sentence, its button. */
-function StartStep({
-  index,
-  title,
-  text,
-  action,
-}: {
-  index: number;
-  title: string;
-  text: string;
-  action: ReactNode;
-}) {
-  return (
-    <li className="rise-in flex gap-4">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 font-display text-sm text-primary tabular-nums">
-        {index}
-      </span>
-      <div className="min-w-0 flex-1">
-        <h3 className="text-base font-semibold leading-6 text-ink">{title}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">{text}</p>
-        <div className="mt-4">{action}</div>
-      </div>
-    </li>
-  );
-}
-
-/** The three steps that fill a talent pool, shown while it is empty. */
+/**
+ * The three steps that fill a talent pool, shown while it is empty: a
+ * number and the action itself, in order. The first is the page's one
+ * filled button (the header carries none meanwhile).
+ */
 function StartCard() {
   const { t } = useI18n();
+  const steps: { key: string; action: ReactNode }[] = [
+    {
+      key: "upload",
+      action: (
+        <Button asChild icon={<Upload />}>
+          <Link to={CANDIDATES_PATH}>{t("shell.dashboard.uploadCta")}</Link>
+        </Button>
+      ),
+    },
+    {
+      key: "brief",
+      action: (
+        <Button asChild variant="outline" icon={<Briefcase />}>
+          <Link to={NEW_BRIEF_PATH}>{t("shell.dashboard.briefCta")}</Link>
+        </Button>
+      ),
+    },
+    {
+      key: "share",
+      action: (
+        <Button asChild variant="outline" icon={<Share2 />}>
+          <Link to={SHORTLISTS_PATH}>{t("shell.dashboard.step.share.cta")}</Link>
+        </Button>
+      ),
+    },
+  ];
   return (
     <section className="sheet fade-in p-6 sm:p-8" aria-labelledby="dashboard-start-title">
-      <h2 id="dashboard-start-title" className="font-display text-xl text-ink">
+      <h2 id="dashboard-start-title" className="text-base font-semibold text-ink">
         {t("shell.dashboard.start.title")}
       </h2>
-      <p className="mt-1 text-sm text-muted-foreground">{t("shell.dashboard.start.text")}</p>
-      <ol className="stagger mt-6 grid gap-6 md:grid-cols-3 md:gap-8">
-        <StartStep
-          index={1}
-          title={t("shell.dashboard.step.upload.title")}
-          text={t("shell.dashboard.step.upload.text")}
-          action={
-            <Button asChild variant="outline" icon={<Upload />}>
-              <Link to={CANDIDATES_PATH}>{t("shell.dashboard.uploadCta")}</Link>
-            </Button>
-          }
-        />
-        <StartStep
-          index={2}
-          title={t("shell.dashboard.step.brief.title")}
-          text={t("shell.dashboard.step.brief.text")}
-          action={
-            <Button asChild variant="outline" icon={<Briefcase />}>
-              <Link to={NEW_BRIEF_PATH}>{t("shell.dashboard.briefCta")}</Link>
-            </Button>
-          }
-        />
-        <StartStep
-          index={3}
-          title={t("shell.dashboard.step.share.title")}
-          text={t("shell.dashboard.step.share.text")}
-          action={
-            <Button asChild variant="outline" icon={<Share2 />}>
-              <Link to={SHORTLISTS_PATH}>{t("shell.dashboard.step.share.cta")}</Link>
-            </Button>
-          }
-        />
+      <ol className="stagger mt-6 flex flex-wrap gap-x-8 gap-y-4">
+        {steps.map((step, index) => (
+          <li key={step.key} className="rise-in flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 font-display text-sm text-primary tabular-nums"
+            >
+              {index + 1}
+            </span>
+            {step.action}
+          </li>
+        ))}
       </ol>
     </section>
   );
 }
 
-/** One open brief: its title and status, the last analysis, what the model proposes and what the team retained. */
+/**
+ * One open brief: its title, the last analysis (how many profiles match,
+ * when) and the shortlist's counts (what the model proposes, marked as
+ * the model's, and what the team retained). Every brief here is open, so
+ * no status pill repeats it.
+ */
 function BriefCard({ item }: { item: BriefOverview }) {
   const { t, locale } = useI18n();
   const { brief, lastSearch, shortlist } = item;
-  const criteria =
-    brief.criteria.length === 0
-      ? t("briefs.list.criteria.none")
-      : brief.criteria.length === 1
-        ? t("briefs.list.criteria.one")
-        : t("briefs.list.criteria.many", { count: brief.criteria.length });
-  const analysis = lastSearch
-    ? `${t("dashboard.briefs.lastAnalysis", { when: formatRelative(locale, lastSearch.at) })} · ${
-        lastSearch.read === 1
-          ? t("dashboard.briefs.read.one")
-          : t("dashboard.briefs.read.many", { count: lastSearch.read })
-      }`
-    : t("dashboard.briefs.noAnalysis");
+  const matches = lastSearch
+    ? lastSearch.matches === 0
+      ? t("dashboard.briefs.matches.none")
+      : lastSearch.matches === 1
+        ? t("dashboard.briefs.matches.one")
+        : t("dashboard.briefs.matches.many", { count: formatCount(locale, lastSearch.matches) })
+    : null;
   const present =
     shortlist === null || shortlist.present === 0
       ? t("dashboard.briefs.present.none")
@@ -175,40 +155,30 @@ function BriefCard({ item }: { item: BriefOverview }) {
         : t("dashboard.briefs.retained.many", { count: shortlist.retained });
   return (
     <Link to={briefPath(brief.id)} className="sheet sheet-link flex min-w-0 flex-col gap-3 p-6">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="line-clamp-2 min-w-0 flex-1 text-base font-semibold leading-6 text-ink break-words">
-          {brief.title}
-        </h3>
-        <Pill tone={STATUS_TONES[brief.status]} dot>
-          {t(`briefs.status.${brief.status}`)}
-        </Pill>
-      </div>
-      <p className="text-meta text-muted-foreground">
-        <span className="tabular-nums">{criteria}</span>
-        <span aria-hidden="true"> · </span>
-        <span className={lastSearch ? "tabular-nums" : undefined}>{analysis}</span>
-      </p>
+      <h3 className="line-clamp-2 min-w-0 text-base font-semibold leading-6 text-ink break-words">
+        {brief.title}
+      </h3>
+      {lastSearch && matches ? (
+        <p className="text-meta text-muted-foreground">
+          <span className="font-medium text-ink tabular-nums">{matches}</span>
+          <span aria-hidden="true"> · </span>
+          <time dateTime={lastSearch.at}>{formatRelative(locale, lastSearch.at)}</time>
+        </p>
+      ) : (
+        <p className="text-meta text-muted-foreground">{t("dashboard.briefs.noAnalysis")}</p>
+      )}
       {shortlist ? (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-1 text-meta text-muted-foreground">
             {t("dashboard.briefs.shortlist")}
           </span>
-          <Pill
-            tone={shortlist.present > 0 ? "primary" : "neutral"}
-            icon={<Sparkles />}
-            title={t("dashboard.briefs.present.help")}
-          >
+          {/* The proposal is the model's: the pill's own words say so, not a hover title. */}
+          <Pill tone={shortlist.present > 0 ? "primary" : "neutral"} icon={<Sparkles />}>
             {present}
           </Pill>
-          <span className="sr-only">{t("dashboard.briefs.present.help")}</span>
-          <Pill
-            tone={shortlist.retained > 0 ? "positive" : "neutral"}
-            icon={<Check />}
-            title={t("dashboard.briefs.retained.help")}
-          >
+          <Pill tone={shortlist.retained > 0 ? "positive" : "neutral"} icon={<Check />}>
             {retained}
           </Pill>
-          <span className="sr-only">{t("dashboard.briefs.retained.help")}</span>
         </div>
       ) : (
         <p className="text-meta text-muted-foreground">{t("dashboard.briefs.noShortlist")}</p>
@@ -288,9 +258,9 @@ function DashboardPage() {
       <PageHeader
         eyebrow={<time dateTime={new Date().toISOString().slice(0, 10)}>{longDate(locale)}</time>}
         title={t("shell.dashboard.title", { name })}
-        description={t("shell.dashboard.subtitle")}
         actions={
-          can("member") ? (
+          // While the pool is empty the "to begin" card holds the one filled button.
+          can("member") && !poolEmpty ? (
             <Button asChild icon={<Plus />}>
               <Link to={NEW_BRIEF_PATH}>{t("shell.dashboard.briefCta")}</Link>
             </Button>
@@ -299,9 +269,17 @@ function DashboardPage() {
       />
 
       {error ? (
-        <p className="mb-4 text-sm text-negative" role="alert">
-          {t("dashboard.statsUnread")}
-        </p>
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2" role="alert">
+          <p className="text-sm text-negative">{t("dashboard.statsUnread")}</p>
+          <Button
+            type="button"
+            variant="outline"
+            icon={<RefreshCw />}
+            onClick={() => void refresh()}
+          >
+            {t("common.retry")}
+          </Button>
+        </div>
       ) : null}
 
       <StatGrid>
@@ -311,7 +289,6 @@ function DashboardPage() {
           icon={<Users />}
           to={CANDIDATES_PATH}
           loading={loading}
-          hint={t("dashboard.tile.candidates.hint")}
         />
         <StatTile
           label={t("shell.dashboard.processing")}
@@ -319,13 +296,6 @@ function DashboardPage() {
           icon={<FileText />}
           to={CANDIDATES_PATH}
           loading={loading}
-          hint={
-            processing === null
-              ? undefined
-              : processing > 0
-                ? t("dashboard.tile.processing.busy")
-                : t("dashboard.tile.processing.idle")
-          }
           progress={
             stats && processing !== null && stats.processingTotal !== null && processing > 0
               ? {
@@ -341,7 +311,6 @@ function DashboardPage() {
           icon={<Briefcase />}
           to={BRIEFS_PATH}
           loading={loading}
-          hint={t("dashboard.tile.briefs.hint")}
         />
         <StatTile
           label={t("shell.dashboard.retained")}
@@ -349,7 +318,6 @@ function DashboardPage() {
           icon={<ListChecks />}
           to={SHORTLISTS_PATH}
           loading={loading}
-          hint={t("dashboard.tile.retained.hint")}
         />
       </StatGrid>
 
@@ -372,19 +340,33 @@ function DashboardPage() {
           {loading && !data ? (
             <BriefCardsSkeleton />
           ) : briefs === null ? (
-            <p className="text-sm text-muted-foreground">{t("common.error")}</p>
+            <EmptyState
+              compact
+              icon={<TriangleAlert />}
+              title={t("dashboard.briefs.error")}
+              action={
+                <Button
+                  type="button"
+                  variant="outline"
+                  icon={<RefreshCw />}
+                  onClick={() => void refresh()}
+                >
+                  {t("common.retry")}
+                </Button>
+              }
+            />
           ) : briefs.length === 0 ? (
             <EmptyState
               compact
               icon={<Briefcase />}
               title={t("dashboard.briefs.empty")}
-              text={t("dashboard.briefs.empty.text")}
               action={
-                can("member") ? (
-                  <Button asChild variant="outline" icon={<Briefcase />}>
+                // While the pool is empty the "to begin" card already holds this step.
+                can("member") && !poolEmpty ? (
+                  <Button asChild variant="outline" icon={<Plus />}>
                     <Link to={NEW_BRIEF_PATH}>{t("shell.dashboard.briefCta")}</Link>
                   </Button>
-                ) : null
+                ) : undefined
               }
             />
           ) : (
@@ -411,19 +393,26 @@ function DashboardPage() {
             names={names}
             loading={loading}
             emptyState={
-              <EmptyState
-                compact
-                icon={<Activity />}
-                title={t("shell.dashboard.noActivity")}
-                text={t("dashboard.activity.empty.text")}
-                action={
-                  can("member") ? (
-                    <Button asChild variant="outline" icon={<Upload />}>
-                      <Link to={CANDIDATES_PATH}>{t("shell.dashboard.uploadCta")}</Link>
+              // A failed first read is never shown as "no activity".
+              error && !data ? (
+                <EmptyState
+                  compact
+                  icon={<TriangleAlert />}
+                  title={t("activity.loadError")}
+                  action={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      icon={<RefreshCw />}
+                      onClick={() => void refresh()}
+                    >
+                      {t("common.retry")}
                     </Button>
-                  ) : null
-                }
-              />
+                  }
+                />
+              ) : (
+                <EmptyState compact icon={<Activity />} title={t("activity.empty")} />
+              )
             }
           />
         </Section>

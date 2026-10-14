@@ -13,12 +13,14 @@
  * brief, after a confirmation since the team's edits go with it. A brief
  * without a profile says so, and that the first analysis writes it.
  * Nothing here decides anything: the profile is what every screening
- * reads.
+ * reads. What the card is for, what the model assumed and what the
+ * context holds are said behind info icons, never as lines of help.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CircleHelp, Pencil, Sparkles } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
+import { InfoTip } from "@/components/app-shell/info-tip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -201,11 +203,14 @@ export function RoleProfileCard({
   canEdit,
   modelAvailable,
   onSaved,
+  onDirtyChange,
 }: {
   brief: BriefRow;
   canEdit: boolean;
   modelAvailable: ModelAvailability;
   onSaved: () => Promise<void> | void;
+  /** Told whether the editor holds typed changes not saved yet: a search reads the saved profile. */
+  onDirtyChange?: ((dirty: boolean) => void) | undefined;
 }) {
   const { t, locale } = useI18n();
   const profile = brief.role_profile;
@@ -217,25 +222,33 @@ export function RoleProfileCard({
   // A fresh row (a colleague's edit, the first analysis) closes an editor
   // that was not touched yet; typed changes stay until saved or cancelled.
   const touched = useRef(false);
+  // The same fact as `touched`, as state, for the page: its run button waits while it holds.
+  const [dirty, setDirty] = useState(false);
   useEffect(() => {
     if (!touched.current) setDraft(null);
   }, [brief.id, brief.updated_at]);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   const editing = draft !== null;
   const locked = !canEdit || busy || regenerating;
 
   function startEditing() {
     touched.current = false;
+    setDirty(false);
     setDraft(draftOf(profile ?? emptyRoleProfile(brief.title)));
   }
 
   function closeEditor() {
     touched.current = false;
+    setDirty(false);
     setDraft(null);
   }
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     touched.current = true;
+    setDirty(true);
     setDraft((current) => (current ? { ...current, [key]: value } : current));
   }
 
@@ -311,9 +324,9 @@ export function RoleProfileCard({
             <p className="label-caps flex items-center gap-1.5">
               <CircleHelp aria-hidden="true" className="size-3.5 shrink-0" />
               {t("briefs.profile.assumptions")}
-            </p>
-            <p className="mt-0.5 text-meta text-muted-foreground">
-              {t("briefs.profile.assumptions.help")}
+              <InfoTip label={t("briefs.profile.assumptions")}>
+                {t("briefs.profile.assumptions.help")}
+              </InfoTip>
             </p>
             <div className="mt-2">
               <List items={current.assumptions} />
@@ -402,6 +415,7 @@ export function RoleProfileCard({
           value={current[field]}
           onChange={(event) => set(field, event.target.value)}
           rows={field === "missions" ? 5 : 3}
+          placeholder={t("briefs.profile.list.help")}
           maxLength={ROLE_PROFILE_LIST_MAX * (ROLE_PROFILE_ITEM_MAX + 1) * 2}
           disabled={locked}
           className="min-h-0"
@@ -413,7 +427,6 @@ export function RoleProfileCard({
   function editView(current: Draft) {
     return (
       <div className="fade-in space-y-5">
-        <p className="text-meta text-muted-foreground">{t("briefs.profile.list.help")}</p>
         {listField("assumptions", current)}
         <div className="space-y-2">
           <Label htmlFor="role-profile-domain">{t("briefs.profile.domain")}</Label>
@@ -480,7 +493,12 @@ export function RoleProfileCard({
         {listField("equivalentTitles", current)}
         {listField("adjacentProfiles", current)}
         <div className="space-y-2">
-          <span className="label-caps">{t("briefs.profile.context")}</span>
+          <span className="label-caps flex items-center gap-1">
+            {t("briefs.profile.context")}
+            <InfoTip label={t("briefs.profile.context")}>
+              {t("briefs.profile.context.help")}
+            </InfoTip>
+          </span>
           <div className="grid gap-3 sm:grid-cols-2">
             {CONTEXT_FIELDS.map((field) => (
               <Input
@@ -494,7 +512,6 @@ export function RoleProfileCard({
               />
             ))}
           </div>
-          <p className="text-meta text-muted-foreground">{t("briefs.profile.context.help")}</p>
         </div>
         {listField("mustHaves", current)}
         {listField("niceToHaves", current)}
@@ -515,9 +532,9 @@ export function RoleProfileCard({
   return (
     <section className="sheet space-y-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
           <h2 className="text-base font-semibold text-ink">{t("briefs.profile.title")}</h2>
-          <p className="mt-1 text-meta text-muted-foreground">{t("briefs.profile.help")}</p>
+          <InfoTip label={t("briefs.profile.title")}>{t("briefs.profile.help")}</InfoTip>
         </div>
         {canEdit && !editing ? (
           <div className="flex shrink-0 flex-wrap items-center gap-2">

@@ -231,9 +231,13 @@ function CandidatesPage() {
   return (
     <div>
       <PageHeader
-        eyebrow={t("nav.candidates")}
         title={t("candidates.title")}
-        description={countText}
+        meta={
+          // The count is the page's one figure; announced when a search or a filter changes it.
+          <span role="status" className="text-meta font-medium text-muted-foreground tabular-nums">
+            {countText}
+          </span>
+        }
         actions={
           canEdit ? (
             <>
@@ -307,13 +311,15 @@ function CandidatesPage() {
             onClick={() => setFiltersOpen((value) => !value)}
             icon={<SlidersHorizontal />}
             count={activeFilters > 0 ? activeFilters : undefined}
+            expanded={showFilters}
+            controls="candidate-filters"
           >
             {t("candidates.filters")}
           </FilterChip>
         </div>
 
         {showFilters ? (
-          <div className="fade-in flex flex-wrap items-center gap-2">
+          <div id="candidate-filters" className="fade-in flex flex-wrap items-center gap-2">
             <div className="relative min-w-0 basis-56">
               <MapPin
                 className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -343,7 +349,6 @@ function CandidatesPage() {
               onChange={(event) => setFilterText({ ...filterText, skill: event.target.value })}
               placeholder={t("candidates.filter.skill")}
               aria-label={t("candidates.filter.skill")}
-              title={t("candidates.filter.skill.help")}
               maxLength={60}
               className="min-w-0 basis-56"
             />
@@ -356,7 +361,6 @@ function CandidatesPage() {
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
                 icon={<X />}
                 onClick={() => {
                   setFilterText(EMPTY_TEXT);
@@ -411,14 +415,13 @@ function CandidatesPage() {
       ) : list.loading && !list.data ? (
         <div className="sheet overflow-hidden">
           <p className="sr-only">{t("common.loading")}</p>
-          <SkeletonRows rows={SKELETON_ROWS} />
+          <SkeletonRows rows={SKELETON_ROWS} avatarSize="lg" />
         </div>
       ) : rows.length === 0 ? (
         filtered ? (
           <EmptyState
             icon={<Search />}
             title={t("candidates.empty.filtered.title")}
-            text={t("candidates.empty.filtered.text")}
             action={
               <Button type="button" variant="outline" icon={<X />} onClick={clearAll}>
                 {t("candidates.filters.clear")}
@@ -426,18 +429,9 @@ function CandidatesPage() {
             }
           />
         ) : status === "archived" ? (
-          <EmptyState
-            icon={<Users />}
-            title={t("candidates.empty.archived.title")}
-            text={t("candidates.empty.archived.text")}
-          />
+          <EmptyState icon={<Users />} title={t("candidates.empty.archived.title")} />
         ) : (
-          <EmptyState
-            icon={<Users />}
-            title={t("candidates.empty.title")}
-            text={t("candidates.empty.text")}
-            action={importButton}
-          />
+          <EmptyState icon={<Users />} title={t("candidates.empty.title")} action={importButton} />
         )
       ) : (
         <>

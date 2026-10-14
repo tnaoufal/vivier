@@ -6,11 +6,21 @@
  * same policy. VIVIER_RATE_LIMIT=off disables the check.
  *
  * The client is keyed by address (an IPv6 address by its /64) and, when
- * the caller is known, by user id as a second bucket.
+ * the caller is known, by user id as a second bucket. The two scopes of
+ * an analysis (the triage and the reading) count by user alone once the
+ * user is known: a run sends dozens of calls a minute, and the
+ * recruiters of one office share one address.
  */
 import { getRequestHeaders } from "@tanstack/react-start/server";
 
-export type RateLimitScope = "model" | "email" | "share" | "processor" | "search" | "assess";
+export type RateLimitScope =
+  | "model"
+  | "email"
+  | "share"
+  | "processor"
+  | "search"
+  | "assess"
+  | "triage";
 
 export interface RateLimiterBinding {
   limit(options: { key: string }): Promise<{ success: boolean }>;
@@ -101,6 +111,22 @@ export function clientAddressOf(headers: HeaderReader): string | null {
 
 const memoryLimiter = new MemoryRateLimiter(RATE_LIMIT_POLICY);
 
+/** The scopes an analysis loop drives, counted per user when the user is known. */
+const PER_USER_SCOPES: readonly RateLimitScope[] = ["triage", "assess"];
+
+/** The buckets one call counts in: the address's, unless a known user's own bucket stands for it, then the user's. */
+export function rateLimitKeys(
+  scope: RateLimitScope,
+  address: string | null,
+  userKey?: string,
+): string[] {
+  const keys: string[] = [];
+  if (address && !(userKey && PER_USER_SCOPES.includes(scope)))
+    keys.push(`${scope}:ip:${clientAddressKey(address)}`);
+  if (userKey) keys.push(`${scope}:user:${userKey}`);
+  return keys;
+}
+
 async function bindingLimiter(): Promise<RateLimiterBinding | null> {
   try {
     const { env } = await import("cloudflare:workers");
@@ -129,9 +155,7 @@ export async function enforceRateLimit(
     return;
   }
   const limiter = (await bindingLimiter()) ?? memoryLimiter;
-  const keys: string[] = [];
-  if (address) keys.push(`${scope}:ip:${clientAddressKey(address)}`);
-  if (options.userKey) keys.push(`${scope}:user:${options.userKey}`);
+  const keys = rateLimitKeys(scope, address, options.userKey);
   if (!keys.length) {
     // Inside Workers every request carries an address; none means refuse.
     if (await bindingLimiter()) throw new RateLimitError(scope);

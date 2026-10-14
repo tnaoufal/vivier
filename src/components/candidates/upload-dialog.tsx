@@ -6,9 +6,9 @@
  * and recorded as a queued document. After each lot the processor is
  * poked with the ids stored, so profiles appear while the import runs;
  * a missed poke is quiet (the service polls its queue). The dialog
- * shows the overall progress, four counters, the current lot alone (the
- * list never holds 10 000 rows) and, once over, the failed files with a
- * retry. Closing is refused while a lot runs; between lots the person
+ * shows the overall progress, four counters (the summary: no sentence
+ * repeats them), the current lot alone (the list never holds 10 000
+ * rows) and, once over, the failed files with a retry. Closing is refused while a lot runs; between lots the person
  * may stop, and resume later. With a `candidate`, every new document is
  * attached to that profile so the processor merges into it. On opening,
  * the dialog reads what the month's quota has left (the CVs processed
@@ -284,37 +284,37 @@ export function UploadDialog({
     setStopRequested(true);
   }
 
-  /** "12 fichiers refusés : 10 ne sont pas des PDF, 2 dépassent 25 Mo." in one sentence, whatever the number. */
-  function refusedSentence(groups: RejectedGroup[]): string | null {
+  /** "10 ne sont pas des PDF, 2 dépassent 25 Mo": the refusals grouped by reason. */
+  function refusedReasons(groups: RejectedGroup[]): string | null {
     if (!groups.length) return null;
-    const reasons = groups
+    return groups
       .map((group) =>
         group.count === 1
           ? t(`candidates.upload.refused.${group.reason}.one`)
           : t(`candidates.upload.refused.${group.reason}.many`, { count: formatCount(locale, group.count) }),
       )
       .join(", ");
-    const count = countRefused(groups);
-    return count === 1
-      ? t("candidates.upload.refused.one", { reasons })
-      : t("candidates.upload.refused.many", { count: formatCount(locale, count), reasons });
   }
 
-  const refusedText = refusedSentence(refused);
-  // Under the description: what the month has left, or that it could not be read; nothing while it loads.
-  const quotaLine = quotaUse.loading
-    ? null
+  const reasons = refusedReasons(refused);
+  // Before any file is accepted no counter shows: the sentence carries the count. Once the counters
+  // show it ("Refusés"), the line under them names the reasons only.
+  const refusedText =
+    reasons === null
+      ? null
+      : refusedCount === 1
+        ? t("candidates.upload.refused.one", { reasons })
+        : t("candidates.upload.refused.many", { count: formatCount(locale, refusedCount), reasons });
+  const refusedReasonsText = reasons === null ? null : t("candidates.upload.refused.reasons", { reasons });
+  // The one line under the title: the file rule, then what the month has left (the queue counted)
+  // or that it could not be read; the file rule alone while the quota loads.
+  const metaLine = quotaUse.loading
+    ? t("candidates.upload.text")
     : quotaUse.error
       ? t("candidates.upload.quota.unknown", { quota: formatCount(locale, quota) })
-      : room === null || quotaRead === null
-        ? null
-        : quotaRead.pending > 0
-          ? t("candidates.upload.quota.lineQueued", {
-              remaining: formatCount(locale, room),
-              quota: formatCount(locale, quota),
-              pending: formatCount(locale, quotaRead.pending),
-            })
-          : t("candidates.upload.quota.line", { remaining: formatCount(locale, room), quota: formatCount(locale, quota) });
+      : room === null
+        ? t("candidates.upload.text")
+        : t("candidates.upload.quota.line", { remaining: formatCount(locale, room), quota: formatCount(locale, quota) });
   // How many of the chosen files are past the month's quota (an upper bound: the items are the accepted
   // files, a retry replaces its failures one for one): derived here so it appears as soon as both the
   // selection and the quota are known, whichever came first.
@@ -326,6 +326,12 @@ export function UploadDialog({
         ? t("candidates.upload.quota.beyond.one")
         : t("candidates.upload.quota.beyond.many", { count: formatCount(locale, beyond) });
   const title = candidate ? t("candidates.upload.titleFor", { name: candidate.name }) : t("candidates.upload.title");
+  const stoppedText =
+    phase !== "stopped"
+      ? null
+      : summary.skipped === 1
+        ? t("candidates.upload.stopped.one")
+        : t("candidates.upload.stopped.many", { count: formatCount(locale, summary.skipped) });
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -345,21 +351,22 @@ export function UploadDialog({
       >
         <DialogHeader>
           <DialogTitle className="truncate">{title}</DialogTitle>
-          <DialogDescription className="text-sm">{t("candidates.upload.text")}</DialogDescription>
-          {quotaLine ? (
-            <p
-              className={cn(
-                "text-meta tabular-nums",
-                room === 0 ? "text-caution-foreground dark:text-caution" : "text-muted-foreground",
-              )}
-            >
-              {quotaLine}
-            </p>
-          ) : null}
+          <DialogDescription
+            className={cn(
+              "text-meta tabular-nums",
+              room === 0 ? "text-caution-foreground dark:text-caution" : "text-muted-foreground",
+            )}
+          >
+            {metaLine}
+          </DialogDescription>
         </DialogHeader>
 
         {/* Scrolls only when a short screen cannot hold the whole dialog; the lists scroll on their own. */}
         <DialogBody className="space-y-6">
+          {/* Mounted with the dialog, so the outcome of a run is announced when it lands. */}
+          <p className="sr-only" role="status">
+            {over ? [stoppedText, note].filter((part) => part).join(" ") : ""}
+          </p>
           {phase === "pick" ? (
             <div
               onDragOver={(event) => {
@@ -448,7 +455,7 @@ export function UploadDialog({
               {beyondText ? (
                 <p className="text-meta text-caution-foreground dark:text-caution">{beyondText}</p>
               ) : null}
-              {refusedText ? <p className="text-meta text-muted-foreground">{refusedText}</p> : null}
+              {refusedReasonsText ? <p className="text-meta text-muted-foreground">{refusedReasonsText}</p> : null}
               {running ? <p className="text-meta text-muted-foreground">{t("candidates.upload.keepOpen")}</p> : null}
 
               {lotItems.length ? (
@@ -475,20 +482,7 @@ export function UploadDialog({
 
           {over ? (
             <div className="space-y-3 text-sm">
-              <p className="text-ink">
-                {t("candidates.upload.summary", {
-                  uploaded: formatCount(locale, summary.uploaded),
-                  duplicate: formatCount(locale, summary.duplicate),
-                  failed: formatCount(locale, summary.failed),
-                })}
-              </p>
-              {phase === "stopped" ? (
-                <p className="text-ink">
-                  {summary.skipped === 1
-                    ? t("candidates.upload.stopped.one")
-                    : t("candidates.upload.stopped.many", { count: formatCount(locale, summary.skipped) })}
-                </p>
-              ) : null}
+              {stoppedText ? <p className="text-ink">{stoppedText}</p> : null}
               {note ? <p className="text-muted-foreground">{note}</p> : null}
 
               {failedItems.length ? (
@@ -513,7 +507,7 @@ export function UploadDialog({
                           : t("candidates.upload.failed.show", { count: formatCount(locale, failedItems.length) })}
                       </span>
                     </button>
-                    <Button type="button" variant="outline" size="sm" icon={<RefreshCw />} onClick={() => void retry()}>
+                    <Button type="button" variant="outline" icon={<RefreshCw />} onClick={() => void retry()}>
                       {t("candidates.upload.retryFailed")}
                     </Button>
                   </div>

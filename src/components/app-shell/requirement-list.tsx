@@ -4,6 +4,8 @@
  * Colour is never the only signal: each mark is an icon with a text
  * alternative. Used by the search results, the shortlist drawer and the
  * dossier a link opens (`compact` for the dossier's print layout).
+ * `stagger` lets the rows rise in one after the other, once, like every
+ * list arriving on screen (off for print).
  */
 import { Check, CircleHelp, Minus, X } from "lucide-react";
 
@@ -57,6 +59,7 @@ export function RequirementList({
   markLabel,
   requiredLabel,
   compact = false,
+  stagger = false,
   className,
 }: {
   rows: readonly RequirementRow[];
@@ -65,13 +68,18 @@ export function RequirementList({
   /** The word shown after a required requirement's label. */
   requiredLabel: string;
   compact?: boolean;
+  /** Rows rise in once, one after the other. */
+  stagger?: boolean;
   className?: string;
 }) {
   if (!rows.length) return null;
   return (
-    <ul className={cn("divide-y divide-border", className)}>
+    <ul className={cn("divide-y divide-border", stagger && "stagger", className)}>
       {rows.map((row) => (
-        <li key={row.id} className={cn("flex items-start gap-3", compact ? "py-2" : "py-3")}>
+        <li
+          key={row.id}
+          className={cn("flex items-start gap-3", compact ? "py-2" : "py-3", stagger && "rise-in")}
+        >
           <RequirementMark met={row.met} label={markLabel(row.met)} className="mt-0.5" />
           <div className="min-w-0 flex-1">
             <p className={cn("text-ink", compact ? "text-sm" : "text-body")}>

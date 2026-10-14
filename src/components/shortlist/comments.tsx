@@ -11,6 +11,7 @@ import { MessageSquare, Pencil, Send, Trash2 } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
+import { EmptyState } from "@/components/app-shell/empty-state";
 import { Button } from "@/components/ui/button";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth/auth-context";
@@ -103,15 +104,13 @@ export function CommentsThread({
   }
 
   const count = comments.length;
-  const countLabel =
-    count === 1 ? t("shortlists.comments.count.one") : t("shortlists.comments.count.many", { count });
 
   return (
     <section className="space-y-4">
       <h3 className="text-base font-semibold text-ink">
         {t("shortlists.comments.title")}
         {count ? (
-          <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">{countLabel}</span>
+          <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">{count}</span>
         ) : null}
       </h3>
       {comments.length ? (
@@ -122,7 +121,7 @@ export function CommentsThread({
             const edited = Date.parse(comment.updated_at) - Date.parse(comment.created_at) > EDITED_AFTER_MS;
             return (
               <li key={comment.id} className="rise-in flex gap-3">
-                <Avatar name={author} size="sm" className="mt-0.5" />
+                <Avatar name={author} size="sm" className="mt-0.5" decorative />
                 <div className="min-w-0 flex-1">
                   <div className="flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 text-meta text-muted-foreground">
                     <span className="font-medium text-ink">{author}</span>
@@ -130,12 +129,13 @@ export function CommentsThread({
                       {formatRelative(locale, comment.created_at)}
                     </time>
                     {edited ? <span>({t("shortlists.comments.edited")})</span> : null}
-                    <span className="ml-auto flex items-center">
+                    {/* 40px targets drawn into the meta line: the negative margin keeps its height. */}
+                    <span className="-my-1 ml-auto flex items-center">
                       {mine && canComment ? (
                         <Button
                           type="button"
                           variant="ghost"
-                          size="icon-sm"
+                          size="icon"
                           onClick={() => setEditing({ id: comment.id, draft: comment.body })}
                           disabled={busy}
                           aria-label={t("common.edit")}
@@ -149,7 +149,7 @@ export function CommentsThread({
                         <Button
                           type="button"
                           variant="ghost"
-                          size="icon-sm"
+                          size="icon"
                           onClick={() => setDeleting(comment)}
                           disabled={busy}
                           aria-label={t("common.delete")}
@@ -173,12 +173,11 @@ export function CommentsThread({
                         onSubmit={() => void saveEdit()}
                       />
                       <div className="flex flex-wrap justify-end gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => setEditing(null)} disabled={busy}>
+                        <Button type="button" variant="outline" onClick={() => setEditing(null)} disabled={busy}>
                           {t("common.cancel")}
                         </Button>
                         <Button
                           type="button"
-                          size="sm"
                           variant="outline"
                           onClick={() => void saveEdit()}
                           disabled={busy || !editing.draft.trim()}
@@ -201,10 +200,7 @@ export function CommentsThread({
           <SkeletonRows rows={2} className="[&>li]:px-0" />
         </>
       ) : (
-        <div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
-          <MessageSquare className="size-4 shrink-0" aria-hidden="true" />
-          {t("shortlists.comments.empty")}
-        </div>
+        <EmptyState compact inset icon={<MessageSquare />} title={t("shortlists.comments.empty")} />
       )}
 
       {canComment ? (
@@ -218,15 +214,15 @@ export function CommentsThread({
             disabled={busy}
             onSubmit={() => void submit()}
           />
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-meta text-muted-foreground">{t("shortlists.comments.help")}</p>
+          <div className="flex justify-end">
             <Button
               type="button"
-              size="sm"
               variant="outline"
               icon={<Send />}
               onClick={() => void submit()}
               disabled={busy || !body.trim()}
+              title={t("shortlists.comments.shortcut")}
+              aria-keyshortcuts="Control+Enter"
             >
               {t("shortlists.comments.send")}
             </Button>

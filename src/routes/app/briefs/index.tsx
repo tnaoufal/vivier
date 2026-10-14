@@ -2,16 +2,20 @@
  * /app/briefs: the briefs of the organisation as a grid of cards,
  * newest change first, each card what tells a brief apart (the title,
  * its status, the domain of its role profile, how many criteria it
- * holds, what its newest analysis found, when it changed), a status
- * filter with counts, and the way to a new one. The cards rise in once;
- * the newest analyses arrive after the briefs and fill their line. Live
+ * holds, what its newest analysis found, when it changed), the count in
+ * the header, a status filter with counts, and the way to a new one. A
+ * whole-pool analysis not through yet (profiles its triage has not
+ * read, or kept profiles not read in full) says it is unfinished rather
+ * than counting what it has not reached. The cards rise in once; the
+ * newest analyses arrive after the briefs and fill their line. Live
  * through realtime on briefs and searches: a batch of an analysis
- * updates its brief's line from the row the event carries, never by
- * reading every analysis again.
+ * updates its brief's line from the row the event carries, and the
+ * triage's two counts of that search alone, never by reading every
+ * analysis again.
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Briefcase, Plus, X } from "lucide-react";
+import { Briefcase, Plus, RefreshCw, TriangleAlert, X } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
@@ -24,13 +28,16 @@ import {
   analysisOfRow,
   BRIEF_FILTERS,
   briefSubtitle,
+  cardAnalysisOf,
   countByFilter,
   filterBriefs,
   withAnalysis,
+  withTriageProgress,
   type BriefFilter,
   type LatestAnalysis,
 } from "@/lib/briefs/presentation";
-import { listBriefs, readLatestAnalyses } from "@/lib/briefs/queries";
+import { listBriefs, readLatestAnalyses, readTriageProgress } from "@/lib/briefs/queries";
+import { formatCount } from "@/lib/candidates/format";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
 import { formatDate, useI18n } from "@/lib/i18n";
@@ -88,6 +95,28 @@ function BriefsPage() {
     const readAgain = debounce(() => {
       void refreshAnalyses();
     }, 800);
+    // Where a whole-pool search's triage stands travels in no row: read
+    // again for that search alone (two counts) once its batches settle.
+    const progress = new Map<string, () => void>();
+    const readProgress = (briefId: string, searchId: string) => {
+      let read = progress.get(searchId);
+      if (!read) {
+        read = debounce(() => {
+          void (async () => {
+            try {
+              const counts = await readTriageProgress(await requireSupabase(), org.id, searchId);
+              setLatest((current) =>
+                current ? withTriageProgress(current, briefId, searchId, counts) : current,
+              );
+            } catch (error) {
+              console.error(error);
+            }
+          })();
+        }, 1500);
+        progress.set(searchId, read);
+      }
+      read();
+    };
     // A search written or patched (an analysis stores its results batch after batch) updates its brief's line from the row itself; a deleted one, or a row realtime could not carry whole, reads the analyses again.
     return subscribeToTable("searches", `org_id=eq.${org.id}`, (change) => {
       const changed = change.eventType === "DELETE" ? null : analysisOfRow(change.new);
@@ -98,17 +127,20 @@ function BriefsPage() {
       setLatest((current) =>
         current ? withAnalysis(current, changed.briefId, changed.analysis) : current,
       );
+      if (changed.analysis.method === "triage")
+        readProgress(changed.briefId, changed.analysis.searchId);
     });
   }, [org.id, refreshAnalyses]);
 
+  // No count without a brief: the empty state already says there is none.
   const countText =
     list.loading && !list.data
       ? t("common.loading")
       : rows.length === 0
-        ? t("briefs.count.none")
+        ? null
         : rows.length === 1
           ? t("briefs.count.one")
-          : t("briefs.count.many", { count: rows.length });
+          : t("briefs.count.many", { count: formatCount(locale, rows.length) });
 
   const newButton = canEdit ? (
     <Button type="button" icon={<Plus />} onClick={() => void navigate({ to: "/app/briefs/new" })}>
@@ -122,7 +154,7 @@ function BriefsPage() {
     return t("briefs.list.criteria.many", { count });
   }
 
-  /** What the newest analysis found: the profiles to present once the model read some, else how many it ranked; a placeholder while the analyses load. */
+  /** What the newest analysis found: its matches once read through, "unfinished" before, how many it ranked without a model; a placeholder while the analyses load. */
   function analysisText(analysis: LatestAnalysis | undefined): ReactNode {
     if (!analysis) {
       if (analyses.loading && !analyses.data)
@@ -134,19 +166,21 @@ function BriefsPage() {
         );
       return t("briefs.list.analysis.none");
     }
-    if (analysis.assessed > 0) {
-      const count = analysis.present;
+    const card = cardAnalysisOf(analysis);
+    if (card.kind === "unfinished") return t("briefs.analysis.left.none");
+    if (card.kind === "matches") {
+      const count = card.count;
       const text =
         count === 0
           ? t("briefs.search.line.present.none")
           : count === 1
             ? t("briefs.search.line.present.one")
-            : t("briefs.search.line.present.many", { count });
+            : t("briefs.search.line.present.many", { count: formatCount(locale, count) });
       return <span className={cn(count > 0 && "font-medium text-ink")}>{text}</span>;
     }
-    if (analysis.total === 0) return t("briefs.list.analysis.ranked.none");
-    if (analysis.total === 1) return t("briefs.list.analysis.ranked.one");
-    return t("briefs.list.analysis.ranked.many", { count: analysis.total });
+    if (card.count === 0) return t("briefs.analysis.ranked.none");
+    if (card.count === 1) return t("briefs.analysis.ranked.one");
+    return t("briefs.analysis.ranked.many", { count: formatCount(locale, card.count) });
   }
 
   const filterLabel = (value: BriefFilter) =>
@@ -155,9 +189,14 @@ function BriefsPage() {
   return (
     <div>
       <PageHeader
-        eyebrow={t("nav.briefs")}
         title={t("briefs.title")}
-        description={countText}
+        meta={
+          countText ? (
+            <span className="text-meta font-medium text-muted-foreground tabular-nums">
+              {countText}
+            </span>
+          ) : undefined
+        }
         // The empty state below carries the one filled button when there is no brief yet.
         actions={rows.length > 0 || (list.loading && !list.data) ? newButton : null}
       />
@@ -179,9 +218,15 @@ function BriefsPage() {
 
       {list.error ? (
         <EmptyState
+          icon={<TriangleAlert />}
           title={t("briefs.listError")}
           action={
-            <Button type="button" variant="outline" onClick={() => void refresh()}>
+            <Button
+              type="button"
+              variant="outline"
+              icon={<RefreshCw />}
+              onClick={() => void refresh()}
+            >
               {t("common.retry")}
             </Button>
           }
@@ -204,7 +249,6 @@ function BriefsPage() {
           <EmptyState
             icon={<Briefcase />}
             title={t("briefs.empty.filtered.title")}
-            text={t("briefs.empty.filtered.text")}
             action={
               <Button type="button" variant="outline" icon={<X />} onClick={() => setFilter("all")}>
                 {t("briefs.filters.clear")}
@@ -212,12 +256,7 @@ function BriefsPage() {
             }
           />
         ) : (
-          <EmptyState
-            icon={<Briefcase />}
-            title={t("briefs.empty.title")}
-            text={t("briefs.empty.text")}
-            action={newButton}
-          />
+          <EmptyState icon={<Briefcase />} title={t("briefs.empty.title")} action={newButton} />
         )
       ) : (
         <ul className="stagger grid gap-6 sm:grid-cols-2 xl:grid-cols-3">

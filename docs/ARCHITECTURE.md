@@ -37,7 +37,7 @@ together. Paths are relative to the repository root.
 | Database  | `supabase/migrations`                  | Postgres with policies, triggers and SECURITY DEFINER helpers  | everything: one `org_id` on every row                                                   |
 | Processor | `services/processor/src`               | one Node process on Railway, service role                      | the service role key, the model key, the OCR key, the shared secret                     |
 | Resend    | `src/lib/email/email.server.ts`        | called by the Worker only                                      | nothing of ours beyond the emails sent                                                  |
-| Model     | `src/lib/model/model.server.ts`, `services/processor/src/model.ts` | called by the Worker and the processor only  | the text it is sent (CV text, briefs; for the screening and the second opinion a profile without name, e-mail or phone; for the tiering sheets of scores and sentences, without name or CV text) for the duration of the call; never the photo |
+| Model     | `src/lib/model/model.server.ts`, `services/processor/src/model.ts` | called by the Worker and the processor only  | the text it is sent (CV text, briefs; for the triage a card per profile without name, contacts, place, link, summary or CV text; for the screening and the second opinion a profile without name, e-mail or phone; for the tiering sheets of scores and sentences, without name or CV text) for the duration of the call; never the photo |
 
 ## Flows
 
@@ -117,29 +117,80 @@ runSearch({token, org,
                                saved in front of the criteria        ─▶ briefs.criteria
                              a role and a profile? the role's definition
                                rewritten from the profile            ─▶ briefs.criteria
-                             count active candidates                ─▶ candidates (HEAD, count=exact)
-                             ≤ 200: load the whole pool             ─▶ candidates (org filter, active)
-                             > 200: queryTextOf(brief)                                    ──▶ embed (1024) │ none
-                               rpc search_candidates(org, terms,
-                                 embedding | null, 120)             ─▶ full text (fts, simple, unaccent)
+                             a model, criteria and a job to name? the whole pool:
+                               insert searches row                  ─▶ method 'triage', results [], ran_by
+                               rpc start_triage(org, search)        ─▶ search_triage: one row per active
+                                                                       candidate, verdict null (one statement)
+                               pool_size = the rows inserted        ─▶ searches.pool_size
+                               (no snapshot: the row is deleted and the error answered)
+                               the member's earlier triage searches
+                                 of the brief nothing was read of   ─▶ deleted (best effort)
+                             else, the text path:
+                               count active candidates              ─▶ candidates (HEAD, count=exact)
+                               ≤ 200: load the whole pool           ─▶ candidates (org filter, active)
+                               > 200: queryTextOf(brief)                                  ──▶ embed (1024) │ none
+                                 rpc search_candidates(org, terms,
+                                   embedding | null, 120)           ─▶ full text (fts, simple, unaccent)
                                                                        ⊕ cosine over HNSW
                                                                        reciprocal rank fusion 1/(60+r)
-                               select the profiles returned         ─▶ candidates (org filter, active)
-                             scoreCandidate() per profile:
-                               verdict per criterion + evidence
-                               (missing only with contradicting evidence;
-                                the role found, never missing)
-                               score over evaluable, coverage,
-                               blocked when a required one is missing
-                             rankResults()
-                             insert searches row                    ─▶ query, criteria, results, method, pool_size, ran_by
-                             return {results, criteria, poolSize,
+                                 select the profiles returned       ─▶ candidates (org filter, active)
+                               scoreCandidate() per profile:
+                                 verdict per criterion + evidence
+                                 (missing only with contradicting evidence;
+                                  the role found, never missing)
+                                 score over evaluable, coverage,
+                                 blocked when a required one is missing
+                               rankResults()
+                               insert searches row                  ─▶ query, criteria, results, method, pool_size, ran_by
+                             return {method, results, criteria, poolSize,
                                criteriaDerived, roleProfileDerived, needsCheck}
-cards "not analysed"; the line says the pool's size and how many profiles were read;
-needsCheck (the model wrote the profile, the criteria or the role): one sentence and
-a "Read the profiles" button, nothing read before the team has looked at the job
-then three stages (stages.ts), until done or interrupted; "resume" sends what each stage lacks:
-1. the screening, six at a time:
+needsCheck (the model wrote the profile, the criteria or the role): the band says so and leads to
+"Le poste"; nothing is sorted or read until "Lancer la recherche" (this search when the job is
+unchanged, a new one on what the team saved)
+then the stages (stages.ts), until done or interrupted; "Reprendre" sends what each one lacks:
+0. the triage of a whole-pool search, forty profiles a call, four calls in flight:
+pendingTriageIds() (RLS) ─────────────────────────────────────────▶ search_triage (verdict null, keyset pages)
+triageCandidates({…,
+  searchId,
+  candidateIds[≤40]}) ─────▶ requireMember(member), enforceRateLimit("triage")
+                             load brief, search (method 'triage')   ─▶ briefs, searches
+                             the snapshot rows of these ids         ─▶ search_triage
+                               read already: done, never sent twice;
+                               outside the snapshot: failed
+                             load the profiles (active; never the
+                               contacts, links, photo, summary, text) ─▶ candidates
+                               gone from the pool: out of the snapshot
+                             triageCard() per profile: the headline, the
+                               position held today, four earlier ones, the
+                               years, the first degree without its year,
+                               twelve skills; the name, e-mail, phone, place
+                               and links taken out of every text; ref c1..cN
+                             triagePayload(): the job (triageRoleBrief())
+                               and the cards, shrunk a level at a time to
+                               stay under 16 000 characters                               ──▶ JSON {verdicts: [{ref, verdict
+                                                                                               yes│close│no│unknown, reason}]}
+                                                                                               (LLM_ASSESSMENT_MODEL | LLM_MODEL)
+                             enforceTriage(): one verdict per card (none,
+                               or outside the four: unknown); a reason that
+                               names a protected characteristic withheld; a
+                               "no" on a card whose current title or headline
+                               carries the job's name → close (guarded)
+                             recordUsage("triage")                  ─▶ ai_usage
+                             rpc record_triage(rows)                ─▶ search_triage (verdict, reason, model, read_at)
+                             no valid answer: the halves, both in flight,
+                               down to one card, settled unknown
+                             return {done, failed, counts}
+the failed batches sent once more at the end; the band counts the profiles kept so far
+promoteTriage({…,
+  searchId})         ──────▶ requireMember(member), enforceRateLimit("search")
+                             the verdicts yes, close, unknown       ─▶ search_triage (keyset pages of 1 000)
+                             those the results lack, lots of 100    ─▶ candidates (org filter, active)
+                             scoreCandidate() + {verdict, reason};
+                               gone from the pool: out of the snapshot
+                             triageOrder(): yes, close, unknown, then score
+                             rpc merge_search_results, 200 a call   ─▶ searches.results, result_count, the counts
+                             return {results, promoted, poolSize}
+1. the screening, six at a time, two calls in flight:
 assessCandidates({token,
   org, briefId, searchId,
   candidateIds[≤6]})  ──────▶ requireMember(member)
@@ -163,11 +214,11 @@ assessCandidates({token,
                                  → no_fit ≤ 25, "partial" ≤ 65, required
                                  "no" → no_fit ≤ 39, "unknown" ≤ 69, …
                                recordUsage("assess")                ─▶ ai_usage
-                             re-read the row, write the entries     ─▶ searches.results (assessment per entry)
+                             rpc merge_search_results(these entries) ─▶ searches.results (assessment per entry), the counts
                              carry to unassessed shortlist items    ─▶ shortlist_items.match (+ criteria)
                              return {results, failed}
-cards move to present / dig into / set aside (collapsed)
-2. the second opinion on the retained ones, six at a time:
+rows land as batches return: the matches listed, the near profiles behind their toggle, the rest counted
+2. the second opinion on the retained ones, six at a time, two calls in flight:
 challengeCandidates({…,
   candidateIds[≤6]})  ──────▶ requireMember(member), enforceRateLimit("assess")
                              load brief, search, the profiles ("fit" only)
@@ -176,8 +227,8 @@ challengeCandidates({…,
                                applyChallenge(): a doubt quoted from the
                                profile → borderline, score ≤ 69, the reason
                                among the concerns; anything else: confirmed
-                             re-read the row, write the entries     ─▶ searches.results (challenge per entry)
-3. the tiering of the retained and borderline ones, groups of 2..8 (then the A's of every group, once):
+                             rpc merge_search_results(these entries) ─▶ searches.results (challenge per entry)
+3. the tiering of the retained and borderline ones, groups of 2..8, one at a time (then the A's of every group, once):
 rankCandidates({…,
   candidateIds[2..8]}) ─────▶ requireMember(member), enforceRateLimit("assess")
                              load brief, search ("fit" or "borderline" only)
@@ -187,8 +238,8 @@ rankCandidates({…,
                                doubt: no name, no CV text                                 ──▶ JSON {ranking: [{candidateId, tier, note}]}
                              applyRanking(): no_fit → C at most,
                                borderline → B at most, fit at C → borderline
-                             re-read the row, write the entries     ─▶ searches.results (tier, rankNote per entry)
-cards reorder: tier, then score
+                             rpc merge_search_results(these entries) ─▶ searches.results (tier, rankNote per entry)
+rows reorder: tier, then score
 "add to shortlist"   ──────▶ (browser, RLS) shortlists (first use) + shortlist_items with the match snapshot
 ```
 
@@ -196,7 +247,19 @@ cards reorder: tier, then score
 drawer of a profile page, which the browser calls directly) are SECURITY
 INVOKER: even called with the service role, the Worker filters by the
 organisation it verified, and the browser can call them only for the
-organisations it belongs to.
+organisations it belongs to. `start_triage()`, `record_triage()` and
+`merge_search_results()` (migration `20261015090000`) are SECURITY
+INVOKER too and executable by the service role alone; members read
+`search_triage` under RLS and write none of it. The snapshot is one
+statement, so the pool size stored with the search and the rows to read
+are the same set; an erased candidate or a deleted search takes its rows
+with it, and a candidate archived since is taken out of the snapshot by
+the next call that names it. `merge_search_results()` locks the
+search's row, replaces each entry of the same candidate where it stands,
+appends the others and recounts `result_count`, `assessed_count`,
+`match_count` and `near_count`: batches sent in parallel add up, two
+people on the same entry is last-write-wins on that entry alone, and the
+lists read the counts without the results.
 
 The **role profile** (`briefs.role_profile`, `src/lib/briefs/role-profile.ts`)
 is the understanding of the job a senior recruiter writes before reading
@@ -234,8 +297,37 @@ coverage 0.15), the model's own score kept apart. The second opinion
 in the profile; the tiering (`applyRanking()`) can only move a `fit` to
 `borderline`, never to `no_fit`. The deterministic pass only finds the
 role in a title that carries the words of its name, never calls it
-missing. The detail of the prompts and the rules is in the README
-("Briefs and search").
+missing.
+
+The **triage** (`src/lib/briefs/triage.ts`, pure, tested) is the brief a
+senior recruiter gives a sourcer, on a card per profile: is this
+person's job this job (`yes`), a neighbouring one worth reading
+(`close`: an adjacent profile of the role profile, the job held earlier,
+the same function in a neighbouring domain), another one (`no`), or can
+the card not tell (`unknown`: no title, or only generic ones). It judges
+the métier from the whole card, never from a title's wording alone, and
+leaves the seniority, the years, the place and the detail of the
+must-haves to the full reading; between `close` and `no` it answers
+`close`. The job it reads is the role profile when the brief has one
+(its title, domain, level, equivalent titles, adjacent profiles, six
+missions and six must-haves), else the role criterion and the brief's
+title (`triageRoleBrief()`). Only `no` is set aside (`passesTriage()`):
+a thin card is read in full rather than dropped, and the guard
+(`carriesRoleName()`, on the job's title and its equivalent titles
+without what a job ad adds: "H/F", "CDI", "(e)") keeps every card whose
+current title or headline names the job. A profile set aside keeps its
+verdict and reason in `search_triage`; the page counts it in the band's
+figures, and that figure opens on demand the list of every profile set
+aside (`listSetAside()`, keyset pages under RLS) with its reason, where
+a member may bring one back to be read in full (`readAnyway()`: its
+`no` becomes `close`, then it is promoted like a profile kept). Each
+start or resume first extends the snapshot to the active profiles the
+pool gained (`extendTriage()`, `start_triage` again), and a finished
+analysis counts the ones gained since (`countOutsideSnapshot()`, an
+anti-join). The triage refuses a batch once the role profile defines
+the job otherwise than the search's role criterion (`INPUT:job_changed`:
+a new search runs on the new job). The detail of the prompts and the
+rules is in the README ("Briefs and search").
 
 ### Share: a dossier to a hiring manager
 
@@ -346,7 +438,8 @@ runs beyond the caller's reach.
    shortlist item's match, never updates one; the Worker fills only an
    unassessed one); `briefs.role_profile` is written by the Worker when an
    analysis derives it and by members when they edit it, guarded on both
-   sides (`guardRoleProfile()`). Triggers stamp `decided_by`, log activities and keep the last
+   sides (`guardRoleProfile()`); `search_triage` is read by members and
+   written by the Worker alone. Triggers stamp `decided_by`, log activities and keep the last
    owner. Supabase's default privileges (every new table granted to `anon`
    and `authenticated`) are revoked at the top of the migration, so the
    grants written in it are the whole truth. `anon` has no grant on any
@@ -363,12 +456,15 @@ runs beyond the caller's reach.
    refuses below the minimum. Only then does the handler use `db()` (the
    service role, which bypasses RLS), and every query it runs names the
    organisation it verified. Costly handlers call `enforceRateLimit()`
-   first (one scope each: `model`, `search`, `assess`, `share`, `email`,
-   `processor`). What leaves for the model is built by pure, tested
-   modules: the screening and second-opinion payloads carry no name,
+   first (one scope each: `model`, `search`, `triage`, `assess`, `share`,
+   `email`, `processor`). What leaves for the model is built by pure,
+   tested modules: the triage cards carry no name, contacts, place,
+   link, photo, summary or CV text (`triageCard()`), the screening and
+   second-opinion payloads no name,
    e-mail or phone (`redactIdentity()`), the tiering sheets no CV text at
    all, and every answer is bound by rules before it is stored
-   (`enforceAssessment()`, `applyChallenge()`, `applyRanking()`), each
+   (`enforceTriage()`, `enforceAssessment()`, `applyChallenge()`,
+   `applyRanking()`), each
    quote checked against the texts the model was given
    (`payloadTexts()`). An `AppError` reaches the browser as a code (`AUTH:required`,
    `ORG:forbidden`, `RATE:limited`, `SETUP:model`…) that `errorMessage()`
@@ -402,9 +498,9 @@ never a body, a key or a token.
 
 | Secret                                                | Unlocks                                                                                              | Lives in                                                                                   | Never in                                   |
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
-| `SUPABASE_SERVICE_ROLE_KEY`                           | Every row of every organisation, storage signing, writing and removal in both buckets, the SECURITY DEFINER functions reserved to it (`expired_candidates`, `sync_plan_from_billing`) | Cloudflare dashboard (Worker), Railway (processor), `scripts/backup.sh` never (it uses the database URL) | the browser, git, `/status`, logs          |
+| `SUPABASE_SERVICE_ROLE_KEY`                           | Every row of every organisation, storage signing, writing and removal in both buckets, the SECURITY DEFINER functions reserved to it (`expired_candidates`, `sync_plan_from_billing`) and the triage's write functions (`start_triage`, `record_triage`, `merge_search_results`) | Cloudflare dashboard (Worker), Railway (processor), `scripts/backup.sh` never (it uses the database URL) | the browser, git, `/status`, logs          |
 | `PROCESSOR_SHARED_SECRET`                             | `POST /process`, `POST /maintenance`, `GET /metrics` on the processor                                | Cloudflare dashboard and Railway (the same value, 32+ characters)                           | git, the browser, health answers           |
-| `LLM_API_KEY` (with `LLM_BASE_URL`, models, `LLM_ASSESSMENT_MODEL` on the Worker) | The model vendor: structuring and classification, embeddings, criteria, role profiles, screenings, second opinions, tiers, dossier drafts | Cloudflare dashboard, Railway                                                     | git, the browser, `/status` (names only)   |
+| `LLM_API_KEY` (with `LLM_BASE_URL`, models, `LLM_ASSESSMENT_MODEL` on the Worker) | The model vendor: structuring and classification, embeddings, criteria, role profiles, the triage, screenings, second opinions, tiers, dossier drafts | Cloudflare dashboard, Railway                                                     | git, the browser, `/status` (names only)   |
 | `MISTRAL_OCR_API_KEY`                                 | OCR of scanned PDFs                                                                                  | Railway                                                                                     | the Worker, git                            |
 | `RESEND_API_KEY`                                      | Sending email (invitations, shares)                                                                  | Cloudflare dashboard                                                                        | git, the processor, the browser            |
 | Supabase Auth secrets (JWT secret, OAuth client)      | Issuing and verifying sessions                                                                       | Supabase only; the Worker verifies tokens through Auth's `/user`, it never holds the JWT secret | anywhere of ours                        |

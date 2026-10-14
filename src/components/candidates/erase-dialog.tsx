@@ -48,7 +48,13 @@ export function EraseCandidateDialog({
       <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>{t("candidates.erase.title", { name })}</DialogTitle>
-          <DialogDescription>{t("candidates.erase.text", { count: documentCount })}</DialogDescription>
+          <DialogDescription>
+            {documentCount === 0
+              ? t("candidates.erase.text.none")
+              : documentCount === 1
+                ? t("candidates.erase.text.one")
+                : t("candidates.erase.text.many", { count: documentCount })}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <Label htmlFor="erase-name">{t("candidates.erase.typeName", { name })}</Label>

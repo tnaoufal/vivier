@@ -16,7 +16,7 @@ import { z } from "zod";
 
 import type { ShareBrief, ShareItem, ShareRow } from "@/lib/db/types";
 import { emailLayout, emailSetup, sendRecorded } from "@/lib/email/email.server";
-import { completeJson, modelConfigured } from "@/lib/model/model.server";
+import { completeJson, modelConfigured, usageOf } from "@/lib/model/model.server";
 import { AppError, appErrorCode } from "@/lib/platform/errors";
 import { enforceRateLimit } from "@/lib/platform/rate-limit.server";
 import { settings, siteOriginOf } from "@/lib/platform/settings.server";
@@ -225,7 +225,13 @@ export const draftShare = createServerFn({ method: "POST" })
     ]);
     const matches = matchByCandidate(matchRows);
     const criteria = shortlist.brief.criteria;
-    let items = plainDraft(candidates, latestDocumentByCandidate(documents), matches, criteria, org.locale);
+    let items = plainDraft(
+      candidates,
+      latestDocumentByCandidate(documents),
+      matches,
+      criteria,
+      org.locale,
+    );
     let modelUsed = false;
     let modelFailed = false;
     if (data.useModel && modelConfigured()) {
@@ -241,7 +247,14 @@ export const draftShare = createServerFn({ method: "POST" })
         items = mergeDraft(items, answer.value);
         modelUsed = true;
       } catch (error) {
-        log("draft_model_failed", { shortlistId: shortlist.id, candidates: candidates.length, error: errorText(error) });
+        // An answer that failed after billed attempts is recorded all the same.
+        const usage = usageOf(error);
+        if (usage) await recordUsage(member.orgId, "summary", usage);
+        log("draft_model_failed", {
+          shortlistId: shortlist.id,
+          candidates: candidates.length,
+          error: errorText(error),
+        });
         modelFailed = true;
       }
     }
@@ -297,7 +310,9 @@ export const createShare = createServerFn({ method: "POST" })
     const stored: ShareItem[] = items.map((item) => ({
       ...item,
       documentId:
-        data.includeCvs && item.documentId && documentOwner.get(item.documentId) === item.candidateId
+        data.includeCvs &&
+        item.documentId &&
+        documentOwner.get(item.documentId) === item.candidateId
           ? item.documentId
           : null,
     }));
@@ -359,7 +374,10 @@ export const sendShare = createServerFn({ method: "POST" })
     const token = new URL(data.url).pathname.slice(SHARE_PATH.length);
     if ((await sha256Hex(token)) !== share.token_hash) throw new AppError("INPUT:invalid");
 
-    const [org, sender] = await Promise.all([loadOrg(client, member.orgId), senderName(client, member)]);
+    const [org, sender] = await Promise.all([
+      loadOrg(client, member.orgId),
+      senderName(client, member),
+    ]);
     const content = shareEmail({
       locale: org.locale,
       orgName: org.name,

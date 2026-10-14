@@ -1,9 +1,9 @@
 /**
  * /app/briefs/new: a title and the need as free text, two fields in one
- * card, with the honest help: the criteria come next, proposed by the
- * model when there is one and validated by the team. The row is created
- * open, with no criteria yet; the brief page then proposes them or lets
- * the person write them.
+ * card (the placeholders carry the examples), and the one button that
+ * creates it; a viewer sees the refusal every page shows. The row is
+ * created open, with no criteria yet; the brief page then proposes them
+ * or lets the person write them.
  */
 import { useState, type FormEvent } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -70,18 +70,14 @@ function NewBriefPage() {
     return (
       <div>
         <PageHeader eyebrow={eyebrow} title={t("briefs.new.title")} />
-        <NotAllowed text={t("briefs.new.forbidden")} />
+        <NotAllowed />
       </div>
     );
   }
 
   return (
     <div>
-      <PageHeader
-        eyebrow={eyebrow}
-        title={t("briefs.new.title")}
-        description={t("briefs.new.text")}
-      />
+      <PageHeader eyebrow={eyebrow} title={t("briefs.new.title")} />
       <form
         onSubmit={(event) => void submit(event)}
         className="sheet max-w-2xl space-y-6 p-6 sm:p-8"
@@ -108,7 +104,6 @@ function NewBriefPage() {
             maxLength={DESCRIPTION_MAX}
             rows={10}
           />
-          <p className="text-meta text-muted-foreground">{t("briefs.form.description.help")}</p>
         </div>
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           <Button asChild variant="ghost" type="button">

@@ -1,9 +1,9 @@
 /**
- * Criteria the model proposes from the brief's text, shown as chips the
- * person adds one by one or all at once: the model proposes, the person
- * validates, and nothing reaches the brief without their gesture. The
- * chips rise in one after the other when they land. Without a model,
- * one sentence says so and the criteria are typed in.
+ * Criteria the model proposes from the brief's text, shown as chips under
+ * a label that says they are the model's: the person adds them one by
+ * one or all at once, and nothing reaches the brief without their
+ * gesture. The chips rise in one after the other when they land.
+ * Without a model, a few words say so and the criteria are typed in.
  */
 import { useState } from "react";
 import { Plus, Sparkles } from "lucide-react";
@@ -85,7 +85,6 @@ export function CriteriaProposals({
               ? t("briefs.proposals.again")
               : t("briefs.proposals.button")}
         </Button>
-        <span className="text-meta text-muted-foreground">{t("briefs.proposals.help")}</span>
       </div>
       {proposals ? (
         <div className="fade-in space-y-2">

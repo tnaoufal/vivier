@@ -76,7 +76,7 @@ only. Sentence case everywhere; no all-caps. Numbers in `tabular-nums`.
 | `text-xs`   | 12 / 16     | pills, shortcuts                                |
 | `text-meta` | 13 / 20     | labels, meta lines, dates, hints (`label-caps`) |
 | `text-sm`   | 14 / 20     | secondary text, rows' second line, buttons      |
-| `text-body` | 15 / 24     | body, descriptions, dialog text                 |
+| `text-body` | 15 / 24     | body, a dialog's consequence line               |
 | `text-base` | 16 / 24     | card titles (600)                               |
 | `text-lg`   | 18 / 28     | compact empty-state titles                      |
 | `text-xl`   | 20 / 28     | section titles, dialog titles, sticky headers   |
@@ -86,7 +86,8 @@ only. Sentence case everywhere; no all-caps. Numbers in `tabular-nums`.
 | `text-5xl`  | 48 / 1      | reserved                                        |
 | `text-6xl`  | 60 / 1      | the hero from `sm`, the 404 number              |
 
-One sentence of description under every page title, two lines at most.
+No sentence under a page title: the title and its key figure (in `meta`)
+say enough (see "Content rules").
 
 ### Spacing
 
@@ -167,7 +168,8 @@ Every primitive keeps its earlier props; the new ones are optional.
   one leading icon at most; `destructive` on an item for erase. Menus
   open above drawers (`z-popover`).
 - **Skeleton, SkeletonRows** shimmering placeholders the size of what
-  they stand for; `SkeletonRows` is the list every page shows before its
+  they stand for (`avatarSize` sm · md · lg matches the Avatar the rows
+  will show); `SkeletonRows` is the list every page shows before its
   rows arrive.
 - **Toaster** the float surface, an icon in a tinted disc, bottom right,
   above everything.
@@ -175,9 +177,17 @@ Every primitive keeps its earlier props; the new ones are optional.
 ### `src/components/app-shell`
 
 - **PageHeader** `eyebrow`, `title` (30/36, 24/32 on phones),
-  `description`, `meta` (a row of pills), `actions`; `sticky` is the slim
+  `description` (kept for compatibility, not passed: see "Content
+  rules"), `meta` (a row of pills, the page's count with `role="status"`
+  when a filter changes it), `actions`; `sticky` is the slim
   variant of a long page (20/28, under the top edge with a blur).
-- **Section** `title`, `count`, `description`, `action`, `id`.
+- **Section** `title`, `count`, `description` (optional, not passed),
+  `action`, `id`.
+- **InfoTip** `label` (the topic, added to the button's name "More
+  information · …"), children (the sentence): the
+  16px info icon in a 40px target that opens a small popover on click,
+  tap or keyboard. The one place an explanation lives, beside the title
+  or the label it is about; never a paragraph under it.
 - **Pill** `tone` neutral · positive · caution · negative · primary;
   `dot` or `icon` (14px), never both: `icon` wins; `size` sm 20 · md 24.
 - **Avatar** `name`, `size` sm 28 · md 36 · lg 44 · xl 72, `photoUrl` (a
@@ -207,15 +217,19 @@ Every primitive keeps its earlier props; the new ones are optional.
   Green from 80, amber from 60, red below. The arc draws itself once.
 - **RequirementList, RequirementMark** one row per requirement: the mark
   (✓ met, – partial, ✗ missing, ? not stated, each with a text
-  alternative), the label, the evidence; `compact` for print.
-- **EmptyState** `icon` (in a tinted disc), `title`, `text` (one
-  sentence), `action` (one), `compact` inside a card or a drawer (the
-  title a paragraph: the card's own title is the heading), `inset`
+  alternative), the label, the evidence; `compact` for print, `stagger`
+  for rows that rise in once on screen.
+- **EmptyState** `icon` (in a tinted disc), `title` (a few words),
+  `text` (optional, at most one short line; usually not passed),
+  `action` (one), `compact` inside a card or a drawer (the title a
+  paragraph: the card's own title is the heading), `inset`
   inside a sheet (no card of its own, never a card in a card).
-- **FilterChip** `active`, `onClick`, `icon`, `count`; 40px like the
-  field and the tabs beside it, hairline, accent tint when on, never the
+- **FilterChip** `active`, `onClick`, `icon`, `count`, `expanded` and
+  `controls` (a chip that shows a panel says open or closed, not
+  pressed); 40px like the field and the tabs beside it, hairline, accent tint when on, never the
   filled primary; the count at full strength, lighter by weight only.
-  **LocaleChips** the two languages, one on.
+  **LocaleChips** the two languages, one on, each name in its own
+  language (`lang`).
 - **ConfirmDialog** a small dialog, cancel then the one confirming
   button (negative when `destructive`), `busy` disables both.
 - **PageTransition** wraps the outlet; **usePrefersReducedMotion** for
@@ -292,7 +306,8 @@ anything, text on the right. Every icon-only button carries an
 | the talent pool         | `Users`         | settings               | `Settings`        |
 | a comment               | `MessageSquare` | a vote                 | `ThumbsUp` / `ThumbsDown` |
 | copy a link             | `Copy`          | an email               | `Mail`            |
-| in processing           | `CircleDashed`  | open elsewhere         | `ExternalLink`    |
+| in processing           | `CircleDashed`  | open elsewhere (a new tab, outside the app) | `ExternalLink` |
+| a profile (in the app)  | `UserRound`     | more information       | `Info`            |
 
 Known doubles to purge, and what replaces them:
 
@@ -309,21 +324,57 @@ Known doubles to purge, and what replaces them:
 
 ## Content rules
 
+Go to the essential, everywhere. A screen shows facts and actions, not
+explanations: the product is easy to use because there is little to
+read.
+
+- **What a screen may say.** A title, its key figures, the labels of its
+  fields and the words of its actions. No description paragraph under a
+  page title or a section title (a page title and its figure say
+  enough); no help sentence under a field, a button or a block, unless
+  an error, a destructive action or a legal obligation needs it; no
+  method or reassurance sentence ("we analysed…", "don't worry…"); a
+  fact said once per screen, never repeated in a sentence beside the
+  figure or the pill that already says it.
+- **The tooltip rule.** The rare explanation that really matters (how a
+  measure is computed, what a role may do, how long a link lasts) moves
+  behind an `InfoTip` beside the title or the label it is about: one
+  sentence, on demand. A `title` attribute is never the only place a
+  sentence lives.
+- **Figures first.** Numbers before words: "12 correspondances", "3 / 8
+  exigences", "0 candidat", never "Nous avons trouvé 12 profils qui…". A
+  count of one says "1 retenu" (each plural has its `.one` key).
+- **Labels** of one to three words: a button says its action ("Importer
+  des CV", "Partager"), a field its value ("Langue de travail"), a tab
+  its view; the count in a tab or a chip is set apart for assistive
+  technologies (`<span class="sr-only">, </span>`).
+- **Empty states**: an icon, a title of a few words ("Aucune shortlist")
+  and the one action that fills the list; at most one short line, and
+  usually none. An error state is the same shape: the icon, what failed,
+  "Réessayer".
+- **Toasts** of a few words ("Enregistré.", "Lien créé."); an error toast
+  says what to do when the person can do something.
+- **Confirmations** state the consequence in one line ("Le lien ne
+  s'ouvrira plus, pour personne. C'est définitif.").
+- **Honesty, in few words.** A value the CV does not state reads "Non
+  renseigné" / "Not stated" in muted text (`t("common.unknown")`), never
+  a dash, an empty cell or a zero. A model's proposal is marked as such
+  by a short pill or label ("Lecture du modèle", "Proposé par le
+  modèle", "Rédigé par le modèle"), never a paragraph. A decision shows
+  who took it and when; a share says when it expires; a document that
+  failed says why in one sentence (the service's own); a reading without
+  a model says so ("Texte seul, sans modèle").
 - A block exists only if it answers one of: who is this, does the
   profile fit, what is missing, who decided and when, what happens next.
   A list row shows what tells rows apart (the headline, the years, the
-  three skills that matter for the brief, the verdict), never every field.
-- A value the CV does not state reads "Non renseigné" / "Not stated" in
-  muted text (`t("common.unknown")`), never a dash that could be read as
-  "none", never an empty cell, never a zero.
-- A model's sentence is introduced as the model's ("Lecture du modèle",
-  "The model's reading"); a decision shows who took it and when; a share
-  says when it expires; a document that failed says why in one sentence;
-  a search without a model says it ran on text only.
+  three skills that matter for the brief, the verdict), never every
+  field, and no pill that every row would carry ("Ouvert" on every open
+  brief).
 - Skills: at most eight chips in a row, the ones relevant to the brief
   first; the rest behind "N more" in the sheet, never a wall of chips.
-- Sentences in both languages, plain, one idea each. No all-caps, no
-  exclamation marks, no "AI magic".
+- Sentences in both languages with the same meaning, plain, one idea
+  each. No all-caps, no exclamation marks, no "AI magic". A key no screen
+  uses any more leaves both languages.
 
 ## Accessibility
 
@@ -357,23 +408,68 @@ Known doubles to purge, and what replaces them:
   with the one primary action; a filter row (`Segmented` or
   `FilterChip`s, a search `Input`); one `sheet` of `sheet-row`s, each row
   the link, rising in once; `SkeletonRows` while loading; `EmptyState`
-  with the action that fills it; a count in the description.
+  with the action that fills it; the count in the header's `meta`, never
+  a sentence.
 - **Detail page** (a candidate, a brief): `PageHeader sticky` on long
-  pages with the title, `meta` pills (status, source) and the actions;
+  pages with the title, `meta` pills (only what sets the record apart:
+  archived, typed by hand, consent withdrawn) and the actions, kept in
+  place while the page loads and when it fails;
   then two columns from `lg`: the identity and the verdicts on the left
   (Avatar `profile`, the headline, the Meters, the RequirementList), the
   evidence on the right (the Timeline of experiences, the skills, the
   languages, the documents); comments and history in their own sections
   below; the CV opens in a `Sheet size="full"`.
-- **Board page** (a shortlist): `PageHeader` with the share action;
-  columns or grouped sections by decision (matching, to check, set aside
-  collapsed, not analysed), each card a `sheet-link` with the Avatar, the
+- **Board page** (a shortlist): `PageHeader` with the share action and
+  no count pills (each column's heading carries its count); columns or
+  grouped sections by decision (matching, to check, set aside collapsed,
+  not analysed), each card a `sheet-link` with the Avatar, the
   ScoreRing `sm`, the missing required requirement named; a drawer for
   the item (`Sheet size="lg"`) with the profile, the verdicts, the note,
   the votes, the comments, the history.
+- **Brief page** (`/app/briefs/:briefId`): `PageHeader sticky` with the
+  title, the status and its date, the one filled action ("Lancer la
+  recherche", held with a tooltip while an editor has unsaved edits) and
+  the administrators' menu; then two `Tabs` kept in the URL
+  (`?tab=matches|brief`), both panels mounted: "Correspondances", its
+  count in the tab, and "Le poste" (the brief, the role profile and the
+  criteria in one `max-w-3xl` column). The matches tab, top to bottom and
+  nothing else:
+  - the **analysis band**, one `sheet` in the state the analysis is in.
+    Idle: the count of matches as the headline (`font-display`), one line
+    of figures under it ("analysés · retenus au tri · lus en détail"
+    while some are left, then the date), the method behind an `InfoTip`,
+    the earlier analyses behind a quiet button (the tiers are on the
+    rows, never counted again in the band); once done, the profiles the
+    pool gained since and "Analyser". Running: the live count first
+    (`aria-live`, "Préparation du vivier…" while the search is
+    prepared) with "Interrompre", then a `ProgressBar` with "{step} ·
+    {done} / {total}" and the time left once known. Unfinished: what is
+    left and "Reprendre", or "En cours dans une autre session". Waiting for the
+    team's check: one line and "Vérifier le poste". No match once
+    everything ran: "0 correspondance", the requirement most often
+    missing and "Revoir le poste". An empty pool: `EmptyState` with the
+    import.
+  - the **match rows**, the matches alone in one `sheet` of compact rows:
+    the rank, the `Avatar md`, the name and the position held today, one
+    line (why it ranks there), the `TierPill compact` from `sm`, the
+    `ScoreRing sm`; the row is one button, the shortlist button sits
+    beside it, never inside. Rows rise in as their batch lands and never
+    again; skeleton rows of the same height hold the place before.
+  - right under them, a quiet toggle (`aria-expanded`) for the near
+    profiles: muted rows, no tier, their main reservation as the line. A
+    profile set aside is a figure of the band, never a row.
+  - the **drawer** (`Sheet size="lg"`, from the right): the `Avatar lg`,
+    the name, the position held today, the tier, the decision (only when
+    it is not "Correspond") and the score in its header, previous and
+    next (and the arrow keys), one row of actions (add to the shortlist,
+    open the profile); then why this profile (the tiering's note first),
+    the requirements with their evidence, the strengths and the
+    reservations side by side, the reading against the role, the
+    interview points, and the triage's verdict, small and muted.
 - **Dialog** (a confirmation, a form): `size` by content (`sm` for a
   question, `lg` for a form with rows, `xl` for an upload with a table),
-  `DialogHeader` with a title and one sentence, `DialogBody` scrolling,
+  `DialogHeader` with a title (a sentence only for a confirmation's
+  consequence or a legal obligation), `DialogBody` scrolling,
   `DialogFooter` with cancel then the one confirming button.
 - **Drawer**: `SheetHeader` with the Avatar and the title, `SheetBody`
   scrolling, `SheetFooter` with the actions when the drawer decides

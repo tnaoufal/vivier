@@ -3,7 +3,8 @@
  * cards of rows under the public frame: each row a name, an optional
  * public note (a model's name, a version) and a pill that says
  * operational, missing or not checked in words and an icon, never a
- * colour alone. One line sums it up; no secret is ever shown.
+ * colour alone. One pill sums it up and is announced when a new check
+ * changes it; no secret is ever shown.
  */
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { Check, CircleDashed, RefreshCw, X } from "lucide-react";
@@ -96,16 +97,15 @@ function StatusPage() {
       <div className="rise-in">
         <PageHeader
           title={t("status.title")}
-          description={t("status.subtitle")}
           meta={
-            <>
+            <div role="status" className="flex flex-wrap items-center gap-2">
               <Pill tone={issues === 0 ? "positive" : "negative"} icon={issues === 0 ? <Check /> : <X />}>
                 {summary}
               </Pill>
               <span className="text-meta text-muted-foreground tabular-nums">
                 {t("status.checkedAt", { date: formatDateTime(locale, report.checkedAt) })}
               </span>
-            </>
+            </div>
           }
           actions={
             <Button variant="outline" icon={<RefreshCw />} onClick={() => void router.invalidate()}>

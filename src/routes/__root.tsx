@@ -63,7 +63,6 @@ function NotFoundComponent() {
         <BrandMark size="md" className="mb-10 justify-center" />
         <p className="font-display text-6xl text-primary tabular-nums">404</p>
         <h1 className="mt-4 font-display text-2xl text-ink">{t("common.notFound")}</h1>
-        <p className="mt-2 text-body text-muted-foreground">{t("common.notFound.text")}</p>
         <div className="mt-8">
           <Button asChild>
             <Link to="/">{t("common.home")}</Link>
@@ -83,7 +82,6 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
       <div className="rise-in w-full max-w-md text-center">
         <BrandMark size="md" className="mb-10 justify-center" />
         <h1 className="font-display text-2xl text-ink">{t("common.errorPage")}</h1>
-        <p className="mt-2 text-body text-muted-foreground">{t("common.errorPage.text")}</p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Button
             onClick={() => {

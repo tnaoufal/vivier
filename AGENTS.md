@@ -17,8 +17,10 @@ stack and nothing else.
   extracts criteria from a brief, ranks and assesses requirement by
   requirement (a reading, bound by rules in `src/lib/briefs/assessment.ts`);
   a person retains or dismisses, and `shortlist_items.decided_by` says who. The UI never hides
-  this. A criterion the CV says nothing about is `not_stated`, never a
-  mismatch; a field the model did not read is absent, never invented.
+  this: a profile an analysis set aside stays viewable on demand, with its reason, from the
+  funnel's figure, and a member can have one the triage set aside read in
+  full anyway. A criterion the CV says nothing about is `not_stated`, never
+  a mismatch; a field the model did not read is absent, never invented.
 - No sensitive inference: age, date of birth, gender, origin, family,
   health, religion, union, politics are never extracted, stored or used
   as criteria. The photo read from a CV's first page is stored and shown
@@ -26,7 +28,10 @@ stack and nothing else.
   bucket, off for an organisation with `organizations.show_photos`) and
   never reaches the model or any criterion. A career break, a gap or a
   period without a position is never read, scored or mentioned either
-  (such sentences are withheld).
+  (such sentences are withheld). The triage card (`triageCard()`,
+  `src/lib/briefs/triage.ts`) carries no identity: never the name, the
+  contact details, the place, a link, the photo, the summary or the CV
+  text, and the name and the place are taken out of its texts too.
 - Access is decided by `memberships.role` through RLS
   (`supabase/migrations`) and, in server functions, by `requireMember()`
   reading the access token the browser sends: never by anything else. The

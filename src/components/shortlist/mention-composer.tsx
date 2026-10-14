@@ -153,7 +153,7 @@ export function MentionComposer({
                 index === active ? "bg-accent text-accent-foreground" : "text-ink",
               )}
             >
-              <Avatar name={member.name} size="sm" />
+              <Avatar name={member.name} size="sm" decorative />
               <span className="truncate">{member.name}</span>
             </li>
           ))}

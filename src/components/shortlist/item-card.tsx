@@ -4,21 +4,22 @@
  * (the model's score, a dash when no model assessed the profile), the
  * tier the comparative pass proposed and the analysis's decision as
  * pills, the one required requirement the CV does not meet named in
- * red, who decided and when, then the votes, the comment count and the
- * person assigned. Every action lives in an overflow menu: retain,
- * dismiss, review again, assign, open the sheet or the full profile,
- * remove (confirmed). The caller wraps the card in its list item.
+ * red, who decided and when, then the votes, the comment count, the
+ * decisions a member takes most (retain, dismiss, review again: the two
+ * other than the card's status, as icon buttons) and the person
+ * assigned. The rest lives in an overflow menu: assign, open the sheet
+ * or the full profile, remove (confirmed). The caller wraps the card in
+ * its list item.
  */
 import { useState } from "react";
 import {
   Check,
   Ellipsis,
-  ExternalLink,
   FileSearch,
   MessageSquare,
   RotateCcw,
   Trash2,
-  UserCheck,
+  UserRound,
   X,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -132,7 +133,7 @@ export function ItemCard({
   return (
     <article className="sheet p-6">
       <div className="flex items-start gap-3">
-        <Avatar name={name} size="md" photoUrl={photoUrl} className="mt-0.5" />
+        <Avatar name={name} size="md" photoUrl={photoUrl} className="mt-0.5" decorative />
         <div className="min-w-0 flex-1">
           <button
             type="button"
@@ -151,10 +152,10 @@ export function ItemCard({
             <Button
               type="button"
               variant="ghost"
-              size="icon-sm"
+              size="icon"
               aria-label={t("shortlists.item.menu")}
               title={t("shortlists.item.menu")}
-              className="-mr-2 -mt-1 text-muted-foreground"
+              className="-mr-3 -mt-2 text-muted-foreground"
             >
               <Ellipsis />
             </Button>
@@ -162,22 +163,9 @@ export function ItemCard({
           <DropdownMenuContent align="end" className="min-w-56">
             {canAct ? (
               <>
-                {NEXT_STATUSES[item.status].map((next) => {
-                  const Icon = NEXT_ICONS[next];
-                  return (
-                    <DropdownMenuItem
-                      key={next}
-                      disabled={actions.busy}
-                      onSelect={() => void actions.decide(next)}
-                    >
-                      <Icon />
-                      {t(NEXT_KEYS[next])}
-                    </DropdownMenuItem>
-                  );
-                })}
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger disabled={actions.busy}>
-                    <UserCheck />
+                  {/* The sub-menu's chevron is its one mark: no leading icon, the label aligned with the others. */}
+                  <DropdownMenuSubTrigger inset disabled={actions.busy}>
                     {t("shortlists.assign.menu")}
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="min-w-48">
@@ -213,7 +201,7 @@ export function ItemCard({
             {candidate ? (
               <DropdownMenuItem asChild>
                 <Link to="/app/candidates/$candidateId" params={{ candidateId: candidate.id }}>
-                  <ExternalLink />
+                  <UserRound />
                   {t("shortlists.drawer.openCandidate")}
                 </Link>
               </DropdownMenuItem>
@@ -235,17 +223,11 @@ export function ItemCard({
         </DropdownMenu>
       </div>
 
+      {/* The model's rank note stays in the drawer: on the card, the tier pill says where it ranks. */}
       {tier || assessment ? (
-        <div className="mt-3 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {tier ? <TierPill tier={tier} /> : null}
-            {assessment ? <DecisionPill decision={assessment.decision} /> : null}
-          </div>
-          {assessment?.rankNote ? (
-            <p className="text-meta text-muted-foreground">
-              {t("shortlists.item.rankNote", { note: assessment.rankNote })}
-            </p>
-          ) : null}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {tier ? <TierPill tier={tier} /> : null}
+          {assessment ? <DecisionPill decision={assessment.decision} /> : null}
         </div>
       ) : (
         <ScoreLine match={item.match} className="mt-3 block" />
@@ -296,12 +278,34 @@ export function ItemCard({
           <MessageSquare aria-hidden="true" />
           {commentCount}
         </button>
+        {/* The decision is the board's most frequent action: one click, beside the votes. */}
+        {canAct
+          ? NEXT_STATUSES[item.status].map((next) => {
+              const Icon = NEXT_ICONS[next];
+              const label = t(NEXT_KEYS[next]);
+              return (
+                <Button
+                  key={next}
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={label}
+                  title={label}
+                  disabled={actions.busy}
+                  onClick={() => void actions.decide(next)}
+                  className="text-muted-foreground hover:text-ink"
+                >
+                  <Icon aria-hidden="true" />
+                </Button>
+              );
+            })
+          : null}
         {item.assigned_to ? (
           <span
             className="ml-auto flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground"
             title={t("shortlists.item.assignedTo", { name: nameOf(item.assigned_to) })}
           >
-            <Avatar name={nameOf(item.assigned_to)} size="sm" />
+            <Avatar name={nameOf(item.assigned_to)} size="sm" decorative />
             <span className="max-w-28 truncate">{nameOf(item.assigned_to)}</span>
           </span>
         ) : null}

@@ -1,8 +1,9 @@
 /**
  * The CVs behind a profile, in the aside: each with its name, what is
  * known of it (size, date, pages, how it was structured), its status
- * and the service's sentence when it failed or was set aside as not a
- * CV, a "Read" button that opens the viewer in place, a retry for a
+ * pill (which says a set-aside file or a quota wait on its own) and the
+ * service's sentence when it failed, a "Read" button that opens the
+ * viewer in place, a retry for a
  * failed, unreadable or set-aside one (a person may disagree with the
  * service's reading), and a button to add another CV to this profile.
  */
@@ -17,13 +18,12 @@ import { isQuotaFailure } from "@/lib/candidates/quota";
 import { canRetry, useDocumentActions } from "@/lib/candidates/use-document-actions";
 import type { DocumentRow } from "@/lib/db/types";
 import { formatDate, useI18n } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 
 import { UploadDialog, type UploadTargetCandidate } from "./upload-dialog";
 
-/** The statuses whose sentence from the service is worth a line of its own. */
-function hasNote(status: DocumentRow["status"]): boolean {
-  return status === "failed" || status === "needs_ocr" || status === "rejected";
+/** A real failure: the service's sentence says why, on a line of its own. A quota wait or a set-aside file is said by its pill. */
+function hasNote(document: DocumentRow): boolean {
+  return (document.status === "failed" || document.status === "needs_ocr") && !isQuotaFailure(document);
 }
 
 export function DocumentsCard({
@@ -45,22 +45,13 @@ export function DocumentsCard({
   const actions = useDocumentActions(onChanged);
 
   const addButton = canEdit ? (
-    <Button type="button" size="sm" variant="outline" icon={<Upload />} onClick={() => setUploadOpen(true)}>
+    <Button type="button" variant="outline" icon={<Upload />} onClick={() => setUploadOpen(true)}>
       {t("candidates.documents.add")}
     </Button>
   ) : null;
 
-  /**
-   * What the line under a document says: a set-aside file is the service's
-   * reading and a quota refusal its state, both said in the person's
-   * language (the stored sentence stays for the audit); a failure keeps
-   * the service's own sentence.
-   */
-  const note = (document: DocumentRow): string => {
-    if (document.status === "rejected") return t("candidates.documents.rejectedNote");
-    if (isQuotaFailure(document)) return t("candidates.documents.quotaNote");
-    return document.error?.trim() || t("candidates.documents.noError");
-  };
+  /** The line under a failed document: the service's own sentence (the stored one stays for the audit). */
+  const note = (document: DocumentRow): string => document.error?.trim() || t("candidates.documents.noError");
 
   const details = (document: DocumentRow): string =>
     [
@@ -112,26 +103,15 @@ export function DocumentsCard({
                   )}
                 </div>
                 <p className="mt-0.5 text-meta text-muted-foreground tabular-nums">{details(document)}</p>
-                {hasNote(document.status) ? (
-                  // Set aside is the service's reading and a quota refusal a wait, not failures: they read in the quiet tone.
-                  <p
-                    className={cn(
-                      "mt-1 text-meta",
-                      document.status === "rejected" || isQuotaFailure(document) ? "text-muted-foreground" : "text-negative",
-                    )}
-                  >
-                    {note(document)}
-                  </p>
-                ) : null}
+                {hasNote(document) ? <p className="mt-1 text-meta text-negative">{note(document)}</p> : null}
                 <div className="mt-2.5 flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" icon={<FileSearch />} onClick={() => onRead(document)}>
+                  <Button type="button" variant="outline" icon={<FileSearch />} onClick={() => onRead(document)}>
                     {t("candidates.documents.read")}
                   </Button>
                   {canEdit && canRetry(document.status) ? (
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
                       icon={<RefreshCw />}
                       onClick={() => void actions.retry(document)}
                       disabled={actions.busyId !== null}
@@ -147,6 +127,7 @@ export function DocumentsCard({
       ) : (
         <EmptyState
           compact
+          inset
           icon={<FileText />}
           title={t("candidates.documents.empty")}
           action={addButton}

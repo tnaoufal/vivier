@@ -172,18 +172,9 @@ function SignInPage() {
           : intent === "signUp"
             ? t("auth.signUp.title")
             : t("auth.title");
+  // Only the steps that report something keep a sentence under the title: what was just sent.
   const subtitle =
-    step === "sent"
-      ? sentKind === "reset"
-        ? t("auth.reset.sent")
-        : t("auth.signUp.sent")
-      : step === "reset"
-        ? t("auth.reset.text", { email: email.trim() })
-        : step === "password"
-          ? null
-          : intent === "signUp"
-            ? t("auth.signUp.subtitle")
-            : t("auth.subtitle");
+    step === "sent" ? (sentKind === "reset" ? t("auth.reset.sent") : t("auth.signUp.sent")) : null;
 
   /** The address already typed, with the way back to change it. */
   const emailLine = (
@@ -275,7 +266,6 @@ function SignInPage() {
               {showPassword ? <EyeOff /> : <Eye />}
             </Button>
           </div>
-          {intent === "signUp" && !error ? <p className="text-meta text-muted-foreground">{t("auth.password.help")}</p> : null}
           <FieldError id={passwordErrorId} text={error} />
         </div>
         <Button type="submit" className="w-full" disabled={busy || !password}>

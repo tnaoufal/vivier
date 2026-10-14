@@ -9,6 +9,7 @@
 import { useState, type KeyboardEvent } from "react";
 import { Check, Copy, X } from "lucide-react";
 
+import { InfoTip } from "@/components/app-shell/info-tip";
 import { Pill } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
@@ -91,14 +92,18 @@ export function SendStep({
             {t("common.copy")}
           </Button>
         </div>
-        <p className="text-meta text-muted-foreground">{t("shares.send.linkOnce")}</p>
         <p className="text-meta text-muted-foreground">
-          {t("shares.send.expires", { date: formatDate(locale, share.expiresAt) })}
+          {t("shares.send.linkOnce", { date: formatDate(locale, share.expiresAt) })}
         </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="share-recipient">{t("shares.send.recipients")}</Label>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="share-recipient">{t("shares.send.recipients")}</Label>
+          <InfoTip label={t("shares.send.recipients")}>
+            {t("shares.send.recipients.help", { max: RECIPIENTS_MAX })}
+          </InfoTip>
+        </div>
         {state.recipients.length ? (
           <ul className="flex flex-wrap gap-1.5">
             {state.recipients.map((email) => (
@@ -131,7 +136,6 @@ export function SendStep({
           onKeyDown={onRecipientKey}
           onBlur={() => dispatch({ type: "commitRecipients" })}
         />
-        <p className="text-meta text-muted-foreground">{t("shares.send.recipients.help", { max: RECIPIENTS_MAX })}</p>
       </div>
 
       <div className="space-y-2">
@@ -159,7 +163,6 @@ export function SendStep({
         <div className="fade-in rounded-lg bg-muted/50 px-4 py-3 text-sm text-ink">
           <p className="font-medium">{sentSentence}</p>
           {failedSentence ? <p className="mt-1 text-negative">{failedSentence}</p> : null}
-          <p className="mt-1 text-meta text-muted-foreground">{t("shares.send.sentNote")}</p>
         </div>
       ) : null}
     </div>

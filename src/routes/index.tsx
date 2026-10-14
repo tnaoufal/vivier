@@ -1,8 +1,9 @@
 /**
- * The landing page: the brand, one promise and two buttons in the hero,
- * three feature cards, how it works in three steps, and a footer with
- * the sentence that no decision is made by a machine. Each block rises
- * in once; signed-in visitors go straight to the app.
+ * The landing page: the brand, one promise and one button in the hero,
+ * three feature cards (a title, one short line), the three steps by
+ * their titles, and a footer with the one honesty line and the GDPR
+ * facts. Each block rises in once; signed-in visitors go straight to
+ * the app.
  */
 import { useEffect, type ReactNode } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -12,7 +13,6 @@ import { LocaleToggle, ThemeToggle } from "@/components/app-shell/toggles";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/auth-context";
-import { BRAND } from "@/lib/brand";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 
 export const Route = createFileRoute("/")({
@@ -31,12 +31,12 @@ function featureKey(key: "read" | "team" | "send", part: "title" | "text"): Tran
   return `landing.feature.${key}.${part}`;
 }
 
-function stepKey(step: "step1" | "step2" | "step3", part: "title" | "text"): TranslationKey {
-  return `landing.how.${step}.${part}`;
+function stepKey(step: "step1" | "step2" | "step3"): TranslationKey {
+  return `landing.how.${step}.title`;
 }
 
 function LandingPage() {
-  const { locale, t } = useI18n();
+  const { t } = useI18n();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
@@ -62,7 +62,7 @@ function LandingPage() {
           <p className="rise-in inline-flex items-center rounded-full border border-primary/25 bg-primary/8 px-3 py-1 text-meta font-medium text-primary">
             {t("landing.eyebrow")}
           </p>
-          <h1 className="rise-in mx-auto mt-6 max-w-3xl font-display text-4xl leading-[1.08] text-ink break-words sm:text-6xl">
+          <h1 className="rise-in mx-auto mt-6 max-w-3xl font-display text-4xl leading-10 text-ink break-words sm:text-6xl sm:leading-16">
             <span className="brand-text">{t("landing.hero")}</span>
           </h1>
           <p className="rise-in mx-auto mt-6 max-w-2xl text-lg leading-7 text-muted-foreground">{t("landing.lead")}</p>
@@ -70,11 +70,7 @@ function LandingPage() {
             <Button asChild size="lg" icon={<ArrowRight />}>
               <Link to="/sign-in">{t("landing.cta")}</Link>
             </Button>
-            <Button asChild size="lg" variant="outline">
-              <Link to="/sign-in">{t("auth.signIn")}</Link>
-            </Button>
           </div>
-          <p className="rise-in mx-auto mt-8 max-w-xl text-meta text-muted-foreground">{BRAND.tagline[locale]}</p>
         </section>
 
         <section className="stagger grid gap-6 md:grid-cols-3">
@@ -92,12 +88,9 @@ function LandingPage() {
         </section>
 
         <section className="mt-24 sm:mt-32" aria-labelledby="landing-how-title">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 id="landing-how-title" className="font-display text-2xl text-ink sm:text-3xl">
-              {t("landing.how.title")}
-            </h2>
-            <p className="mt-3 text-body text-muted-foreground">{t("landing.how.text")}</p>
-          </div>
+          <h2 id="landing-how-title" className="text-center font-display text-2xl text-ink sm:text-3xl">
+            {t("landing.how.title")}
+          </h2>
           <ol className="stagger relative mt-12 grid gap-10 md:grid-cols-3 md:gap-8">
             {/* The line the three steps sit on, from md. */}
             <span aria-hidden="true" className="absolute left-[calc(16.6667%+1.25rem)] right-[calc(16.6667%+1.25rem)] top-5 hidden h-px bg-border md:block" />
@@ -106,10 +99,7 @@ function LandingPage() {
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-background font-display text-base text-primary tabular-nums shadow-hairline">
                   {index + 1}
                 </span>
-                <div className="min-w-0">
-                  <h3 className="text-base font-semibold leading-6 text-ink">{t(stepKey(step, "title"))}</h3>
-                  <p className="mt-2 max-w-sm text-sm text-muted-foreground">{t(stepKey(step, "text"))}</p>
-                </div>
+                <h3 className="min-w-0 text-base font-semibold leading-6 text-ink">{t(stepKey(step))}</h3>
               </li>
             ))}
           </ol>
@@ -124,7 +114,7 @@ function LandingPage() {
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-meta text-muted-foreground sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
           <div className="max-w-2xl space-y-1">
-            <p className="text-ink">{t("landing.footer.human")}</p>
+            <p className="text-ink">{t("auth.footer.human")}</p>
             <p>{t("landing.footer.gdpr")}</p>
           </div>
           <nav className="flex flex-wrap gap-x-5 gap-y-1" aria-label={t("landing.footer.links")}>

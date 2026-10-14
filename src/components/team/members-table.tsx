@@ -63,8 +63,8 @@ export function MembersTable({
         const email = member.profile?.email ?? "";
         return (
           <li key={member.userId} className="sheet-row rise-in flex-wrap">
-            <Avatar name={name} size="md" />
-            <div className="min-w-[10rem] flex-1">
+            <Avatar name={name} size="md" decorative />
+            <div className="min-w-40 flex-1">
               <p className="truncate text-sm font-semibold text-ink">
                 {name}
                 {self ? (

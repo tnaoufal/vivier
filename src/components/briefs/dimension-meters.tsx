@@ -1,55 +1,43 @@
 /**
- * The five dimensions of a screening as a compact grid of Meters, each
- * in the ring's tone (green from 80, amber from 60, red below), with the
- * weight the dimension carries in the composite on hover; expanded, the
- * model's note and the evidence it rests on sit under each bar (marked
- * when the quote was not found in the CV). A dimension the model left
- * without a note reads "not stated", never as a lack.
+ * The five dimensions of a reading (the role, the seniority, the
+ * context, the trajectory, the achievements) as a compact grid of
+ * Meters in the ring's tone (green from 80, amber from 60, red below),
+ * each with the model's one-sentence note under its bar, marked when the
+ * quote behind it was not found in the CV. A dimension the model left
+ * without a note reads "Non renseigné", never as a lack.
  */
 import { Meter } from "@/components/app-shell/meter";
-import { DIMENSION_WEIGHTS, DIMENSIONS } from "@/lib/briefs/scoring";
+import { DIMENSIONS } from "@/lib/briefs/scoring";
 import type { AssessmentDimension, DimensionScore } from "@/lib/db/types";
-import { useI18n } from "@/lib/i18n";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export function DimensionMeters({
   dimensions,
-  expanded = false,
   className,
 }: {
   dimensions: Record<AssessmentDimension, DimensionScore>;
-  /** True to show the note and the evidence under each bar. */
-  expanded?: boolean;
-  className?: string;
+  className?: string | undefined;
 }) {
-  const { t, locale } = useI18n();
-  const percent = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
+  const t = useT();
   return (
-    <ul className={cn("grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3", className)}>
+    <ul className={cn("grid gap-x-8 gap-y-4 sm:grid-cols-2", className)}>
       {DIMENSIONS.map((key) => {
         const dimension = dimensions[key];
-        const label = t(`briefs.dimension.${key}`);
-        const weighted = t("briefs.results.dimension.weight", {
-          label,
-          weight: percent.format(DIMENSION_WEIGHTS[key] * 100),
-        });
-        const hint = expanded ? (
-          <>
-            <span className={dimension.note ? "text-ink/85" : undefined}>
-              {dimension.note || t("common.unknown")}
-            </span>
-            {dimension.evidence ? (
-              <span className="mt-0.5 block">
-                {dimension.evidenceUnverified
-                  ? `${dimension.evidence} · ${t("briefs.results.evidence.unverified")}`
-                  : dimension.evidence}
-              </span>
-            ) : null}
-          </>
-        ) : undefined;
+        const note = typeof dimension.note === "string" ? dimension.note.trim() : "";
+        const hint = note
+          ? dimension.evidenceUnverified
+            ? `${note} · ${t("briefs.results.evidence.unverified")}`
+            : note
+          : t("common.unknown");
         return (
-          <li key={key} className="min-w-0" title={weighted}>
-            <Meter label={label} value={dimension.score} tone="score" hint={hint} />
+          <li key={key} className="min-w-0">
+            <Meter
+              label={t(`briefs.dimension.${key}`)}
+              value={dimension.score}
+              tone="score"
+              hint={hint}
+            />
           </li>
         );
       })}

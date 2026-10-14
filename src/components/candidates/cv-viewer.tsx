@@ -73,7 +73,7 @@ export function CvViewer({
       <SheetContent
         side="right"
         size="full"
-        className="flex flex-col gap-0 overflow-y-hidden p-0 sm:p-0 lg:w-[80vw]"
+        className="flex flex-col gap-0 overflow-y-hidden p-0 sm:p-0 lg:w-4/5"
       >
         <ViewerContent
           open={open}
@@ -285,7 +285,6 @@ function TextPane({
             {t("candidates.viewer.noPdf")}
           </p>
         ) : null}
-        <p className="text-meta text-muted-foreground">{t("candidates.viewer.textHelp")}</p>
         {text.loading && !text.data ? (
           <SkeletonRows rows={6} avatar={false} className="divide-y-0" />
         ) : text.error ? (
@@ -294,7 +293,6 @@ function TextPane({
             <Button
               type="button"
               variant="outline"
-              size="sm"
               icon={<RefreshCw />}
               onClick={() => void text.refresh()}
             >

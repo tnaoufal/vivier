@@ -7,24 +7,31 @@
  * the browser), the search of the talent pool for a brief (the profile
  * first when the brief has none, then the criteria when it has none,
  * then the role criterion built from the profile or derived from the
- * title, and refreshed from the profile the team edited since; then
- * the whole pool up to FULL_POOL_MAX active candidates,
- * else the hybrid retrieval; then the deterministic verdicts, stored as
- * a searches row), and the three passes the browser drives on its
- * results: the screening of a few candidates at a time (one model call
- * per candidate, enforced by assessment.ts, written back into the same
- * row and carried to the brief's shortlist items that still hold an
- * unassessed match), the second opinion on the retained ones (one call
- * per candidate, applyChallenge), and the comparative tiering of a
- * group (one call per group, applyRanking). Every handler reads the
- * caller from the access token through requireMember() and works only
- * on the organisation it verified. Nothing here decides: the model
- * proposes, the row keeps its reading, a person retains.
+ * title, and refreshed from the profile the team edited since; then,
+ * with a model, a snapshot of every active profile for the triage, and
+ * without one the whole pool up to FULL_POOL_MAX active candidates,
+ * else the hybrid retrieval, scored by the deterministic verdicts),
+ * stored as a searches row; the triage of the snapshot (forty compact
+ * cards per call, enforced by triage.ts, written to search_triage), the
+ * snapshot extended to the profiles the pool gained since, the promotion
+ * of the profiles it kept into the results, and a profile it set aside
+ * that a person brings back to be read in full; and the three
+ * passes the browser drives on the results: the screening of a few
+ * candidates at a time (one model call per candidate, enforced by
+ * assessment.ts, merged into the row entry by entry and carried to the
+ * brief's shortlist items that still hold an unassessed match), the
+ * second opinion on the retained ones (one call per candidate,
+ * applyChallenge), and the comparative tiering of a group (one call per
+ * group, applyRanking). Every handler reads the caller from the access
+ * token through requireMember() and works only on the organisation it
+ * verified. Nothing here decides: the model proposes, the row keeps its
+ * reading, a person retains.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import type {
+  AiUsageKind,
   Assessment,
   BriefCriterion,
   BriefRow,
@@ -33,9 +40,19 @@ import type {
   RoleProfile,
   SearchMethod,
   SearchRow,
+  SearchTriageRow,
   ShortlistItemRow,
+  TriageVerdict,
 } from "@/lib/db/types";
-import { completeJson, embed, modelConfigured, vectorLiteral } from "@/lib/model/model.server";
+import {
+  completeJson,
+  embed,
+  modelConfigured,
+  usageOf,
+  vectorLiteral,
+  type JsonAnswer,
+  type JsonRequest,
+} from "@/lib/model/model.server";
 import { AppError } from "@/lib/platform/errors";
 import { enforceRateLimit } from "@/lib/platform/rate-limit.server";
 import { settings } from "@/lib/platform/settings.server";
@@ -64,6 +81,7 @@ import {
   withId,
 } from "./criteria";
 import { rankResults, scoreCandidate } from "./matching";
+import { roleChangedSince } from "./presentation";
 import {
   assessmentPayload,
   assessmentSystemPrompt,
@@ -101,7 +119,25 @@ import {
   statesMaximumYears,
   type RoleProfileAnswer,
 } from "./role-profile";
-import { CHALLENGE_BATCH_MAX } from "./stages";
+import { batchesOf, CHALLENGE_BATCH_MAX } from "./stages";
+import {
+  countTriage,
+  enforceTriage,
+  isTriageVerdict,
+  TRIAGE_BATCH_MAX,
+  TRIAGE_PASSING,
+  TRIAGE_PROFILE_COLUMNS,
+  triageEntries,
+  triageOrder,
+  triagePayload,
+  triageRoleBrief,
+  triageRoleTerms,
+  triageSystemPrompt,
+  type ModelTriageAnswer,
+  type TriageEntry,
+  type TriageOutcome,
+  type TriageProfile,
+} from "./triage";
 
 /**
  * The answer's budget grows with the requirements: the five dimensions
@@ -117,6 +153,28 @@ const ROLE_PROFILE_TOKENS = 1600;
 const CHALLENGE_TOKENS = 400;
 /** One line per candidate of the group. */
 const RANKING_TOKENS_PER_CANDIDATE = 120;
+/**
+ * A triage answer: the envelope, then one verdict per card with a reason
+ * of fifteen words at most (about 25 to 40 tokens in French, 60 to 80
+ * with the JSON around it, more when the model indents it); a budget
+ * below that cuts the JSON and fails the whole batch.
+ */
+const TRIAGE_TOKENS_BASE = 600;
+const TRIAGE_TOKENS_PER_CARD = 110;
+/**
+ * The most model calls one triage batch makes: the batch, then the
+ * halves of a part the model could not answer, down to the card that
+ * fails (six levels for forty cards, two calls each).
+ */
+const TRIAGE_CALLS_PER_BATCH = 16;
+/** The most unread searches of a brief one run takes away. */
+const UNREAD_SEARCHES_MAX = 10;
+/** The most rows one read of search_triage asks for (PostgREST's usual page). */
+const TRIAGE_PAGE = 1000;
+/** The most ids one query string names (planLots: the gateway refuses a URL past 16 KB). */
+const IDS_PER_QUERY = 100;
+/** The most entries one merge_search_results call carries. */
+const MERGE_CHUNK = 200;
 
 const orgInput = z.object({
   accessToken: z.string().min(1).max(4096),
@@ -140,6 +198,15 @@ const challengeInput = briefInput.extend({
 const rankInput = briefInput.extend({
   searchId: z.uuid(),
   candidateIds: z.array(z.uuid()).min(RANK_GROUP_MIN).max(RANK_GROUP_MAX),
+});
+
+const triageInput = briefInput.extend({
+  searchId: z.uuid(),
+  candidateIds: z.array(z.uuid()).min(1).max(TRIAGE_BATCH_MAX),
+});
+
+const searchInput = briefInput.extend({
+  searchId: z.uuid(),
 });
 
 type LoadedBrief = Pick<BriefRow, "id" | "title" | "description"> & {
@@ -198,7 +265,30 @@ function briefTextOf(
   };
 }
 
-type LoadedSearch = Pick<SearchRow, "id" | "brief_id" | "criteria" | "results">;
+type SearchHead = Pick<SearchRow, "id" | "brief_id" | "criteria" | "method" | "pool_size">;
+type LoadedSearch = SearchHead & Pick<SearchRow, "results">;
+
+const SEARCH_HEAD_COLUMNS = "id,brief_id,criteria,method,pool_size";
+
+/** One search of the organisation without its results (the criteria of the time, the method, the pool's size), or NOT_FOUND. */
+async function loadSearchHead(
+  client: ServiceClient,
+  orgId: string,
+  searchId: string,
+): Promise<SearchHead> {
+  const rows = await client.select<SearchHead>(
+    `searches?select=${SEARCH_HEAD_COLUMNS}&org_id=eq.${encodeURIComponent(orgId)}&id=eq.${encodeURIComponent(searchId)}&limit=1`,
+  );
+  const row = rows[0];
+  if (!row) throw new AppError("NOT_FOUND");
+  return {
+    id: row.id,
+    brief_id: row.brief_id,
+    criteria: criteriaOf(row.criteria, { searchId: row.id }),
+    method: row.method,
+    pool_size: typeof row.pool_size === "number" ? row.pool_size : null,
+  };
+}
 
 /** One search of the organisation with its stored results and the criteria of the time, or NOT_FOUND. */
 async function loadSearch(
@@ -207,7 +297,7 @@ async function loadSearch(
   searchId: string,
 ): Promise<LoadedSearch> {
   const rows = await client.select<LoadedSearch>(
-    `searches?select=id,brief_id,criteria,results&org_id=eq.${encodeURIComponent(orgId)}&id=eq.${encodeURIComponent(searchId)}&limit=1`,
+    `searches?select=${SEARCH_HEAD_COLUMNS},results&org_id=eq.${encodeURIComponent(orgId)}&id=eq.${encodeURIComponent(searchId)}&limit=1`,
   );
   const row = rows[0];
   if (!row) throw new AppError("NOT_FOUND");
@@ -215,8 +305,53 @@ async function loadSearch(
     id: row.id,
     brief_id: row.brief_id,
     criteria: criteriaOf(row.criteria, { searchId: row.id }),
+    method: row.method,
+    pool_size: typeof row.pool_size === "number" ? row.pool_size : null,
     results: Array.isArray(row.results) ? row.results : [],
   };
+}
+
+/**
+ * The entries given written into the search's results in one statement
+ * (merge_search_results locks the row, replaces each entry of the same
+ * candidate, appends the others and keeps the summary counts), so
+ * batches sent in parallel add up instead of overwriting each other.
+ * Nothing is sent for an empty list.
+ */
+async function mergeResults(
+  client: ServiceClient,
+  orgId: string,
+  searchId: string,
+  entries: readonly MatchResult[],
+): Promise<void> {
+  if (!entries.length) return;
+  await client.rpc<number | null>("merge_search_results", {
+    p_org: orgId,
+    p_search: searchId,
+    p_results: entries,
+  });
+}
+
+/**
+ * One model call with its cost recorded in ai_usage, whether it answered
+ * or not: a call that fails after attempts the provider billed carries
+ * them (ModelAnswerError), and the error then goes on to the caller.
+ */
+async function completeBilled<T>(
+  orgId: string,
+  kind: AiUsageKind,
+  request: JsonRequest<T>,
+): Promise<JsonAnswer<T>> {
+  let answer: JsonAnswer<T>;
+  try {
+    answer = await completeJson<T>(request);
+  } catch (error) {
+    const usage = usageOf(error);
+    if (usage) await recordUsage(orgId, kind, usage);
+    throw error;
+  }
+  await recordUsage(orgId, kind, answer.usage);
+  return answer;
 }
 
 // ---------------------------------------------------------------------
@@ -283,14 +418,13 @@ export interface ExtractionResult {
  * has one, goes with the text so the must-haves come back required.
  */
 async function proposeCriteria(orgId: string, brief: LoadedBrief): Promise<ExtractionResult> {
-  const answer = await completeJson<ExtractionAnswer>({
+  const answer = await completeBilled<ExtractionAnswer>(orgId, "brief", {
     system: extractionSystemPrompt(),
     user: extractionUserPrompt(brief, brief.role_profile),
     schema: extractionAnswer,
     temperature: 0,
     maxTokens: 2000,
   });
-  await recordUsage(orgId, "brief", answer.usage);
   const criteria: BriefCriterion[] = [];
   let role: BriefCriterion | null = null;
   let dropped = 0;
@@ -360,14 +494,13 @@ async function writeRoleProfile(
   orgId: string,
   brief: LoadedBrief,
 ): Promise<RoleProfile> {
-  const answer = await completeJson<RoleProfileAnswer>({
+  const answer = await completeBilled<RoleProfileAnswer>(orgId, "brief", {
     system: roleProfileSystemPrompt(),
     user: roleProfileUserPrompt(brief),
     schema: roleProfileAnswer,
     temperature: 0,
     maxTokens: ROLE_PROFILE_TOKENS,
   });
-  await recordUsage(orgId, "brief", answer.usage);
   // A ceiling on years the brief did not write is the model's, and a proxy for age: only the brief's own maximum is kept.
   const cleaned = cleanRoleProfile(
     { ...answer.value, yearsMax: statesMaximumYears(brief) ? answer.value.yearsMax : null },
@@ -449,8 +582,9 @@ type ProfileRow = AssessmentProfile & { org_id: string };
 
 export interface SearchResult {
   searchId: string;
+  /** "triage" with a model (the results come from promoteTriage once the triage is done), "hybrid" or "text" without. */
   method: SearchMethod;
-  /** Ranked by the deterministic pass: not blocked first, then score, then coverage. No assessment yet. */
+  /** Ranked by the deterministic pass: not blocked first, then score, then coverage. No assessment yet; empty for a triage. */
   results: MatchResult[];
   /** The criteria the verdicts refer to, as they were at run time. */
   criteria: BriefCriterion[];
@@ -471,7 +605,11 @@ export interface SearchResult {
    * already had.
    */
   needsCheck: boolean;
-  /** Active candidates in the pool at run time: above FULL_POOL_MAX only the retrieved rows were read, and the panel says so. */
+  /**
+   * Active candidates in the pool at run time: for a triage, the
+   * profiles of the snapshot (every one is read); without a model, above
+   * FULL_POOL_MAX only the retrieved rows were read, and the panel says so.
+   */
   poolSize: number;
   createdAt: string;
 }
@@ -577,14 +715,13 @@ async function deriveRole(
   if (modelConfigured()) {
     try {
       const prompt = roleDefinitionPrompt(brief);
-      const answer = await completeJson<{ label: string; value: string }>({
+      const answer = await completeBilled<{ label: string; value: string }>(orgId, "brief", {
         system: prompt.system,
         user: prompt.user,
         schema: roleAnswer,
         temperature: 0,
         maxTokens: 600,
       });
-      await recordUsage(orgId, "brief", answer.usage);
       const label = answer.value.label.trim().slice(0, LABEL_MAX) || fallback?.label || "";
       const value = answer.value.value.trim().slice(0, VALUE_MAX) || fallback?.value || "";
       if (!label || !value) log("role_empty", { briefId: brief.id });
@@ -674,6 +811,42 @@ async function roleFromProfile(
   return role;
 }
 
+/**
+ * The member's earlier whole-pool searches of the brief that nothing was
+ * read of (no verdict, no result): the one left at the check of what the
+ * model wrote, for a new search on the job the team saved, or one
+ * stopped before its first batch landed. They go when the member runs a
+ * new search, so the list of analyses holds none that never started;
+ * a colleague's are left alone (their tab may be starting one). Best
+ * effort: a failure is logged and the new search stands.
+ */
+async function dropUnreadSearches(
+  client: ServiceClient,
+  orgId: string,
+  briefId: string,
+  userId: string,
+  keep: string,
+): Promise<void> {
+  const org = encodeURIComponent(orgId);
+  try {
+    const rows = await client.select<Pick<SearchRow, "id">>(
+      `searches?select=id&org_id=eq.${org}&brief_id=eq.${encodeURIComponent(briefId)}&ran_by=eq.${encodeURIComponent(userId)}&method=eq.triage&result_count=eq.0&id=neq.${encodeURIComponent(keep)}&order=created_at.desc&limit=${UNREAD_SEARCHES_MAX}`,
+    );
+    let dropped = 0;
+    for (const row of rows) {
+      const read = await client.count(
+        `search_triage?select=candidate_id&org_id=eq.${org}&search_id=eq.${encodeURIComponent(row.id)}&verdict=not.is.null`,
+      );
+      if (read > 0) continue;
+      await client.delete("searches", { id: row.id, org_id: orgId });
+      dropped += 1;
+    }
+    if (dropped) log("unread_searches_dropped", { briefId, dropped });
+  } catch (error) {
+    log("unread_searches_failed", { briefId, error: String(error).slice(0, 300) });
+  }
+}
+
 export const runSearch = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => briefInput.parse(data))
   .handler(async ({ data }): Promise<SearchResult> => {
@@ -728,7 +901,81 @@ export const runSearch = createServerFn({ method: "POST" })
     }
     const queryText = queryTextOf(brief);
 
-    // Up to FULL_POOL_MAX active candidates the whole pool is read, so no
+    // With a model every active profile of the pool is read: the search
+    // stores a snapshot of the pool (search_triage, one row per active
+    // candidate, in one statement) and the browser drives its triage,
+    // then the promotion of the profiles kept into the results. Nothing
+    // is retrieved, embedded or scored here. A brief that names no job
+    // has nothing to sort on, and one without criteria nothing to read
+    // the profiles kept against: both take the path below.
+    if (modelConfigured() && brief.criteria.length > 0 && triageRoleBrief(brief).title) {
+      const inserted = await client.insert<Pick<SearchRow, "id" | "created_at">>("searches", [
+        {
+          org_id: member.orgId,
+          brief_id: brief.id,
+          query: queryText,
+          criteria: brief.criteria,
+          results: [],
+          result_count: 0,
+          method: "triage",
+          pool_size: 0,
+          ran_by: member.userId,
+        },
+      ]);
+      const saved = inserted[0];
+      if (!saved) throw new Error("The search could not be saved");
+      let poolSize: number;
+      try {
+        const snapshot = await client.rpc<number | null>("start_triage", {
+          p_org: member.orgId,
+          p_search: saved.id,
+        });
+        poolSize = typeof snapshot === "number" && Number.isFinite(snapshot) ? snapshot : 0;
+        await client.patch(
+          "searches",
+          { id: saved.id, org_id: member.orgId },
+          { pool_size: poolSize },
+        );
+      } catch (error) {
+        // A search without its snapshot would never finish: it goes, and the team runs it again.
+        await client
+          .delete("searches", { id: saved.id, org_id: member.orgId })
+          .catch((cleanup: unknown) =>
+            log("search_cleanup_failed", {
+              searchId: saved.id,
+              error: String(cleanup).slice(0, 300),
+            }),
+          );
+        throw error;
+      }
+      await dropUnreadSearches(client, member.orgId, brief.id, member.userId, saved.id);
+      console.info(
+        "[briefs]",
+        JSON.stringify({
+          event: "search",
+          orgId: member.orgId,
+          briefId: brief.id,
+          method: "triage",
+          poolSize,
+          criteriaDerived,
+          roleProfileDerived,
+          needsCheck,
+        }),
+      );
+      return {
+        searchId: saved.id,
+        method: "triage",
+        results: [],
+        criteria: brief.criteria,
+        criteriaDerived,
+        roleProfileDerived,
+        needsCheck,
+        poolSize,
+        createdAt: saved.created_at,
+      };
+    }
+
+    // Without a model, up to FULL_POOL_MAX active candidates the whole pool is read, so no
     // profile is left out by a ranking; above it the hybrid retrieval
     // answers the RETRIEVAL_LIMIT best rows and the rest is not looked at.
     // The pool's size is stored with the search so the page can say which.
@@ -814,6 +1061,497 @@ export const runSearch = createServerFn({ method: "POST" })
       poolSize,
       createdAt: saved.created_at,
     };
+  });
+
+// ---------------------------------------------------------------------
+// the triage of the whole pool, forty profiles at a time
+// ---------------------------------------------------------------------
+
+const triageAnswer = z.object({
+  verdicts: z
+    .array(
+      z.object({
+        ref: z.string(),
+        verdict: z.string(),
+        reason: z.string().nullable().optional(),
+      }),
+    )
+    .max(TRIAGE_BATCH_MAX * 2),
+});
+
+export interface TriageBatch {
+  /** The candidates of the batch that hold a verdict now: read by this call, or already read before (never read twice). */
+  done: string[];
+  /** The candidates not read: outside the search's snapshot, or gone from the pool since (taken out of the snapshot). */
+  failed: string[];
+  /** The verdicts this call gave. */
+  counts: Record<TriageVerdict, number>;
+}
+
+/** The search of the brief, run as a triage, without its results; NOT_FOUND or INPUT:invalid otherwise. */
+async function loadTriageSearch(
+  client: ServiceClient,
+  orgId: string,
+  briefId: string,
+  searchId: string,
+): Promise<SearchHead> {
+  const search = await loadSearchHead(client, orgId, searchId);
+  if (search.brief_id !== briefId) throw new AppError("NOT_FOUND");
+  if (search.method !== "triage") throw new AppError("INPUT:invalid");
+  return search;
+}
+
+/**
+ * Takes out of a search's snapshot the candidates that left the active
+ * pool since it was taken (archived; an erased one takes its row with
+ * it): they are no longer candidates for the brief, and a row nobody
+ * can read would keep the analysis from ever ending. Best effort, one
+ * row at a time (rare): a row left is sent again and settled then.
+ */
+async function leaveSnapshot(
+  client: ServiceClient,
+  orgId: string,
+  searchId: string,
+  candidateIds: readonly string[],
+): Promise<void> {
+  for (const candidateId of candidateIds) {
+    try {
+      await client.delete("search_triage", {
+        search_id: searchId,
+        org_id: orgId,
+        candidate_id: candidateId,
+      });
+    } catch (error) {
+      log("triage_leave_failed", { searchId, candidateId, error: String(error).slice(0, 300) });
+    }
+  }
+}
+
+/**
+ * True for a failure a smaller batch may get past: the model answered
+ * no valid JSON (cut at its length, or turned away by a filter), or the
+ * call timed out or was refused for what it carried (400, 413). A
+ * failure of the provider (its rate, the key, a server error), of the
+ * setup or of the rate limit is the same for any batch: it is thrown
+ * as it is.
+ */
+function failedOnContent(error: unknown): boolean {
+  if (error instanceof AppError) return false;
+  const status =
+    typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
+  return typeof status !== "number" || status === 400 || status === 413;
+}
+
+/**
+ * One batch of the triage: the profiles of the snapshot that no model
+ * read yet, as compact cards (no name, no contact, no place, no link,
+ * no photo, no summary, no CV text), in one call; the answer bound by
+ * enforceTriage() (one verdict per card, an unanswered card unknown, a
+ * reason naming a protected characteristic withheld, a "no" on a card
+ * that carries the job's name read anyway) and written in one statement
+ * (record_triage). A batch the model cannot answer is read again in
+ * halves, down to the card that fails, which is settled "unknown" and
+ * read in full (a batch that fails the same way on every try would
+ * otherwise stay unread for good); each part read is written at once.
+ * When both halves fail before any part went through, the model is
+ * failing, not a card: the call throws, what was written stays, and the
+ * browser sends the batch once more at the end.
+ */
+export const triageCandidates = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => triageInput.parse(data))
+  .handler(async ({ data }): Promise<TriageBatch> => {
+    const member = await requireMember(data.accessToken, data.orgId, "member");
+    await enforceRateLimit("triage", { userKey: member.userId });
+    if (!modelConfigured()) throw new AppError("SETUP:model");
+    const client = db();
+    const brief = await loadBrief(client, member.orgId, data.briefId);
+    const search = await loadTriageSearch(client, member.orgId, brief.id, data.searchId);
+    // Every batch of one search sorts on one job: once the team changed
+    // the role's definition since the search ran, the batches left would
+    // read another one, so the search stops here and a new one runs.
+    if (roleChangedSince(brief.role_profile, search.criteria))
+      throw new AppError("INPUT:job_changed");
+    // The job as the brief's profile names it today, else as the search's role criterion does.
+    const role = triageRoleBrief({
+      title: brief.title,
+      criteria: search.criteria,
+      role_profile: brief.role_profile,
+    });
+    if (!role.title) throw new AppError("INPUT:invalid");
+
+    const org = encodeURIComponent(member.orgId);
+    const wanted: string[] = [...new Set<string>(data.candidateIds)];
+    const list = wanted.map((id) => encodeURIComponent(id)).join(",");
+    const rows = await client.select<Pick<SearchTriageRow, "candidate_id" | "verdict">>(
+      `search_triage?select=candidate_id,verdict&org_id=eq.${org}&search_id=eq.${encodeURIComponent(search.id)}&candidate_id=in.(${list})`,
+    );
+    const snapshot = new Map(rows.map((row) => [row.candidate_id, row.verdict] as const));
+    const settled = new Set<string>();
+    const failed: string[] = [];
+    const pending: string[] = [];
+    for (const id of wanted) {
+      if (!snapshot.has(id)) failed.push(id);
+      else if (snapshot.get(id)) settled.add(id);
+      else pending.push(id);
+    }
+    const counts: Record<TriageVerdict, number> = { yes: 0, close: 0, no: 0, unknown: 0 };
+    const answer = (): TriageBatch => ({
+      done: wanted.filter((id) => settled.has(id)),
+      failed,
+      counts,
+    });
+    if (!pending.length) return answer();
+
+    const loaded = await client.select<TriageProfile>(
+      `candidates?select=${TRIAGE_PROFILE_COLUMNS}&org_id=eq.${org}&status=eq.active&id=in.(${pending.map((id) => encodeURIComponent(id)).join(",")})`,
+    );
+    const byId = new Map(loaded.map((profile) => [profile.id, profile] as const));
+    const profiles = pending.flatMap((id) => {
+      const profile = byId.get(id);
+      return profile ? [profile] : [];
+    });
+    const gone = pending.filter((id) => !byId.has(id));
+    if (gone.length) {
+      await leaveSnapshot(client, member.orgId, search.id, gone);
+      failed.push(...gone);
+      log("triage_left_pool", { searchId: search.id, gone: gone.length });
+    }
+    if (!profiles.length) return answer();
+
+    const entries = triageEntries(profiles);
+    const terms = triageRoleTerms(role);
+    const outcomes = new Map<string, TriageOutcome>();
+    let calls = 0;
+    let answered = false;
+    let unanswered = 0;
+    let lastError: unknown = null;
+    /** The verdicts of a part in one statement; the model is null for a card no model answered. */
+    const write = async (
+      part: ReadonlyMap<string, TriageOutcome>,
+      model: string | null,
+    ): Promise<void> => {
+      await client.rpc<number | null>("record_triage", {
+        p_org: member.orgId,
+        p_search: search.id,
+        p_model: model,
+        p_rows: [...part].map(([candidateId, outcome]) => ({
+          candidate_id: candidateId,
+          verdict: outcome.verdict,
+          reason: outcome.reason,
+        })),
+      });
+      for (const [candidateId, outcome] of part) {
+        outcomes.set(candidateId, outcome);
+        settled.add(candidateId);
+      }
+    };
+    /** One call on a part of the batch (its cards keep their refs): true once its verdicts are written. */
+    const read = async (part: readonly TriageEntry[]): Promise<boolean> => {
+      if (calls >= TRIAGE_CALLS_PER_BATCH)
+        throw lastError instanceof Error ? lastError : new Error("triage_calls_exhausted");
+      calls += 1;
+      const reply = await completeBilled<ModelTriageAnswer>(member.orgId, "triage", {
+        system: triageSystemPrompt(),
+        user: JSON.stringify(
+          triagePayload(
+            role,
+            part.map((entry) => entry.card),
+          ),
+        ),
+        schema: triageAnswer,
+        temperature: 0,
+        maxTokens: TRIAGE_TOKENS_BASE + TRIAGE_TOKENS_PER_CARD * part.length,
+        model: settings().llm.assessmentModel,
+      }).catch((error: unknown) => {
+        if (!failedOnContent(error)) throw error;
+        lastError = error;
+        log("triage_part_failed", {
+          searchId: search.id,
+          cards: part.length,
+          error: String(error).slice(0, 300),
+        });
+        return null;
+      });
+      if (!reply) return false;
+      answered = true;
+      await write(enforceTriage(part, reply.value, terms), reply.usage.model);
+      return true;
+    };
+    /** A part the model could not answer: one card is settled unknown, a larger part read again in halves. */
+    const recover = async (part: readonly TriageEntry[]): Promise<void> => {
+      const [only] = part;
+      if (part.length === 1 && only) {
+        await write(
+          new Map([[only.candidateId, { verdict: "unknown", reason: null, guarded: false }]]),
+          null,
+        );
+        unanswered += 1;
+        return;
+      }
+      const half = Math.ceil(part.length / 2);
+      const halves = [part.slice(0, half), part.slice(half)];
+      // Both halves in flight at once; a refusal of one is thrown once the other has landed.
+      const tries = await Promise.allSettled(halves.map((piece) => read(piece)));
+      const missed: TriageEntry[][] = [];
+      for (const [index, attempt] of tries.entries()) {
+        if (attempt.status === "rejected") throw attempt.reason;
+        const piece = halves[index];
+        if (!attempt.value && piece) missed.push(piece);
+      }
+      if (missed.length === halves.length && !answered)
+        throw lastError instanceof Error ? lastError : new Error("triage_failed");
+      for (const piece of missed) await recover(piece);
+    };
+    if (!(await read(entries))) await recover(entries);
+    const tally = countTriage(outcomes.values());
+    counts.yes = tally.yes;
+    counts.close = tally.close;
+    counts.no = tally.no;
+    counts.unknown = tally.unknown;
+    console.info(
+      "[briefs]",
+      JSON.stringify({
+        event: "triage",
+        orgId: member.orgId,
+        searchId: search.id,
+        sent: entries.length,
+        yes: tally.yes,
+        close: tally.close,
+        no: tally.no,
+        unknown: tally.unknown,
+        guarded: tally.guarded,
+        calls,
+        unanswered,
+      }),
+    );
+    return answer();
+  });
+
+export interface PromotionResult {
+  /** The search's results once the profiles the triage kept are in, as stored. */
+  results: MatchResult[];
+  /** How many entries this call added (0 when it ran before: nothing is added twice). */
+  promoted: number;
+  /** The profiles of the snapshot taken when the search ran. */
+  poolSize: number;
+}
+
+/**
+ * The verdict and the reason of every profile the triage kept, by
+ * candidate id, read in pages by candidate id (each page starts after
+ * the last id of the one before, so a verdict written meanwhile never
+ * shifts a page), until a page comes back empty.
+ */
+async function readKeptTriage(
+  client: ServiceClient,
+  orgId: string,
+  searchId: string,
+): Promise<Map<string, { verdict: TriageVerdict; reason: string | null }>> {
+  const kept = new Map<string, { verdict: TriageVerdict; reason: string | null }>();
+  const base = `search_triage?select=candidate_id,verdict,reason&org_id=eq.${encodeURIComponent(orgId)}&search_id=eq.${encodeURIComponent(searchId)}&verdict=in.(${TRIAGE_PASSING.join(",")})&order=candidate_id.asc&limit=${TRIAGE_PAGE}`;
+  let after: string | null = null;
+  for (;;) {
+    const path: string =
+      after === null ? base : `${base}&candidate_id=gt.${encodeURIComponent(after)}`;
+    const page =
+      await client.select<Pick<SearchTriageRow, "candidate_id" | "verdict" | "reason">>(path);
+    const last = page[page.length - 1];
+    if (!last || typeof last.candidate_id !== "string") return kept;
+    for (const row of page) {
+      if (typeof row.candidate_id !== "string" || !isTriageVerdict(row.verdict)) continue;
+      kept.set(row.candidate_id, {
+        verdict: row.verdict,
+        reason: typeof row.reason === "string" ? row.reason : null,
+      });
+    }
+    after = last.candidate_id;
+  }
+}
+
+/**
+ * The profiles given (with the triage's verdict and reason each) brought
+ * into the search's results, each scored by the deterministic pass and
+ * carrying its triage, yes first, then close, then unknown, then the
+ * score; only the ones the results do not hold yet, so nothing is added
+ * twice. A profile that left the pool since is left out, and out of the
+ * snapshot (as the triage does), so the profiles kept and the results
+ * stay the same set. Answers the entries added and the ones gone.
+ */
+async function promote(
+  client: ServiceClient,
+  orgId: string,
+  search: LoadedSearch,
+  kept: ReadonlyMap<string, { verdict: TriageVerdict; reason: string | null }>,
+): Promise<{ entries: MatchResult[]; gone: string[] }> {
+  const stored = new Set(search.results.map((result) => result.candidateId));
+  const fresh = [...kept.keys()].filter((id) => !stored.has(id));
+  const entries: MatchResult[] = [];
+  for (const lot of batchesOf(fresh, IDS_PER_QUERY)) {
+    const profiles = await loadProfiles(client, orgId, lot);
+    for (const id of lot) {
+      const profile = profiles.get(id);
+      const triage = kept.get(id);
+      if (!profile || !triage) continue;
+      entries.push({
+        ...scoreCandidate(search.criteria, profile, { textRank: null, vectorRank: null }),
+        triage,
+      });
+    }
+  }
+  // A profile kept that left the pool before its promotion leaves the
+  // snapshot too: its passing verdict would otherwise count among the
+  // kept for good, and the analysis would read as unfinished on every visit.
+  const added = new Set(entries.map((entry) => entry.candidateId));
+  const gone = fresh.filter((id) => !added.has(id));
+  if (gone.length) await leaveSnapshot(client, orgId, search.id, gone);
+  entries.sort(triageOrder);
+  for (let start = 0; start < entries.length; start += MERGE_CHUNK)
+    await mergeResults(client, orgId, search.id, entries.slice(start, start + MERGE_CHUNK));
+  return { entries, gone };
+}
+
+/**
+ * The profiles the triage kept (yes, close, unknown) brought into the
+ * search's results (promote()); running it twice adds nothing. No model
+ * call: the full reading comes next.
+ */
+export const promoteTriage = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => searchInput.parse(data))
+  .handler(async ({ data }): Promise<PromotionResult> => {
+    const member = await requireMember(data.accessToken, data.orgId, "member");
+    await enforceRateLimit("search", { userKey: member.userId });
+    const client = db();
+    const brief = await loadBrief(client, member.orgId, data.briefId);
+    const search = await loadSearch(client, member.orgId, data.searchId);
+    if (search.brief_id !== brief.id) throw new AppError("NOT_FOUND");
+    if (search.method !== "triage") throw new AppError("INPUT:invalid");
+
+    const kept = await readKeptTriage(client, member.orgId, search.id);
+    const { entries, gone } = await promote(client, member.orgId, search, kept);
+    const after = entries.length ? await loadSearch(client, member.orgId, search.id) : search;
+    console.info(
+      "[briefs]",
+      JSON.stringify({
+        event: "promote",
+        orgId: member.orgId,
+        searchId: search.id,
+        kept: kept.size,
+        promoted: entries.length,
+        left: gone.length,
+      }),
+    );
+    return {
+      results: after.results,
+      promoted: entries.length,
+      poolSize: after.pool_size ?? 0,
+    };
+  });
+
+export interface ExtensionResult {
+  /** The profiles the snapshot gained: active now, absent from it before. */
+  added: number;
+  /** The profiles of the snapshot now. */
+  poolSize: number;
+}
+
+/**
+ * The snapshot of a whole-pool search extended to the active profiles
+ * the pool gained since it was taken (imported, or back from the
+ * archive), so "every profile of the pool" stays true when the analysis
+ * resumes: start_triage again, which adds only what is missing and
+ * writes the snapshot's size itself. No model call; the triage reads
+ * them next.
+ */
+export const extendTriage = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => searchInput.parse(data))
+  .handler(async ({ data }): Promise<ExtensionResult> => {
+    const member = await requireMember(data.accessToken, data.orgId, "member");
+    await enforceRateLimit("search", { userKey: member.userId });
+    const client = db();
+    const search = await loadTriageSearch(client, member.orgId, data.briefId, data.searchId);
+    const added = await client.rpc<number | null>("start_triage", {
+      p_org: member.orgId,
+      p_search: search.id,
+    });
+    const count = typeof added === "number" && Number.isFinite(added) ? Math.max(0, added) : 0;
+    const after = count ? await loadSearchHead(client, member.orgId, search.id) : search;
+    if (count)
+      console.info(
+        "[briefs]",
+        JSON.stringify({
+          event: "triage_extended",
+          orgId: member.orgId,
+          searchId: search.id,
+          added: count,
+        }),
+      );
+    return { added: count, poolSize: after.pool_size ?? 0 };
+  });
+
+export interface ReadAnywayResult {
+  /** The profile's entry in the results, as stored; null when it left the pool (it leaves the snapshot too). */
+  entry: MatchResult | null;
+}
+
+const readAnywayInput = searchInput.extend({
+  candidateId: z.uuid(),
+});
+
+/**
+ * A profile the triage set aside, brought back by a person to be read
+ * in full: its "no" becomes "close", without the model's reason or name
+ * (the verdict is no longer the model's), then it enters the results
+ * like a profile the triage kept, and the next resume reads it. A
+ * person decides, not the model: this is the way past a wrong "no". A
+ * profile already brought back is answered as it is; one never set
+ * aside, or outside the snapshot, is refused.
+ */
+export const readAnyway = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => readAnywayInput.parse(data))
+  .handler(async ({ data }): Promise<ReadAnywayResult> => {
+    const member = await requireMember(data.accessToken, data.orgId, "member");
+    await enforceRateLimit("search", { userKey: member.userId });
+    const client = db();
+    const brief = await loadBrief(client, member.orgId, data.briefId);
+    const head = await loadTriageSearch(client, member.orgId, brief.id, data.searchId);
+    const match = {
+      search_id: head.id,
+      org_id: member.orgId,
+      candidate_id: data.candidateId,
+    };
+    const changed = await client.patch<Pick<SearchTriageRow, "candidate_id">>(
+      "search_triage",
+      { ...match, verdict: "no" },
+      { verdict: "close", reason: null, model: null },
+    );
+    if (!changed.length) {
+      // Already brought back (by a colleague, or a click sent twice): the promotion below adds nothing twice.
+      const rows = await client.select<Pick<SearchTriageRow, "verdict">>(
+        `search_triage?select=verdict&org_id=eq.${encodeURIComponent(member.orgId)}&search_id=eq.${encodeURIComponent(head.id)}&candidate_id=eq.${encodeURIComponent(data.candidateId)}&limit=1`,
+      );
+      const verdict = rows[0]?.verdict;
+      if (!verdict || !TRIAGE_PASSING.includes(verdict)) throw new AppError("INPUT:invalid");
+    }
+    const search = await loadSearch(client, member.orgId, head.id);
+    const stored = search.results.find((result) => result.candidateId === data.candidateId);
+    if (stored) return { entry: stored };
+    const { entries } = await promote(
+      client,
+      member.orgId,
+      search,
+      new Map([[data.candidateId, { verdict: "close" as const, reason: null }]]),
+    );
+    console.info(
+      "[briefs]",
+      JSON.stringify({
+        event: "read_anyway",
+        orgId: member.orgId,
+        searchId: search.id,
+        userId: member.userId,
+        promoted: entries.length,
+      }),
+    );
+    return { entry: entries[0] ?? null };
   });
 
 // ---------------------------------------------------------------------
@@ -954,7 +1692,7 @@ export const assessCandidates = createServerFn({ method: "POST" })
     const junior = brief.role_profile?.seniority === "junior";
     const assessOne = async (job: AssessmentJob): Promise<Assessment> => {
       const payload = assessmentPayload(briefText, job.profile);
-      const answer = await completeJson<ModelAssessmentAnswer>({
+      const answer = await completeBilled<ModelAssessmentAnswer>(member.orgId, "assess", {
         system: assessmentSystemPrompt(),
         user: JSON.stringify(payload),
         schema: assessmentAnswer,
@@ -962,7 +1700,6 @@ export const assessCandidates = createServerFn({ method: "POST" })
         maxTokens,
         model,
       });
-      await recordUsage(member.orgId, "assess", answer.usage);
       const options: EnforceOptions = { texts: payloadTexts(payload), junior };
       return enforceAssessment(
         criteria,
@@ -991,17 +1728,7 @@ export const assessCandidates = createServerFn({ method: "POST" })
     });
     if (!assessed.size) return { results: [], failed };
 
-    // The row is read again right before writing so the batches one browser
-    // sends one after the other add up. Two people assessing the same search
-    // at once is last-write-wins between their batches: the loser's entries
-    // stay unassessed and "resume" picks them up again, nothing is corrupted.
-    const fresh = await loadSearch(client, member.orgId, search.id);
-    const results = fresh.results.map((result) => {
-      const assessment = assessed.get(result.candidateId);
-      return assessment ? { ...result, assessment } : result;
-    });
-    await client.patch("searches", { id: search.id, org_id: member.orgId }, { results });
-    const answered = results.filter((result) => assessed.has(result.candidateId));
+    const answered = await storeAssessments(client, member.orgId, search.id, stored, assessed);
     let carried = 0;
     try {
       carried = await carryToShortlist(client, member.orgId, brief.id, criteria, answered);
@@ -1033,26 +1760,26 @@ const challengeAnswer = z.object({
 });
 
 /**
- * The entries of a search with new assessments written into the row:
- * the row is read again right before writing so the batches one
- * browser sends one after the other add up (two people on the same
- * search is last-write-wins between their batches: the loser's entries
- * keep their previous stage and "resume" sends them again). Answers the
- * entries as stored.
+ * The entries of a search with their new assessments, and only those,
+ * merged into the row in one statement (merge_search_results): batches
+ * sent in parallel add up, and an entry another batch wrote meanwhile
+ * is left as it is. Two people on the same entry at once is
+ * last-write-wins on that entry alone. Answers the entries as stored.
  */
 async function storeAssessments(
   client: ServiceClient,
   orgId: string,
   searchId: string,
+  stored: ReadonlyMap<string, MatchResult>,
   updated: ReadonlyMap<string, Assessment>,
 ): Promise<MatchResult[]> {
-  const fresh = await loadSearch(client, orgId, searchId);
-  const results = fresh.results.map((result) => {
-    const assessment = updated.get(result.candidateId);
-    return assessment ? { ...result, assessment } : result;
-  });
-  await client.patch("searches", { id: searchId, org_id: orgId }, { results });
-  return results.filter((result) => updated.has(result.candidateId));
+  const entries: MatchResult[] = [];
+  for (const [candidateId, assessment] of updated) {
+    const result = stored.get(candidateId);
+    if (result) entries.push({ ...result, assessment });
+  }
+  await mergeResults(client, orgId, searchId, entries);
+  return entries;
 }
 
 export const challengeCandidates = createServerFn({ method: "POST" })
@@ -1090,7 +1817,7 @@ export const challengeCandidates = createServerFn({ method: "POST" })
       job: AssessmentJob & { assessment: Assessment },
     ): Promise<Assessment> => {
       const payload = challengePayload(briefText, job.profile, job.assessment);
-      const answer = await completeJson<ModelChallengeAnswer>({
+      const answer = await completeBilled<ModelChallengeAnswer>(member.orgId, "assess", {
         system: challengeSystemPrompt(),
         user: JSON.stringify(payload),
         schema: challengeAnswer,
@@ -1098,7 +1825,6 @@ export const challengeCandidates = createServerFn({ method: "POST" })
         maxTokens: CHALLENGE_TOKENS,
         model,
       });
-      await recordUsage(member.orgId, "assess", answer.usage);
       return applyChallenge(job.assessment, answer.value, { texts: payloadTexts(payload) });
     };
     const outcomes = await Promise.allSettled(jobs.map((job) => challengeOne(job)));
@@ -1118,7 +1844,7 @@ export const challengeCandidates = createServerFn({ method: "POST" })
       }
     });
     if (!challenged.size) return { results: [], failed };
-    const results = await storeAssessments(client, member.orgId, search.id, challenged);
+    const results = await storeAssessments(client, member.orgId, search.id, stored, challenged);
     console.info(
       "[briefs]",
       JSON.stringify({
@@ -1174,7 +1900,7 @@ export const rankCandidates = createServerFn({ method: "POST" })
     if (group.length < RANK_GROUP_MIN) return { results: [], failed };
 
     const sheets = rankingSheets(group, search.criteria);
-    const answer = await completeJson<ModelRankingAnswer>({
+    const answer = await completeBilled<ModelRankingAnswer>(member.orgId, "assess", {
       system: rankingSystemPrompt(),
       user: JSON.stringify(
         rankingPayload(
@@ -1187,7 +1913,6 @@ export const rankCandidates = createServerFn({ method: "POST" })
       maxTokens: Math.min(2000, RANKING_TOKENS_PER_CANDIDATE * group.length + 200),
       model: settings().llm.assessmentModel,
     });
-    await recordUsage(member.orgId, "assess", answer.usage);
     const groupIds = new Set(group.map((result) => result.candidateId));
     const ranked = applyRanking(group, {
       ranking: answer.value.ranking.filter((entry) => groupIds.has(entry.candidateId)),
@@ -1198,7 +1923,7 @@ export const rankCandidates = createServerFn({ method: "POST" })
     }
     // A candidate the model left out of its answer is not failed: it simply has no tier yet, and the next run sends it again.
     if (!tiered.size) return { results: [], failed };
-    const results = await storeAssessments(client, member.orgId, search.id, tiered);
+    const results = await storeAssessments(client, member.orgId, search.id, stored, tiered);
     console.info(
       "[briefs]",
       JSON.stringify({

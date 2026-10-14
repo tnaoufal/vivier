@@ -46,7 +46,7 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
                 {section.h}
               </h2>
               {section.p.map((paragraph, paragraphIndex) => (
-                <p key={paragraphIndex} className="mt-3 text-body text-ink/85">
+                <p key={paragraphIndex} className="mt-3 text-body text-ink">
                   {paragraph}
                 </p>
               ))}

@@ -8,11 +8,10 @@
  * takes the translator as a parameter so colour, words and language
  * never depend on where the sheet is shown.
  */
-import { CircleAlert, CircleCheck, CircleDashed, CircleX } from "lucide-react";
-
-import { Pill, type PillTone } from "@/components/app-shell/pill";
+import { Pill } from "@/components/app-shell/pill";
 import type { RequirementRow } from "@/components/app-shell/requirement-list";
 import { ringTone } from "@/components/app-shell/score-ring";
+import { DECISION_LOOK } from "@/components/briefs/decision-pill";
 import type { AssessmentDecision, RequirementMet, ShareItem } from "@/lib/db/types";
 import type { Params, TranslationKey } from "@/lib/i18n";
 import { metCount } from "@/lib/shares/draft";
@@ -23,12 +22,6 @@ const DECISION_KEYS: Record<AssessmentDecision, TranslationKey> = {
   fit: "shares.decision.fit",
   borderline: "shares.decision.borderline",
   no_fit: "shares.decision.no_fit",
-};
-
-const DECISION_TONES: Record<AssessmentDecision, { tone: PillTone; icon: typeof CircleCheck }> = {
-  fit: { tone: "positive", icon: CircleCheck },
-  borderline: { tone: "caution", icon: CircleAlert },
-  no_fit: { tone: "negative", icon: CircleX },
 };
 
 const MET_KEYS: Record<RequirementMet, TranslationKey> = {
@@ -43,19 +36,17 @@ export function metLabel(t: Translate, met: RequirementMet): string {
   return t(MET_KEYS[met]);
 }
 
-/** The decision as a pill with one leading icon, so colour is never the only signal; "not analysed" when null. */
+/**
+ * The decision as a pill with one leading icon, so colour is never the
+ * only signal; "not analysed" when null. Its tone and icon are the
+ * analysis's own (DECISION_LOOK), so a decision has one look from the
+ * search to the dossier; the words stay the dossier's translator's.
+ */
 export function DecisionPill({ decision, t }: { decision: AssessmentDecision | null; t: Translate }) {
-  if (!decision) {
-    return (
-      <Pill tone="neutral" icon={<CircleDashed />}>
-        {t("shares.decision.none")}
-      </Pill>
-    );
-  }
-  const { tone, icon: Icon } = DECISION_TONES[decision];
+  const { tone, icon: Icon } = DECISION_LOOK[decision ?? "unassessed"];
   return (
     <Pill tone={tone} icon={<Icon />}>
-      {t(DECISION_KEYS[decision])}
+      {decision ? t(DECISION_KEYS[decision]) : t("shares.decision.none")}
     </Pill>
   );
 }

@@ -11,7 +11,6 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -111,11 +110,10 @@ export function ManualCandidateDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       {/* A column, not the primitive's grid: the fields scroll inside on a short screen so the buttons stay reachable. */}
-      <DialogContent size="lg" className="flex flex-col">
+      <DialogContent size="lg" className="flex flex-col" aria-describedby={undefined}>
         <form onSubmit={(event) => void submit(event)} className="flex min-h-0 min-w-0 flex-col gap-6">
           <DialogHeader>
             <DialogTitle>{t("candidates.manual.title")}</DialogTitle>
-            <DialogDescription>{t("candidates.manual.text")}</DialogDescription>
           </DialogHeader>
           <DialogBody className="grid gap-5 py-1 sm:grid-cols-2">
             <div className="min-w-0 space-y-2 sm:col-span-2">

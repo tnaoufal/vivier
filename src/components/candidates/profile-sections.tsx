@@ -148,7 +148,6 @@ function SkillsBlock({
         canEdit ? (
           <Button
             type="button"
-            size="sm"
             variant={editing ? "outline" : "ghost"}
             icon={editing ? <Check /> : <Pencil />}
             onClick={() => setEditing((value) => !value)}

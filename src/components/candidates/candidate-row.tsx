@@ -11,6 +11,7 @@
  * in once.
  */
 import { Link } from "@tanstack/react-router";
+import { CircleHelp } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { Pill } from "@/components/app-shell/pill";
@@ -41,12 +42,13 @@ export function CandidateRow({ row, showPhotos }: { row: CandidateListRow; showP
       params={{ candidateId: row.id }}
       className="sheet-row items-start"
     >
-      <Avatar name={name} size="lg" photoUrl={photoUrl} className="mt-0.5" />
+      <Avatar name={name} size="lg" photoUrl={photoUrl} className="mt-0.5" decorative />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="min-w-0 truncate text-body font-semibold text-ink">{name}</span>
           {needsReview(row.confidence) ? (
-            <Pill tone="caution" dot size="sm">
+            // The same mark as the sheet's "to check" hint, so one meaning has one look.
+            <Pill tone="caution" icon={<CircleHelp />} size="sm">
               {t("candidates.review")}
             </Pill>
           ) : null}
@@ -62,7 +64,7 @@ export function CandidateRow({ row, showPhotos }: { row: CandidateListRow; showP
             <>
               {position.title}
               {position.company ? (
-                <span className="text-muted-foreground"> @ {position.company}</span>
+                <span className="text-muted-foreground"> {t("candidates.atCompany", { company: position.company })}</span>
               ) : null}
             </>
           ) : (

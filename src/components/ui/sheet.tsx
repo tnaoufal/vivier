@@ -56,8 +56,8 @@ const sheetVariants = cva(
           "inset-y-0 right-0 h-full w-full border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-[calc(100vw-2rem)] sm:rounded-l-2xl",
       },
       size: {
-        md: "sm:w-[32rem]",
-        lg: "sm:w-[44rem]",
+        md: "sm:w-128",
+        lg: "sm:w-176",
         full: "sm:w-[calc(100vw-2rem)]",
       },
     },

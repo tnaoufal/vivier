@@ -5,7 +5,7 @@
  */
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Activity, ChevronDown } from "lucide-react";
+import { Activity, ChevronDown, RefreshCw, TriangleAlert } from "lucide-react";
 
 import { ActivityList } from "@/components/activity/activity-list";
 import { FamilyFilter } from "@/components/activity/family-filter";
@@ -36,11 +36,12 @@ function ActivityPage() {
 
   return (
     <>
-      <PageHeader eyebrow={org.name} title={t("nav.activity")} description={t("activity.subtitle")} />
+      <PageHeader eyebrow={org.name} title={t("nav.activity")} />
       <div className="mb-6">
         <FamilyFilter value={family} onChange={setFamily} />
       </div>
-      {feed.error ? (
+      {/* With rows on screen, a failed refresh or "show more" keeps them and says so in one line. */}
+      {feed.error && feed.rows.length > 0 ? (
         <p className="mb-4 text-sm text-negative" role="alert">
           {t("common.error")}
         </p>
@@ -49,8 +50,24 @@ function ActivityPage() {
         rows={feed.rows}
         names={names}
         loading={feed.loading}
+        headingLevel={2}
         emptyState={
-          <EmptyState icon={<Activity />} title={family ? t("activity.emptyFiltered") : t("activity.empty")} text={t("dashboard.activity.empty.text")} />
+          // A failed read is never shown as "no activity": it says what failed and offers a retry.
+          feed.error ? (
+            <div role="alert">
+              <EmptyState
+                icon={<TriangleAlert />}
+                title={t("activity.loadError")}
+                action={
+                  <Button type="button" variant="outline" icon={<RefreshCw />} onClick={() => void feed.refresh()}>
+                    {t("common.retry")}
+                  </Button>
+                }
+              />
+            </div>
+          ) : (
+            <EmptyState icon={<Activity />} title={family ? t("activity.emptyFiltered") : t("activity.empty")} />
+          )
         }
       />
       {feed.hasMore ? (

@@ -360,7 +360,8 @@ export function roleDefinitionOf(profile: RoleProfile): string {
     profile.equivalentTitles.join(", "),
   ].filter((part) => part.trim());
   const text = parts.length ? parts.join(". ") : profile.title.trim();
-  return text.trim().slice(0, VALUE_MAX);
+  // Trimmed after the cut too: the stored criterion is trimmed, and a definition must equal the value it was written into.
+  return text.trim().slice(0, VALUE_MAX).trim();
 }
 
 // ---------------------------------------------------------------------

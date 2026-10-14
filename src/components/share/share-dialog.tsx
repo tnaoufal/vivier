@@ -17,7 +17,6 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -246,10 +245,10 @@ export function ShareDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" className="flex flex-col gap-5">
+      {/* The stepper under the title says the three steps: no sentence repeats them. */}
+      <DialogContent size="lg" className="flex flex-col gap-5" aria-describedby={undefined}>
         <DialogHeader className="shrink-0">
           <DialogTitle>{t("shares.dialog.title")}</DialogTitle>
-          <DialogDescription>{t("shares.dialog.text")}</DialogDescription>
         </DialogHeader>
         <div className="shrink-0">
           <Stepper step={state.step} />

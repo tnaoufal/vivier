@@ -1,13 +1,16 @@
 /**
  * Inviting a colleague: an address and a role, sent to the server
  * function that writes the invitation and emails it. A malformed address
- * is refused inline, under the field, before any call. When no email
- * went out (Resend not set up, or the send failed) the link is shown
- * once with a copy button so the inviter can pass it on themselves.
+ * is refused inline, under the field, before any call. What a role may
+ * do and how long a link lasts sit behind info icons, not under the
+ * fields. When no email went out (Resend not set up, or the send
+ * failed) the link is shown once with a copy button so the inviter can
+ * pass it on themselves.
  */
 import { useId, useState, type FormEvent } from "react";
 import { Copy, UserPlus } from "lucide-react";
 
+import { InfoTip } from "@/components/app-shell/info-tip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +38,7 @@ export function InviteForm({
   id,
 }: {
   orgId: string;
-  /** True when no seat is left: the form explains instead of trying. */
+  /** True when no seat is left: the form says so instead of trying. */
   disabled: boolean;
   onInvited: () => void;
   /** An anchor the page may jump to. */
@@ -93,10 +96,12 @@ export function InviteForm({
 
   return (
     <form id={id} onSubmit={submit} className="sheet scroll-mt-24 p-6" aria-labelledby="invite-form-title">
-      <h2 id="invite-form-title" className="font-display text-xl text-ink">
-        {t("team.invite.title")}
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground">{t("team.invite.text")}</p>
+      <div className="flex items-center gap-2">
+        <h2 id="invite-form-title" className="min-w-0 text-base font-semibold text-ink">
+          {t("team.invite.title")}
+        </h2>
+        <InfoTip label={t("team.invite.title")}>{t("team.invite.text")}</InfoTip>
+      </div>
       <div className="mt-6 space-y-5">
         <div className="space-y-2">
           <Label htmlFor="invite-email">{t("auth.email")}</Label>
@@ -122,7 +127,19 @@ export function InviteForm({
           ) : null}
         </div>
         <div className="space-y-2">
-          <Label htmlFor="invite-role">{t("common.role")}</Label>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="invite-role">{t("common.role")}</Label>
+            <InfoTip label={t("common.role")}>
+              <dl className="space-y-2">
+                {INVITE_ROLES.map((value) => (
+                  <div key={value}>
+                    <dt className="font-semibold">{t(`role.${value}`)}</dt>
+                    <dd className="text-muted-foreground">{t(roleHelpKey(value))}</dd>
+                  </div>
+                ))}
+              </dl>
+            </InfoTip>
+          </div>
           <Select value={role} onValueChange={(value) => setRole(value as InviteRole)} disabled={busy || disabled}>
             <SelectTrigger id="invite-role">
               <SelectValue />
@@ -135,10 +152,9 @@ export function InviteForm({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-meta text-muted-foreground">{t(roleHelpKey(role))}</p>
         </div>
       </div>
-      {disabled ? <p className="mt-4 text-sm text-caution-foreground dark:text-caution">{t("members.seatsFull")}</p> : null}
+      {disabled ? <p className="mt-4 text-sm text-caution-foreground dark:text-caution">{t("team.invite.seats")}</p> : null}
       <div className="mt-6">
         <Button type="submit" className="w-full" icon={<UserPlus />} disabled={busy || disabled || !email.trim()}>
           {t("team.invite.send")}

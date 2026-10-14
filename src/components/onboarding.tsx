@@ -1,7 +1,8 @@
 /**
  * The first screen of a person with no organisation: create one (they
  * become its owner) or follow an invitation link. One centred card under
- * the brand, the name first, the working language, the one button.
+ * the brand, the name first, the working language, the one button, and
+ * one line for a person who was invited instead.
  * `standalone` is /app/organizations/new, inside the app shell: the same
  * form as an ordinary page, under its PageHeader, without the brand or
  * the invitation line.
@@ -114,7 +115,7 @@ export function Onboarding({ standalone = false }: { standalone?: boolean }) {
   if (standalone) {
     return (
       <>
-        <PageHeader eyebrow={t("nav.newOrg")} title={t("onboarding.title")} description={t("onboarding.text")} />
+        <PageHeader title={t("onboarding.title")} />
         <form onSubmit={submit} className="sheet max-w-md p-6 sm:p-8" aria-label={t("onboarding.title")}>
           <div className="space-y-6">{fields}</div>
           {create}
@@ -131,12 +132,11 @@ export function Onboarding({ standalone = false }: { standalone?: boolean }) {
           <h1 id="onboarding-title" className="font-display text-2xl text-ink">
             {t("onboarding.title")}
           </h1>
-          <p className="mt-2 text-body text-muted-foreground">{t("onboarding.text")}</p>
           <div className="mt-8 space-y-6">{fields}</div>
           {create}
         </form>
         <p className="mt-6 text-center text-meta text-muted-foreground">
-          <span className="font-medium text-ink">{t("onboarding.pending")}</span> {t("onboarding.pending.help")}
+          {t("onboarding.pending")}
         </p>
       </div>
     </div>
