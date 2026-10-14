@@ -7,8 +7,6 @@
 const fr = {
   "shell.nav.label": "Sections de l'application",
   "shell.nav.account": "Votre compte",
-  "shell.timeline.present": "Aujourd'hui",
-  "shell.photo.alt": "Photo de {name}",
   "shell.dashboard.title": "Bonjour {name}",
   "shell.dashboard.subtitle": "Voici où en est votre vivier.",
   "shell.dashboard.candidates": "Candidats",
@@ -64,8 +62,6 @@ const fr = {
 const en = {
   "shell.nav.label": "Application sections",
   "shell.nav.account": "Your account",
-  "shell.timeline.present": "Present",
-  "shell.photo.alt": "Photo of {name}",
   "shell.dashboard.title": "Hello {name}",
   "shell.dashboard.subtitle": "Here is where your talent pool stands.",
   "shell.dashboard.candidates": "Candidates",

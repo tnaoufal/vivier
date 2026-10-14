@@ -8,6 +8,7 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { Check, CircleDashed, RefreshCw, X } from "lucide-react";
 
+import { PageHeader } from "@/components/app-shell/page-header";
 import { Pill } from "@/components/app-shell/pill";
 import { Section } from "@/components/app-shell/section";
 import { PublicFrame } from "@/components/public-frame";
@@ -93,24 +94,26 @@ function StatusPage() {
   return (
     <PublicFrame width="md">
       <div className="rise-in">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="font-display text-2xl text-ink sm:text-3xl">{t("status.title")}</h1>
-            <p className="mt-2 max-w-2xl text-body text-muted-foreground">{t("status.subtitle")}</p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+        <PageHeader
+          title={t("status.title")}
+          description={t("status.subtitle")}
+          meta={
+            <>
               <Pill tone={issues === 0 ? "positive" : "negative"} icon={issues === 0 ? <Check /> : <X />}>
                 {summary}
               </Pill>
               <span className="text-meta text-muted-foreground tabular-nums">
                 {t("status.checkedAt", { date: formatDateTime(locale, report.checkedAt) })}
               </span>
-            </div>
-          </div>
-          <Button variant="outline" icon={<RefreshCw />} onClick={() => void router.invalidate()} className="shrink-0">
-            {t("status.refresh")}
-          </Button>
-        </header>
-        <div className="mt-10 space-y-10">
+            </>
+          }
+          actions={
+            <Button variant="outline" icon={<RefreshCw />} onClick={() => void router.invalidate()}>
+              {t("status.refresh")}
+            </Button>
+          }
+        />
+        <div className="space-y-8">
           <Section title={t("status.setup")}>
             <Rows checks={setupChecks} />
           </Section>

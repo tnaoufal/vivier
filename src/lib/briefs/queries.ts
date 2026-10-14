@@ -19,7 +19,7 @@ import type {
 } from "@/lib/db/types";
 
 import { parseCriteria } from "./criteria";
-import { digestResults, latestPerBrief, type AnalysisDigest } from "./presentation";
+import { digestResults, latestPerBrief, type LatestAnalysis } from "./presentation";
 import { parseRoleProfile } from "./role-profile";
 import { batchesOf } from "./stages";
 
@@ -154,12 +154,6 @@ export async function listSearches(
   return (data ?? []) as unknown as SearchSummary[];
 }
 
-/** The newest analysis of a brief as its card says it: when it ran and what it counted. */
-export interface LatestAnalysis extends AnalysisDigest {
-  searchId: string;
-  createdAt: string;
-}
-
 /** The most searches the list reads to find the newest of each brief, and the ids one query names. */
 const LATEST_SEARCH_SCAN = 400;
 const LATEST_LOT = 50;
@@ -170,6 +164,10 @@ const LATEST_LOT = 50;
  * the summaries of the briefs' searches first, newest first, then the
  * results of the newest one per brief, in lots so no URL names more
  * than fifty ids. A brief without an analysis is absent from the map.
+ * Known limit: the counts are made here, so this read carries the whole
+ * results of each newest analysis; a digest computed in the database
+ * (a migration) would spare it. The list reads it once, then keeps it
+ * current from the realtime rows (`analysisOfRow`, `withAnalysis`).
  */
 export async function readLatestAnalyses(
   supabase: SupabaseClient,

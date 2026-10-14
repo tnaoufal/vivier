@@ -5,7 +5,9 @@
  * holds, what its newest analysis found, when it changed), a status
  * filter with counts, and the way to a new one. The cards rise in once;
  * the newest analyses arrive after the briefs and fill their line. Live
- * through realtime on briefs and searches.
+ * through realtime on briefs and searches: a batch of an analysis
+ * updates its brief's line from the row the event carries, never by
+ * reading every analysis again.
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -19,13 +21,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Segmented } from "@/components/ui/tabs";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import {
+  analysisOfRow,
   BRIEF_FILTERS,
   briefSubtitle,
   countByFilter,
   filterBriefs,
+  withAnalysis,
   type BriefFilter,
+  type LatestAnalysis,
 } from "@/lib/briefs/presentation";
-import { listBriefs, readLatestAnalyses, type LatestAnalysis } from "@/lib/briefs/queries";
+import { listBriefs, readLatestAnalyses } from "@/lib/briefs/queries";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
 import { formatDate, useI18n } from "@/lib/i18n";
@@ -59,6 +64,12 @@ function BriefsPage() {
     async () => readLatestAnalyses(await requireSupabase(), org.id, briefIds),
     briefIds.length > 0,
   );
+  // The analyses as read, then kept current by the realtime rows themselves; a new read replaces them.
+  const [latest, setLatest] = useState<ReadonlyMap<string, LatestAnalysis> | null>(null);
+  useEffect(() => {
+    setLatest(analyses.data);
+  }, [analyses.data]);
+  const shownAnalyses = latest ?? analyses.data;
 
   const refresh = list.refresh;
   const refreshAnalyses = analyses.refresh;
@@ -73,17 +84,22 @@ function BriefsPage() {
       ),
     [org.id, refresh],
   );
-  useEffect(
-    () =>
-      subscribeToTable(
-        "searches",
-        `org_id=eq.${org.id}`,
-        debounce(() => {
-          void refreshAnalyses();
-        }, 800),
-      ),
-    [org.id, refreshAnalyses],
-  );
+  useEffect(() => {
+    const readAgain = debounce(() => {
+      void refreshAnalyses();
+    }, 800);
+    // A search written or patched (an analysis stores its results batch after batch) updates its brief's line from the row itself; a deleted one, or a row realtime could not carry whole, reads the analyses again.
+    return subscribeToTable("searches", `org_id=eq.${org.id}`, (change) => {
+      const changed = change.eventType === "DELETE" ? null : analysisOfRow(change.new);
+      if (!changed) {
+        readAgain();
+        return;
+      }
+      setLatest((current) =>
+        current ? withAnalysis(current, changed.briefId, changed.analysis) : current,
+      );
+    });
+  }, [org.id, refreshAnalyses]);
 
   const countText =
     list.loading && !list.data
@@ -226,7 +242,7 @@ function BriefsPage() {
                   <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-6 text-meta text-muted-foreground tabular-nums">
                     <span>{criteriaText(row.criteria.length)}</span>
                     <span aria-hidden="true">·</span>
-                    <span>{analysisText(analyses.data?.get(row.id))}</span>
+                    <span>{analysisText(shownAnalyses?.get(row.id))}</span>
                     <span aria-hidden="true">·</span>
                     <span>
                       {t("briefs.list.updated", { date: formatDate(locale, row.updated_at) })}

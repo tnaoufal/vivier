@@ -85,20 +85,40 @@ export const eraseCandidate = createServerFn({ method: "POST" })
       `documents?select=storage_path&org_id=eq.${org}&candidate_id=eq.${id}`,
     );
     const paths = documents.map((document) => document.storage_path);
-    await client.removeObjects("cvs", paths);
-    // The photo goes with the CVs. The service role bypasses the bucket's policies, so only a
-    // path inside this organisation's folder is ever removed.
+    // The photo goes with the CVs, and first: one object, so a storage failure there stops the
+    // erasure before any CV is gone (a retry finds the profile whole). The service role bypasses
+    // the bucket's policies, so only a path inside this organisation's folder is ever removed.
     const photoPath =
-      typeof candidate.photo_path === "string" && candidate.photo_path.startsWith(`${member.orgId}/`)
+      typeof candidate.photo_path === "string" &&
+      candidate.photo_path.startsWith(`${member.orgId}/`)
         ? candidate.photo_path
         : null;
-    if (photoPath) await client.removeObjects("photos", [photoPath]);
+    // The processor writes <org>/<candidate>.png (or .jpg from the OCR); a CV read at the same time
+    // as another one of the same person can leave that object without photo_path: it goes too.
+    const photoObjects = [
+      ...new Set([
+        ...(photoPath ? [photoPath] : []),
+        `${member.orgId}/${data.candidateId}.png`,
+        `${member.orgId}/${data.candidateId}.jpg`,
+      ]),
+    ];
+    await client.removeObjects("photos", photoObjects);
+    await client.removeObjects("cvs", paths);
     // The documents rows go with the candidate (ON DELETE CASCADE); the trigger logs candidate.deleted.
     await client.delete("candidates", { id: data.candidateId, org_id: member.orgId });
     // The trigger ran under the service role (no auth.uid()): name the administrator, best effort.
     await client
-      .patch("activities", { org_id: member.orgId, kind: "candidate.deleted", target_id: data.candidateId }, { actor_id: member.userId })
-      .catch((error: unknown) => console.warn("[candidates]", JSON.stringify({ event: "actor_stamp_failed", error: String(error).slice(0, 200) })));
+      .patch(
+        "activities",
+        { org_id: member.orgId, kind: "candidate.deleted", target_id: data.candidateId },
+        { actor_id: member.userId },
+      )
+      .catch((error: unknown) =>
+        console.warn(
+          "[candidates]",
+          JSON.stringify({ event: "actor_stamp_failed", error: String(error).slice(0, 200) }),
+        ),
+      );
     console.info(
       "[candidates]",
       JSON.stringify({

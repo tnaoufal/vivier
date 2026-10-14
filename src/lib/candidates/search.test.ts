@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cleanSearch, searchOrFilter } from "./search";
+import { arrayElement, cleanSearch, searchOrFilter } from "./search";
 
 describe("cleanSearch", () => {
   it("drops the characters that break the filter", () => {
@@ -20,5 +20,18 @@ describe("searchOrFilter", () => {
   it("answers null when nothing is left", () => {
     expect(searchOrFilter(",,%%")).toBeNull();
     expect(searchOrFilter("")).toBeNull();
+  });
+});
+
+describe("arrayElement", () => {
+  it("quotes a value so it stays one element of the array literal", () => {
+    expect(arrayElement("Python")).toBe('"Python"');
+    expect(arrayElement("gestion de projet, PMO")).toBe('"gestion de projet, PMO"');
+    expect(arrayElement("{x}")).toBe('"{x}"');
+  });
+
+  it("escapes quotes and backslashes", () => {
+    expect(arrayElement('"Excel" avancé')).toBe('"\\"Excel\\" avancé"');
+    expect(arrayElement("a\\b")).toBe('"a\\\\b"');
   });
 });

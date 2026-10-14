@@ -15,6 +15,17 @@ export function cleanSearch(text: string): string {
   return text.replace(UNSAFE, " ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * One value as an element of the array literal supabase-js builds for
+ * `.contains(column, [value])` (`cs.{…}`): double-quoted, its backslashes
+ * and quotes escaped, so a comma, a brace or a quote in a stored skill or
+ * tag stays inside one element instead of splitting it or breaking the
+ * literal.
+ */
+export function arrayElement(value: string): string {
+  return `"${value.replace(/[\\"]/g, (character) => `\\${character}`)}"`;
+}
+
 /** The argument of supabase-js `.or()` for the text, or null when nothing is left to match. */
 export function searchOrFilter(text: string): string | null {
   const clean = cleanSearch(text);

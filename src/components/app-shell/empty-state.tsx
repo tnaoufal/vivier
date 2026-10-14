@@ -1,7 +1,10 @@
 /**
  * What a list shows when it has nothing: an icon in a tinted disc, one
  * sentence, the one action that fills it. `compact` is the version
- * inside a card or a drawer (less air, a smaller disc).
+ * inside a card or a drawer (less air, a smaller disc, and the title a
+ * paragraph: the card's or the drawer's own title is the heading).
+ * `inset` is for a place that already draws the card (a `sheet p-6`):
+ * no sheet of its own, so never a card inside a card.
  */
 import type { ReactNode } from "react";
 
@@ -13,6 +16,7 @@ export function EmptyState({
   text,
   action,
   compact = false,
+  inset = false,
   className,
 }: {
   icon?: ReactNode;
@@ -20,13 +24,17 @@ export function EmptyState({
   text?: ReactNode;
   action?: ReactNode;
   compact?: boolean;
+  /** Inside a sheet that already draws the card: no sheet of its own. */
+  inset?: boolean;
   className?: string;
 }) {
+  const Title = compact ? "p" : "h2";
   return (
     <div
       className={cn(
-        "sheet fade-in flex flex-col items-center text-center",
-        compact ? "px-5 py-10" : "px-6 py-16",
+        !inset && "sheet",
+        "fade-in flex flex-col items-center text-center",
+        compact ? (inset ? "px-4 py-6" : "px-5 py-10") : "px-6 py-16",
         className,
       )}
     >
@@ -40,14 +48,14 @@ export function EmptyState({
           {icon}
         </div>
       ) : null}
-      <h2
+      <Title
         className={cn(
           "max-w-md font-display text-ink break-words",
           compact ? "text-lg" : "text-xl",
         )}
       >
         {title}
-      </h2>
+      </Title>
       {text ? <p className="mt-2 max-w-md text-body text-muted-foreground">{text}</p> : null}
       {action ? (
         <div className={cn("flex flex-wrap justify-center gap-3", compact ? "mt-5" : "mt-6")}>

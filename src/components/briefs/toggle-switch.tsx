@@ -37,14 +37,16 @@ export function ToggleSwitch({
       <span
         aria-hidden="true"
         className={cn(
-          "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-fast ease-out-soft",
-          checked ? "bg-primary" : "bg-muted-foreground/30 group-hover:bg-muted-foreground/40",
+          "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-[background-color,box-shadow] duration-fast ease-out-soft",
+          checked
+            ? "bg-primary"
+            : "bg-card ring-2 ring-inset ring-muted-foreground group-hover:ring-ink-soft",
         )}
       >
         <span
           className={cn(
-            "absolute left-0.5 size-4 rounded-full bg-card shadow-raised transition-[translate] duration-fast ease-out-soft",
-            checked && "translate-x-4",
+            "absolute left-0.5 size-4 rounded-full shadow-raised transition-[translate,background-color] duration-fast ease-out-soft",
+            checked ? "translate-x-4 bg-card" : "bg-muted-foreground",
           )}
         />
       </span>

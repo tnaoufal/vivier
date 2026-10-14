@@ -18,11 +18,13 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Archive,
   ArchiveRestore,
+  ArrowLeft,
   Download,
   Ellipsis,
   FileText,
   Pencil,
   Trash2,
+  TriangleAlert,
   Users,
 } from "lucide-react";
 
@@ -303,10 +305,11 @@ function CandidatePage() {
   if (!row) {
     return (
       <EmptyState
+        icon={candidate.error ? <TriangleAlert /> : <Users />}
         title={candidate.error ? t("common.error") : t("candidates.notFound.title")}
         text={candidate.error ? undefined : t("candidates.notFound.text")}
         action={
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" icon={<ArrowLeft />}>
             <Link to="/app/candidates">{t("candidates.back")}</Link>
           </Button>
         }

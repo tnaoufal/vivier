@@ -56,7 +56,7 @@ describe("decodeOcrImage and ocrImageOf", () => {
       bottom_right_y: 460,
       image_base64: dataUrl(JPEG),
     });
-    expect(image).toMatchObject({ width: 300, height: 400, contentType: "image/jpeg" });
+    expect(image).toMatchObject({ width: 300, height: 400, drawnWidth: 300, contentType: "image/jpeg" });
     expect(ocrImageOf({ image_base64: dataUrl(JPEG) })).toBeNull();
     expect(ocrImageOf({ top_left_x: 0, top_left_y: 0, bottom_right_x: 0, bottom_right_y: 10, image_base64: dataUrl(JPEG) })).toBeNull();
     expect(ocrImageOf({ top_left_x: 0, top_left_y: 0, bottom_right_x: 10, bottom_right_y: 10, image_base64: null })).toBeNull();

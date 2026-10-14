@@ -223,7 +223,6 @@ function ShortlistLine({
       to="/app/shortlists/$shortlistId"
       params={{ shortlistId: row.id }}
       className="sheet-row flex-wrap gap-x-6 gap-y-3 lg:flex-nowrap"
-      aria-label={`${t("shortlists.open")} · ${brief ? brief.title : t("shortlists.noBrief")}`}
     >
       <div className="min-w-0 flex-1 basis-full lg:basis-auto">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -247,19 +246,19 @@ function ShortlistLine({
           </li>
         ))}
       </ul>
-      <div
-        className="flex items-center gap-2 lg:w-32 lg:justify-end"
-        title={assignedText}
-        aria-label={assignedText}
-      >
+      <div className="flex items-center gap-2 lg:w-32 lg:justify-end" title={assignedText}>
+        {/* A plain div cannot carry a name: the count reads as text, then each avatar names its person. */}
         {assignees.length ? (
-          <ul className="flex -space-x-1.5">
-            {assignees.slice(0, MAX_AVATARS).map((userId) => (
-              <li key={userId}>
-                <Avatar name={nameOf(userId)} size="sm" className="ring-2 ring-card" />
-              </li>
-            ))}
-          </ul>
+          <>
+            <span className="sr-only">{assignedText}</span>
+            <ul className="flex -space-x-1.5">
+              {assignees.slice(0, MAX_AVATARS).map((userId) => (
+                <li key={userId}>
+                  <Avatar name={nameOf(userId)} size="sm" className="ring-2 ring-card" />
+                </li>
+              ))}
+            </ul>
+          </>
         ) : (
           <span className="text-meta text-muted-foreground">{t("shortlists.members.none")}</span>
         )}

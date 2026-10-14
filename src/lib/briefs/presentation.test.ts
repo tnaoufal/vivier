@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Assessment, BriefRow, MatchResult, RoleProfile } from "@/lib/db/types";
 
 import {
+  analysisOfRow,
   arrivalIndexes,
   BRIEF_FILTERS,
   briefSubtitle,
@@ -12,6 +13,9 @@ import {
   firstLine,
   isBriefFilter,
   latestPerBrief,
+  tierGroup,
+  withAnalysis,
+  type LatestAnalysis,
 } from "./presentation";
 
 function profile(domain: string): RoleProfile {
@@ -146,6 +150,73 @@ describe("digestResults", () => {
 
   it("reads an empty analysis as zeros", () => {
     expect(digestResults([])).toEqual({ total: 0, assessed: 0, present: 0 });
+  });
+});
+
+describe("analysisOfRow", () => {
+  const row = {
+    id: "s1",
+    org_id: "o1",
+    brief_id: "b1",
+    created_at: "2026-10-03T10:00:00+00:00",
+    results: [
+      result("a", assessed("fit", { tier: "A" })),
+      result("b", assessed("no_fit")),
+      result("c"),
+    ],
+  };
+
+  it("reads the brief, the search and what it counted off a realtime row", () => {
+    expect(analysisOfRow(row)).toEqual({
+      briefId: "b1",
+      analysis: {
+        searchId: "s1",
+        createdAt: "2026-10-03T10:00:00+00:00",
+        total: 3,
+        assessed: 2,
+        present: 1,
+      },
+    });
+  });
+
+  it("answers null when realtime left the results out, or the row has no brief", () => {
+    expect(analysisOfRow({ id: "s1", brief_id: "b1", created_at: row.created_at })).toBeNull();
+    expect(analysisOfRow({ ...row, results: "too large" })).toBeNull();
+    expect(analysisOfRow({ ...row, brief_id: null })).toBeNull();
+    expect(analysisOfRow({})).toBeNull();
+  });
+});
+
+describe("withAnalysis", () => {
+  function latest(searchId: string, createdAt: string, present: number): LatestAnalysis {
+    return { searchId, createdAt, total: 10, assessed: 10, present };
+  }
+  const known = new Map([["b1", latest("s2", "2026-10-03T10:00:00Z", 1)]]);
+
+  it("replaces the brief's analysis with a later patch of the same search", () => {
+    const next = withAnalysis(known, "b1", latest("s2", "2026-10-03T10:00:00Z", 4));
+    expect(next.get("b1")?.present).toBe(4);
+    expect(known.get("b1")?.present).toBe(1);
+  });
+
+  it("takes a newer search, and a brief seen for the first time", () => {
+    const newer = withAnalysis(known, "b1", latest("s3", "2026-10-04T10:00:00Z", 0));
+    expect(newer.get("b1")?.searchId).toBe("s3");
+    const first = withAnalysis(known, "b2", latest("s9", "2026-10-01T10:00:00Z", 2));
+    expect(first.get("b2")?.searchId).toBe("s9");
+    expect(first.get("b1")?.searchId).toBe("s2");
+  });
+
+  it("keeps the newest when an older search is patched late", () => {
+    expect(withAnalysis(known, "b1", latest("s1", "2026-10-02T10:00:00Z", 7))).toBe(known);
+  });
+});
+
+describe("tierGroup", () => {
+  it("names the group a tier repeats, none for the tier no group is named after", () => {
+    expect(tierGroup("A")).toBe("present");
+    expect(tierGroup("B")).toBe("deeper");
+    expect(tierGroup("C")).toBeNull();
   });
 });
 

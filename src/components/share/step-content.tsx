@@ -18,6 +18,7 @@ import { DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
 import type { ShortlistItemStatus } from "@/lib/db/types";
@@ -110,9 +111,8 @@ export function ContentStep({
     list = <p className="text-sm text-negative">{t("shares.content.loadError")}</p>;
   } else if (loading && !items) {
     list = (
-      <div className="space-y-2" aria-busy="true">
-        <div className="skeleton h-12 w-full rounded-md" />
-        <div className="skeleton h-12 w-full rounded-md" />
+      <div className="sheet overflow-hidden">
+        <SkeletonRows rows={2} avatar={false} />
       </div>
     );
   } else if (!present.length) {

@@ -3,8 +3,8 @@
  * button and the date it expires; the recipients as chips, an optional
  * message, and the send, which is off with a sentence when this
  * deployment has no email sender. The outcome names what left and what
- * did not. The buttons are a component of their own that the dialog
- * keeps below the scrolling box.
+ * did not, and is announced to assistive technologies. The buttons are a
+ * component of their own that the dialog keeps below the scrolling box.
  */
 import { useState, type KeyboardEvent } from "react";
 import { Check, Copy, X } from "lucide-react";
@@ -62,9 +62,15 @@ export function SendStep({
         : outcome.sent === 1
           ? t("shares.send.sent.one")
           : t("shares.send.sent.many", { count: outcome.sent });
+  const failedSentence =
+    outcome && outcome.failed.length ? t("shares.send.failed", { list: outcome.failed.join(", ") }) : null;
 
   return (
     <div className="space-y-6">
+      {/* Mounted with the step (and out of the flow), so the outcome of a send is announced when it arrives. */}
+      <p className="sr-only" role="status">
+        {[sentSentence, failedSentence].filter(Boolean).join(" ")}
+      </p>
       <div className="space-y-2">
         <Label htmlFor="share-link">{t("shares.send.link")}</Label>
         <div className="flex gap-2">
@@ -152,9 +158,7 @@ export function SendStep({
       {sentSentence ? (
         <div className="fade-in rounded-lg bg-muted/50 px-4 py-3 text-sm text-ink">
           <p className="font-medium">{sentSentence}</p>
-          {outcome && outcome.failed.length ? (
-            <p className="mt-1 text-negative">{t("shares.send.failed", { list: outcome.failed.join(", ") })}</p>
-          ) : null}
+          {failedSentence ? <p className="mt-1 text-negative">{failedSentence}</p> : null}
           <p className="mt-1 text-meta text-muted-foreground">{t("shares.send.sentNote")}</p>
         </div>
       ) : null}

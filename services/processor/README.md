@@ -99,14 +99,18 @@ process started.
    when there is one. For a PDF with a text layer, the images drawn on page 1 are read
    with unpdf (`extractImages`, objects with width, height and channels since unpdf 0.12.2,
    the floor in `package.json`; the answer is checked at runtime: an unpdf of another
-   signature means no photo and a `photo_images_unsupported` line, never a failure);
-   the candidate photo is the largest image that looks like a portrait: both sides
-   between 80 and 1200 px, width/height between 0.6 and 1.1, an area above 80x80, not
-   wider than half the page (the page counted at 1.5 px a point, so a scan of the page
-   or a background is never taken for a face); it is downscaled with a box filter to
-   256 px on its longest side and encoded as a PNG by the processor's own encoder
-   (zlib, no dependency). For a scanned PDF, the OCR's first page is read instead: the
-   first image it cut out that fits the same rules (its bounding box against the page's
+   signature means no photo and one `photo_images_unsupported` line naming the document,
+   never a failure; an image over 1200x1200 px, which can never be the photo, is skipped
+   by pdf.js before it is decoded, `maxImageSize`); the candidate photo is the largest
+   image that looks like a portrait: both sides between 80 and 1200 px, width/height
+   between 0.6 and 1.1, an area above 80x80, not drawn wider than half the page (the
+   width it is drawn at, read from the page's operator list and its matrices, against
+   the page's width in points: a scan of the page or a background is never taken for a
+   face, a portrait kept at a high resolution is; when the drawn width cannot be read,
+   this rule is skipped, never guessed); it is downscaled with a box filter to 256 px on
+   its longest side and encoded as a PNG by the processor's own encoder (zlib, no
+   dependency). For a scanned PDF, the OCR's first page is read instead: the largest
+   image it cut out that fits the same rules (its bounding box against the page's
    width), stored as the OCR answered it, JPEG or PNG. The file goes to the private
    `photos` bucket at `<org_id>/<candidate_id>.png` (or `.jpg`), upserted, and its key
    to `candidates.photo_path`. The photo identifies a person in the interface and
@@ -177,12 +181,14 @@ Every `MAINTENANCE_INTERVAL_MS` (and 30 s after start), in this order:
 - **Retention purge**: `expired_candidates(100)` lists the candidates past their
   organisation's `retention_months` (counted from the last contact, else the upload)
   or whose consent is withdrawn. For each: the files of its documents are removed from
-  the `cvs` bucket and its photo (`photo_path`) from the `photos` bucket, then the
-  candidate row is deleted (the cascade removes the document rows, the audit trigger
-  logs `candidate.deleted`). A candidate whose files could not be removed is left for
-  the next pass, so a row never outlives its files. The report's `filesRemoved` counts
-  the photos with the CVs. (An erasure asked from a candidate's page is the web app's:
-  it removes the same objects before the row.)
+  the `cvs` bucket and its photo from the `photos` bucket (`photo_path`, and both keys
+  a photo of the candidate can have, `.png` and `.jpg`, so one that no row names, from
+  two CVs read at once, never outlives the person), then the candidate row is deleted
+  (the cascade removes the document rows, the audit trigger logs `candidate.deleted`).
+  A candidate whose files could not be removed is left for the next pass, so a row
+  never outlives its files. The report's `filesRemoved` counts the photos with the
+  CVs. (An erasure asked from a candidate's page is the web app's: it removes the CVs
+  and the photo the row names before the row.)
 - **Re-embed** (with a model only): up to 100 embedding calls per pass for the active
   candidates without a vector, most recently updated first (the
   `candidates_missing_embedding_idx` index), each from the candidate's compact profile

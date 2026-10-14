@@ -1,7 +1,9 @@
 /**
- * A number of the dashboard (and of the team page): a muted label, the
- * count in the display face with digits that line up, the icon in a
- * tinted disc. A tile that links to a page lifts on hover. A count that
+ * A number of the dashboard (and of the team page): a muted label (two
+ * lines at most, never cut short: it is what says what the number is),
+ * the count in the display face with digits that line up, the icon in a
+ * tinted disc from `sm` (on a phone the half-width tile leaves the label
+ * its room). A tile that links to a page lifts on hover. A count that
  * could not be read shows a dash with the reason on hover and, for
  * assistive technologies, as the text in its place; never a zero that
  * would look like a fact. A tile that follows work in progress
@@ -43,8 +45,8 @@ export function StatTile({
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <span className="label-caps min-w-0 truncate">{label}</span>
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary [&_svg]:size-5">
+        <span className="label-caps min-w-0 line-clamp-2">{label}</span>
+        <span className="hidden size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary sm:flex [&_svg]:size-5">
           {icon}
         </span>
       </div>

@@ -1,8 +1,9 @@
 /**
  * One result of an analysis, built for a recruiter deciding whether to
  * present the person: who (the photo when the organisation shows
- * photos, the name, the position held today, where), the tier of the
- * comparative pass and the decision of the analysis as pills, the fit
+ * photos, the name, the position held today, where), the decision of
+ * the analysis as a pill, with the tier of the comparative pass when
+ * the group the card sits in does not already say it, the fit
  * score as a ring (a dash when no model read the profile), the model's
  * reading, the five dimensions as a compact grid of meters (the notes
  * and the evidence behind a toggle), its strengths and reservations as
@@ -17,7 +18,7 @@
  * (or that the model's reading set it aside, with its score); a profile
  * to dig into names its main reservation; the sentences the filter
  * withheld are counted, so the reading is never taken for complete.
- * Every card stays one click from its page.
+ * Every card stays one click from its page: the name is the link.
  */
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -27,7 +28,6 @@ import {
   CircleAlert,
   CircleCheck,
   CircleX,
-  ExternalLink,
   ListChecks,
   ListPlus,
   MessageSquare,
@@ -47,6 +47,7 @@ import {
 } from "@/lib/briefs/assessment";
 import { kindKey } from "@/lib/briefs/criteria";
 import { candidatePath, shortlistPath } from "@/lib/briefs/paths";
+import { tierGroup, type ResultGroupName } from "@/lib/briefs/presentation";
 import type { ResultCandidate } from "@/lib/briefs/queries";
 import { currentPosition, displayName } from "@/lib/candidates/format";
 import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
@@ -103,6 +104,7 @@ export function ResultCard({
   shortlistId,
   added,
   canEdit,
+  group,
   muted = false,
   onAdd,
 }: {
@@ -114,6 +116,8 @@ export function ResultCard({
   shortlistId: string | null;
   added: boolean;
   canEdit: boolean;
+  /** The group the card sits in: its tier pill is shown only when it says something else. */
+  group: ResultGroupName;
   /** True for a profile the analysis set aside: shown quieter, still complete. */
   muted?: boolean;
   onAdd: () => Promise<void>;
@@ -204,13 +208,9 @@ export function ResultCard({
     }
   }
 
+  // A set-aside card is quieter by its surface (no shadow), never by fading its text: every line keeps AA.
   return (
-    <article
-      className={cn(
-        "sheet space-y-5 p-6 transition-opacity duration-base ease-out-soft",
-        muted && "opacity-75 focus-within:opacity-100 hover:opacity-100",
-      )}
-    >
+    <article className={cn("sheet space-y-5 p-6", muted && "shadow-none")}>
       <div className="flex items-start gap-4">
         <Avatar name={name} size="lg" photoUrl={photoUrl} className="mt-0.5" />
         <div className="min-w-0 flex-1">
@@ -227,7 +227,7 @@ export function ResultCard({
                 {name}
               </span>
             )}
-            {tier ? <TierPill tier={tier} /> : null}
+            {tier && tierGroup(tier) !== group ? <TierPill tier={tier} /> : null}
             <DecisionPill decision={decision} />
             {candidate?.status === "archived" ? (
               <Pill dot>{t("briefs.results.archived")}</Pill>
@@ -393,12 +393,14 @@ export function ResultCard({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {added && shortlistId ? (
+      {added && shortlistId ? (
+        <div className="flex flex-wrap items-center gap-2">
           <Button asChild variant="outline" size="sm" icon={<ListChecks />}>
             <Link to={shortlistPath(shortlistId)}>{t("briefs.results.seeShortlist")}</Link>
           </Button>
-        ) : canEdit && candidate ? (
+        </div>
+      ) : canEdit && candidate ? (
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
@@ -409,13 +411,8 @@ export function ResultCard({
           >
             {t("briefs.results.addToShortlist")}
           </Button>
-        ) : null}
-        {candidate ? (
-          <Button asChild variant="ghost" size="sm" icon={<ExternalLink />}>
-            <Link to={candidatePath(candidate.id)}>{t("briefs.results.openCandidate")}</Link>
-          </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </article>
   );
 }

@@ -186,7 +186,11 @@ function Segmented<V extends string>({
             ) : null}
             <span>{option.label}</span>
             {typeof option.count === "number" ? (
-              <span className="font-normal text-muted-foreground tabular-nums">{option.count}</span>
+              <span className="font-normal text-muted-foreground tabular-nums">
+                {/* Keeps the label and the count two words in the accessible name ("All, 12"). */}
+                <span className="sr-only">, </span>
+                {option.count}
+              </span>
             ) : null}
           </button>
         );

@@ -51,6 +51,8 @@ export function FilterChip({
         <span
           className={cn("font-normal tabular-nums", active ? "text-primary" : "text-muted-foreground")}
         >
+          {/* Keeps the label and the count two words in the accessible name ("Remote, 3"). */}
+          <span className="sr-only">, </span>
           {count}
         </span>
       ) : null}

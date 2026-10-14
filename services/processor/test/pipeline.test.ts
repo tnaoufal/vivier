@@ -11,6 +11,7 @@ import {
   type StorageBucket,
 } from "../src/db.js";
 import { embeddingStatus, resetEmbeddingStatus } from "../src/embedding.js";
+import type { LogFields } from "../src/log.js";
 import {
   REEMBED_BATCH,
   REEMBED_MAX_PAGES,
@@ -20,7 +21,7 @@ import {
 import { FAILURE_MESSAGES } from "../src/messages.js";
 import { readMetrics, resetMetrics } from "../src/metrics.js";
 import { ModelError, type Embedding } from "../src/model.js";
-import type { OcrResult } from "../src/ocr.js";
+import type { OcrImage, OcrResult } from "../src/ocr.js";
 import type { PageImage, PageImages } from "../src/pdf.js";
 import { PNG_SIGNATURE } from "../src/png.js";
 import { processDocument, type PipelineDeps } from "../src/pipeline.js";
@@ -309,13 +310,23 @@ function image(width: number, height: number, channels: 1 | 3 | 4 = 3, value = 1
   return { key, width, height, channels, data: new Uint8Array(width * height * channels).fill(value) };
 }
 
-/** An A4 page's images in the pixel unit pdf.ts uses (1.5 px a point). */
+/** `image` as the page draws it, `drawnWidth` points wide. */
+function drawnAt(image: PageImage, drawnWidth: number): PageImage {
+  return { ...image, drawnWidth };
+}
+
+/** An A4 page's images, the page's width in points like their drawn width. */
 function pageImages(...images: PageImage[]): PageImages {
-  return { pageWidth: 595 * 1.5, images };
+  return { pageWidth: 595, images };
 }
 
 /** A JPEG-looking file: the OCR answers bytes, the processor stores them as they are. */
 const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0xff, 0xd9]);
+
+/** An image the OCR cut out: its box on the page, which is also its drawn width. */
+function ocrImage(width: number, height: number, bytes: Buffer = JPEG_BYTES): OcrImage {
+  return { bytes, contentType: "image/jpeg", width, height, drawnWidth: width };
+}
 
 function ocrAnswer(firstPage: OcrResult["firstPage"] = null, text = SAMPLE_CV): OcrResult {
   return { text, pagesProcessed: 3, model: "mistral-ocr-latest", firstPage };
@@ -855,18 +866,21 @@ describe("processDocument", () => {
   it("writes the portrait of the first page as a PNG to the photos bucket and its key on the row", async () => {
     const db = new FakeDb();
     const doc = db.addDocument({}, Buffer.from("pdf-one"));
-    const images = vi.fn(async () =>
+    const images = vi.fn(async (_buffer: Buffer, _context: LogFields) =>
       pageImages(
         image(32, 32, 4, 10, "icon"),
         image(600, 120, 3, 20, "banner"),
-        image(300, 400, 3, 200, "portrait"),
+        drawnAt(image(300, 400, 3, 200, "portrait"), 100),
         image(160, 200, 3, 90, "smaller portrait"),
-        image(595, 842, 3, 250, "page background"),
+        // Larger, but drawn across the page: a background, never a face.
+        drawnAt(image(595, 842, 3, 250, "page background"), 595),
       ),
     );
     const outcome = await processDocument(doc.id, depsFor(db, { pageImages: images }));
     expect(outcome).toBe("processed");
     expect(images).toHaveBeenCalledTimes(1);
+    // The log line of an unreadable answer names the document.
+    expect(images.mock.calls[0]?.[1]).toEqual({ documentId: doc.id, orgId: ORG });
 
     const candidateId = db.documents.get(doc.id)?.candidate_id ?? "";
     const path = `${ORG}/${candidateId}.png`;
@@ -954,10 +968,11 @@ describe("processDocument", () => {
     expect(db.documents.get(refused.id)?.status).toBe("processed");
   });
 
-  it("takes the first image of the OCR's first page that fits, stored as the OCR answered it", async () => {
+  it("takes the largest image of the OCR's first page that fits, stored as the OCR answered it", async () => {
     const db = new FakeDb();
     const doc = db.addDocument({}, Buffer.from("scan"));
     const images = vi.fn(async () => pageImages(image(300, 400)));
+    const portrait = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x43, 0x00, 0xff, 0xd9]);
     const outcome = await processDocument(
       doc.id,
       depsFor(db, {
@@ -966,11 +981,7 @@ describe("processDocument", () => {
         ocr: async () =>
           ocrAnswer({
             pageWidth: 1654,
-            images: [
-              { bytes: JPEG_BYTES, contentType: "image/jpeg", width: 1600, height: 200 },
-              { bytes: JPEG_BYTES, contentType: "image/jpeg", width: 300, height: 400 },
-              { bytes: JPEG_BYTES, contentType: "image/jpeg", width: 400, height: 500 },
-            ],
+            images: [ocrImage(1600, 200), ocrImage(300, 400), ocrImage(400, 500, portrait)],
           }),
       }),
     );
@@ -979,7 +990,7 @@ describe("processDocument", () => {
     const path = `${ORG}/${candidateId}.jpg`;
     expect(db.candidates.get(candidateId)?.photo_path).toBe(path);
     expect(db.photos.get(path)?.contentType).toBe("image/jpeg");
-    expect(Buffer.from(db.photos.get(path)?.bytes ?? new Uint8Array(0)).equals(JPEG_BYTES)).toBe(true);
+    expect(Buffer.from(db.photos.get(path)?.bytes ?? new Uint8Array(0)).equals(portrait)).toBe(true);
     // The PDF's own images are not read for a scanned file.
     expect(images).not.toHaveBeenCalled();
 
@@ -989,7 +1000,7 @@ describe("processDocument", () => {
       depsFor(db, {
         extractPdf: async () => ({ pageCount: 1, text: "" }),
         ocr: async () =>
-          ocrAnswer({ pageWidth: 1654, images: [{ bytes: JPEG_BYTES, contentType: "image/jpeg", width: 1200, height: 1100 }] }, BARE_CV),
+          ocrAnswer({ pageWidth: 1654, images: [ocrImage(1200, 1100)] }, BARE_CV),
         structure: async () => modelAnswer({ full_name: "Jean Martin", email: "jean.martin@example.com" }),
       }),
     );
@@ -1038,7 +1049,8 @@ describe("runMaintenance", () => {
       ranAt: NOW,
     });
     expect(db.removed).toEqual([doc.storage_path]);
-    expect(db.removedPhotos).toEqual([]);
+    // No photo on the row: the keys a photo of this person could have go all the same.
+    expect(db.removedPhotos).toEqual([`${ORG}/${candidateId}.png`, `${ORG}/${candidateId}.jpg`]);
     expect(db.candidates.size).toBe(0);
     expect(db.documents.size).toBe(0);
   });
@@ -1050,11 +1062,14 @@ describe("runMaintenance", () => {
     const candidateId = db.documents.get(doc.id)?.candidate_id ?? "";
     const path = `${ORG}/${candidateId}.png`;
     expect(db.photos.has(path)).toBe(true);
+    // A JPEG no row names (a scan of the same person read at the same time) goes too.
+    const orphan = `${ORG}/${candidateId}.jpg`;
+    db.photos.set(orphan, { bytes: JPEG_BYTES, contentType: "image/jpeg" });
     db.expired = [{ candidate_id: candidateId, org_id: ORG, reason: "retention" }];
     const report = await runMaintenance(maintenanceDeps(db));
     expect(report).toMatchObject({ purged: 1, filesRemoved: 2, failed: 0 });
     expect(db.removed).toEqual([doc.storage_path]);
-    expect(db.removedPhotos).toEqual([path]);
+    expect(db.removedPhotos).toEqual([path, orphan]);
     expect(db.photos.size).toBe(0);
     expect(db.candidates.size).toBe(0);
   });

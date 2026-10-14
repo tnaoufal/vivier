@@ -35,19 +35,20 @@ export function TimelineItem({
     <li
       className={cn(
         "rise-in relative grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-3 pb-8 last:pb-0 sm:grid-cols-[7rem_1.25rem_minmax(0,1fr)] sm:gap-x-4",
-        // The rail: a hairline from this dot down to the next item's.
-        "before:absolute before:bottom-0 before:left-[9px] before:top-4 before:w-px before:bg-border last:before:hidden sm:before:left-[calc(8rem+9px)]",
+        // The rail: a hairline from under this dot down to the next one, centred on the 20px dot
+        // column (10px in; from `sm`, after the 7rem dates and the 1rem gap: 8rem + 10px).
+        "before:absolute before:bottom-0 before:left-2.5 before:top-4.5 before:w-px before:-translate-x-1/2 before:bg-border last:before:hidden sm:before:left-34.5",
         className,
       )}
     >
       <span className="hidden min-w-0 pt-0.5 text-meta text-muted-foreground tabular-nums sm:block">
         {when}
       </span>
-      <span className="flex justify-center pt-[7px]">
+      <span className="flex justify-center pt-2">
         <span
           aria-hidden="true"
           className={cn(
-            "size-[9px] shrink-0 rounded-full border-2 border-primary",
+            "size-2.5 shrink-0 rounded-full border-2 border-primary",
             current ? "bg-primary ring-4 ring-primary/15" : "bg-card",
           )}
         />

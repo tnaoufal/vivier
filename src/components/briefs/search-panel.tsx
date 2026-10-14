@@ -62,7 +62,7 @@ import {
 } from "@/lib/briefs/briefs.functions";
 import { kindKey, roleCriterion } from "@/lib/briefs/criteria";
 import { rankResults } from "@/lib/briefs/matching";
-import { arrivalIndexes } from "@/lib/briefs/presentation";
+import { arrivalIndexes, type ResultGroupName } from "@/lib/briefs/presentation";
 import { FULL_POOL_MAX, RETRIEVAL_LIMIT } from "@/lib/briefs/prompts";
 import {
   addShortlistItem,
@@ -122,9 +122,6 @@ interface PendingCheck {
   /** What the model wrote: the role profile, or the requirements. */
   wrote: "profile" | "criteria";
 }
-
-/** A group of results, as the stagger keys tell them apart. */
-type ResultGroupName = "present" | "deeper" | "setAside" | "unassessed" | "ranked";
 
 function ResultSkeleton() {
   return (
@@ -610,6 +607,7 @@ export function SearchPanel({
               shortlistId={shortlistId}
               added={addedIds.has(result.candidateId)}
               canEdit={canEdit}
+              group={group}
               muted={muted}
               onAdd={() => add(result)}
             />

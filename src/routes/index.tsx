@@ -77,7 +77,7 @@ function LandingPage() {
           <p className="rise-in mx-auto mt-8 max-w-xl text-meta text-muted-foreground">{BRAND.tagline[locale]}</p>
         </section>
 
-        <section className="stagger grid gap-6 md:grid-cols-3" aria-label={t("landing.how.title")}>
+        <section className="stagger grid gap-6 md:grid-cols-3">
           {FEATURES.map((feature) => (
             <article key={feature.key} className="sheet rise-in p-6">
               <div className="mb-5 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary [&_svg]:size-5">

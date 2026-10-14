@@ -33,6 +33,7 @@ import {
 import { logError, logInfo } from "./log.js";
 import { countModelCall, countPurged } from "./metrics.js";
 import { vectorLiteral, type Embedder, type Embedding } from "./model.js";
+import { photoPathOf } from "./photo.js";
 import { embeddingTextOf, profileOfRow } from "./structure.js";
 import type { CandidateRow } from "./types.js";
 import type { UsageRecorder } from "./usage.js";
@@ -195,9 +196,17 @@ export async function runMaintenance(deps: MaintenanceDeps): Promise<Maintenance
       const paths = documents.map((document) => document.storage_path);
       if (paths.length > 0) await db.removeObjects(paths, CV_BUCKET);
       // The photo leaves with the person: its key is on the row, so the
-      // row is read before it goes.
+      // row is read before it goes. Both keys a photo of this person can
+      // have go with it (nothing to remove is not an error): two CVs read
+      // at once, or an upload whose row write failed, can leave one that
+      // no row names.
       const photoPath = (await db.getCandidateById(item.org_id, item.candidate_id))?.photo_path ?? null;
-      if (photoPath) await db.removeObjects([photoPath], PHOTO_BUCKET);
+      const photoPaths = new Set([
+        ...(photoPath ? [photoPath] : []),
+        photoPathOf(item.org_id, item.candidate_id, "image/png"),
+        photoPathOf(item.org_id, item.candidate_id, "image/jpeg"),
+      ]);
+      await db.removeObjects([...photoPaths], PHOTO_BUCKET);
       await db.deleteCandidate(item.candidate_id);
       purged += 1;
       filesRemoved += paths.length + (photoPath ? 1 : 0);

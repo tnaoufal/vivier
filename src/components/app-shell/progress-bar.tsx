@@ -51,12 +51,7 @@ export function ProgressBar({
       )}
     >
       {value === null ? (
-        <div
-          className={cn(
-            "h-full w-1/3 rounded-full animate-[shine_1.4s_var(--ease-out-soft)_infinite]",
-            FILLS[tone],
-          )}
-        />
+        <div className={cn("h-full w-1/3 rounded-full animate-indeterminate", FILLS[tone])} />
       ) : (
         <div
           className={cn(

@@ -391,6 +391,9 @@ export function UploadDialog({
                 accept="application/pdf,.pdf"
                 multiple
                 className="sr-only"
+                // The "Browse" button opens it: no second, unnamed stop in the Tab order.
+                tabIndex={-1}
+                aria-hidden="true"
                 onChange={(event) => {
                   const picked: FileList | null = event.target.files;
                   const files: File[] = picked ? Array.from(picked) : [];

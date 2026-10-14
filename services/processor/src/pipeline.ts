@@ -35,7 +35,7 @@ import {
   noteEmbeddingFailure,
   noteEmbeddingSuccess,
 } from "./embedding.js";
-import { logError, logInfo } from "./log.js";
+import { logError, logInfo, type LogFields } from "./log.js";
 import { FAILURE_MESSAGES } from "./messages.js";
 import { countDocument, countModelCall, countOcrCall, countPages } from "./metrics.js";
 import { ModelError, embedOne, vectorLiteral, type Embedder } from "./model.js";
@@ -50,7 +50,7 @@ import {
   type PageImages,
   type PdfText,
 } from "./pdf.js";
-import { choosePhoto, isPhotoLike, photoFileOf, photoPathOf, type PhotoFile } from "./photo.js";
+import { choosePhoto, photoFileOf, photoPathOf, type PhotoFile } from "./photo.js";
 import {
   backfillContacts,
   embeddingTextOf,
@@ -70,8 +70,11 @@ export interface PipelineDeps {
   db: Db;
   config: ProcessorConfig;
   extractPdf: (buffer: Buffer) => Promise<PdfText>;
-  /** The images of page 1 of a PDF with a text layer, for the photo; a thrown error means no photo. */
-  pageImages: (buffer: Buffer) => Promise<PageImages>;
+  /**
+   * The images of page 1 of a PDF with a text layer, for the photo; a
+   * thrown error means no photo. `context` names the document in the log.
+   */
+  pageImages: (buffer: Buffer, context: LogFields) => Promise<PageImages>;
   /** Null when OCR is not configured: scanned PDFs end in needs_ocr. */
   ocr: ((buffer: Buffer) => Promise<OcrResult>) | null;
   /** Null without a model: the heuristic profile is used and nothing is classified. */
@@ -88,7 +91,7 @@ export function defaultDeps(config: ProcessorConfig, db: Db): PipelineDeps {
     db,
     config,
     extractPdf: (buffer) => extractPdfText(buffer),
-    pageImages: (buffer) => extractPageImages(buffer, 1),
+    pageImages: (buffer, context) => extractPageImages(buffer, 1, context),
     ocr: ocr ? (buffer) => ocrPdf(buffer, ocr) : null,
     structure: model ? (text) => modelProfile(text, model) : null,
     embed: model ? (text) => embedOne(text, model) : null,
@@ -449,11 +452,11 @@ async function run(doc: DocumentRow, deps: PipelineDeps): Promise<ProcessOutcome
 }
 
 /**
- * The portrait of the first page as a file, or null: from the OCR answer
- * when the PDF was scanned (the first image that fits, as the OCR cut it
- * out), else from the PDF's own images (the largest that fits, downscaled
- * and encoded as a PNG). A failure to read the images is a log line and no
- * photo: the document is processed all the same.
+ * The portrait of the first page as a file, or null: the largest image
+ * that fits, from the OCR answer when the PDF was scanned (as the OCR cut
+ * it out), else from the PDF's own images (downscaled and encoded as a
+ * PNG). A failure to read the images is a log line and no photo: the
+ * document is processed all the same.
  */
 async function findPhoto(
   deps: PipelineDeps,
@@ -465,10 +468,10 @@ async function findPhoto(
     if (ocrAnswer) {
       const page = ocrAnswer.firstPage;
       if (!page) return null;
-      const image = page.images.find((candidate) => isPhotoLike(candidate, page.pageWidth));
+      const image = choosePhoto(page.images, page.pageWidth);
       return image ? { bytes: image.bytes, contentType: image.contentType } : null;
     }
-    const page = await deps.pageImages(buffer);
+    const page = await deps.pageImages(buffer, { documentId: doc.id, orgId: doc.org_id });
     const image = choosePhoto(page.images, page.pageWidth);
     return image ? photoFileOf(image) : null;
   } catch (error) {

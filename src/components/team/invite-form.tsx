@@ -149,7 +149,7 @@ export function InviteForm({
           <p className="text-ink">{t("team.invite.notEmailed")}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <code className="min-w-0 flex-1 truncate rounded-sm bg-card px-3 py-2 text-xs">{pendingLink.link}</code>
-            <Button type="button" size="sm" variant="outline" icon={<Copy />} onClick={() => void copyLink()}>
+            <Button type="button" variant="outline" icon={<Copy />} onClick={() => void copyLink()}>
               {t("team.invite.copyLink")}
             </Button>
           </div>

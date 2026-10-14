@@ -88,9 +88,12 @@ export function DocumentsCard({
         {documents.length ? addButton : null}
       </div>
       {documents.length ? (
-        <ul className="divide-y divide-border">
+        <ul className="stagger divide-y divide-border">
           {documents.map((document: DocumentRow) => (
-            <li key={document.id} className="flex items-start gap-3 py-4 first:pt-0 last:pb-0">
+            <li
+              key={document.id}
+              className="rise-in flex items-start gap-3 py-4 first:pt-0 last:pb-0"
+            >
               <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                 <FileText className="size-4" aria-hidden="true" />
               </span>

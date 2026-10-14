@@ -16,7 +16,7 @@ const LENGTH = 2 * Math.PI * RADIUS;
 const SIZES = {
   sm: "size-10 text-xs",
   md: "size-14 text-sm",
-  lg: "size-[4.5rem] text-base",
+  lg: "size-18 text-base",
 } as const;
 
 export function ringTone(score: number): "positive" | "caution" | "negative" {

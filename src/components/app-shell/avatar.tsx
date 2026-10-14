@@ -4,7 +4,9 @@
  * The initials stay under the photo until it has loaded, then the photo
  * fades in; a photo that fails leaves the initials. The photo identifies
  * a person in the interface only: it never reaches a model. `profile`
- * is the square-rounded variant of a candidate sheet.
+ * is the square-rounded variant of a candidate sheet. On its own the
+ * avatar is an image named after the person; next to the visible name it
+ * is `decorative`, so a screen reader does not read the name twice.
  */
 import { useState } from "react";
 
@@ -14,7 +16,7 @@ import { cn } from "@/lib/utils";
 export type AvatarSize = "sm" | "md" | "lg" | "xl";
 
 const SIZES: Record<AvatarSize, string> = {
-  sm: "size-7 text-[11px]",
+  sm: "size-7 text-xs",
   md: "size-9 text-xs",
   lg: "size-11 text-sm",
   xl: "size-18 text-lg",
@@ -52,6 +54,7 @@ export function Avatar({
   className,
   photoUrl,
   variant = "disc",
+  decorative = false,
 }: {
   name: string;
   size?: AvatarSize;
@@ -60,6 +63,8 @@ export function Avatar({
   photoUrl?: string | null | undefined;
   /** `profile`: square with rounded corners, for a candidate sheet. */
   variant?: "disc" | "profile";
+  /** True where the person's name is shown beside the avatar: hidden from assistive technologies. */
+  decorative?: boolean;
 }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const url = photoUrl && photoUrl !== failedUrl ? photoUrl : null;
@@ -71,9 +76,7 @@ export function Avatar({
         SIZES[size],
         className,
       )}
-      role="img"
-      title={name}
-      aria-label={name}
+      {...(decorative ? { "aria-hidden": true } : { role: "img", title: name, "aria-label": name })}
     >
       <span aria-hidden="true">{initialsOf(name)}</span>
       {url ? <Photo url={url} onFailed={() => setFailedUrl(url)} /> : null}

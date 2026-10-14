@@ -105,7 +105,7 @@ export function ProfileHeader({
             ) : null}
           </div>
         )}
-        <p className="mt-1 text-body text-ink/85">
+        <p className="mt-1 text-body text-ink">
           {position ? (
             <>
               <span className="font-medium text-ink">{position.title}</span>
@@ -127,7 +127,7 @@ export function ProfileHeader({
             <ul className="contents" aria-label={t("candidates.field.languages")}>
               {languages.map((language, index) => (
                 <li key={`${language.name}-${index}`} className="min-w-0">
-                  <Pill size="sm" className="bg-secondary text-ink/80">
+                  <Pill size="sm">
                     {language.name.trim()}
                     {language.level?.trim() ? ` · ${language.level.trim()}` : ""}
                   </Pill>

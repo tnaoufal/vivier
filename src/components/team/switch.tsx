@@ -1,9 +1,12 @@
 /**
  * An on/off control for a setting that saves at once (the candidates'
- * photos): a 44 × 24 track, a thumb that slides over 180ms through the
- * motion tokens, the accent when on. It is a button with the `switch`
- * role, so a screen reader hears "on" or "off"; the caller names it
- * with `aria-labelledby` (the visible label) and may point at the help
+ * photos), drawn like the criteria rows' switch: a 36 × 20 track inside
+ * a 40px target, a thumb that slides over 120ms through the motion
+ * tokens, the accent when on. Off, the track is outlined and the thumb
+ * solid in the muted ink, so both stay above 3:1 on the card and the
+ * thumb's side tells the state. It is a button with the `switch` role,
+ * so a screen reader hears "on" or "off"; the caller names it with
+ * `aria-labelledby` (the visible label) and may point at the help
  * sentence with `aria-describedby`.
  */
 import { cn } from "@/lib/utils";
@@ -37,18 +40,24 @@ export function Switch({
       disabled={disabled}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
-        "press relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-base ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
-        checked ? "bg-primary" : "bg-ink/20",
+        "press group inline-flex h-10 shrink-0 cursor-pointer items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
-          "pointer-events-none block size-5 rounded-full bg-card shadow-raised transition-transform duration-base ease-out-soft",
-          checked ? "translate-x-[22px]" : "translate-x-0.5",
+          "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-[background-color,box-shadow] duration-fast ease-out-soft",
+          checked ? "bg-primary" : "bg-card ring-2 ring-inset ring-muted-foreground group-hover:ring-ink-soft",
         )}
-      />
+      >
+        <span
+          className={cn(
+            "absolute left-0.5 size-4 rounded-full shadow-raised transition-[translate,background-color] duration-fast ease-out-soft",
+            checked ? "translate-x-4 bg-card" : "bg-muted-foreground",
+          )}
+        />
+      </span>
     </button>
   );
 }

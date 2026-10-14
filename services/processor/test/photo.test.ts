@@ -3,7 +3,6 @@ import { inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
 import {
-  PAGE_PIXELS_PER_POINT,
   PHOTO_MAX_SIDE_OUT,
   choosePhoto,
   downscale,
@@ -14,8 +13,8 @@ import {
   type RawImage,
 } from "../src/photo.js";
 
-/** An A4 page in the pixel unit the PDF images are compared with. */
-const A4 = 595 * PAGE_PIXELS_PER_POINT;
+/** An A4 page's width in points, the unit of a PDF image's drawn width. */
+const A4 = 595;
 
 function raw(width: number, height: number, channels: 1 | 3 | 4, samples: number[]): RawImage {
   return { width, height, channels, data: Uint8Array.from(samples) };
@@ -35,15 +34,25 @@ describe("isPhotoLike", () => {
     expect(isPhotoLike({ width: 450, height: 400 }, A4)).toBe(false);
     // A decorative column: far taller than wide.
     expect(isPhotoLike({ width: 200, height: 842 }, A4)).toBe(false);
-    // A scan of the page or a background: page-shaped, wider than half the page.
-    expect(isPhotoLike({ width: 595, height: 842 }, A4)).toBe(false);
+    // A scan of the page or a background: page-shaped, drawn wider than half the page.
+    expect(isPhotoLike({ width: 595, height: 842, drawnWidth: 595 }, A4)).toBe(false);
     expect(isPhotoLike({ width: 1240, height: 1754 }, A4)).toBe(false);
     expect(isPhotoLike({ width: 1300, height: 1300 }, A4)).toBe(false);
   });
 
-  it("skips the half-page rule when the page width is unknown, and ignores nonsense", () => {
-    expect(isPhotoLike({ width: 595, height: 842 }, null)).toBe(true);
-    expect(isPhotoLike({ width: 595, height: 842 }, Number.NaN)).toBe(true);
+  it("reads the half-page rule on the drawn width, not the image's own pixels", () => {
+    // A portrait kept at a high resolution, drawn 100 pt wide: kept.
+    expect(isPhotoLike({ width: 600, height: 800, drawnWidth: 100 }, A4)).toBe(true);
+    // A low-resolution background drawn across the page: refused.
+    expect(isPhotoLike({ width: 400, height: 566, drawnWidth: 595 }, A4)).toBe(false);
+    expect(isPhotoLike({ width: 400, height: 566, drawnWidth: 297 }, A4)).toBe(true);
+  });
+
+  it("skips the half-page rule when the page width or the drawn width is unknown, and ignores nonsense", () => {
+    expect(isPhotoLike({ width: 595, height: 842, drawnWidth: 595 }, null)).toBe(true);
+    expect(isPhotoLike({ width: 595, height: 842, drawnWidth: 595 }, Number.NaN)).toBe(true);
+    expect(isPhotoLike({ width: 595, height: 842 }, A4)).toBe(true);
+    expect(isPhotoLike({ width: 595, height: 842, drawnWidth: Number.NaN }, A4)).toBe(true);
     expect(isPhotoLike({ width: Number.NaN, height: 400 }, A4)).toBe(false);
     expect(isPhotoLike({ width: 300, height: 0 }, A4)).toBe(false);
   });
@@ -55,7 +64,7 @@ describe("choosePhoto", () => {
     const small = { width: 160, height: 200, key: "small" };
     const large = { width: 300, height: 400, key: "large" };
     const sameArea = { width: 400, height: 300, key: "landscape" };
-    const background = { width: 595, height: 842, key: "background" };
+    const background = { width: 595, height: 842, drawnWidth: 595, key: "background" };
     expect(choosePhoto([icon, small, large, sameArea, background], A4)?.key).toBe("large");
     expect(choosePhoto([small, { width: 200, height: 160, key: "wide" }], A4)?.key).toBe("small");
     const twin = { width: 300, height: 400, key: "twin" };

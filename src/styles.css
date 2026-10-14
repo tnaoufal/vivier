@@ -144,6 +144,8 @@
   --animate-card-in: rise-in var(--duration-slower) var(--ease-out-soft) backwards;
   --animate-row-in: row-in var(--duration-slow) var(--ease-out-soft) backwards;
   --animate-shimmer: shimmer 1.6s linear infinite;
+  /* An indeterminate bar: its fill crosses the track at the pace of the `shine` sheen. */
+  --animate-indeterminate: shine 1.4s var(--ease-out-soft) infinite;
   @keyframes rise-in {
     from {
       opacity: 0;
@@ -201,6 +203,7 @@
   --color-negative: var(--negative);
   --color-negative-foreground: var(--negative-foreground);
   --color-neutral: var(--neutral);
+  --color-scrim: var(--scrim);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -271,13 +274,17 @@
   --border: oklch(0 0 0 / 9%);
   --input: oklch(0 0 0 / 14%);
   --ring: oklch(0.6 0.1 158);
-  --positive: oklch(0.52 0.14 155);
+  /* Positive and negative are dark enough to be text on their own 12 percent
+     tint (a pill): AA over the card and over the page. */
+  --positive: oklch(0.48 0.14 155);
   --positive-foreground: oklch(0.99 0.005 150);
   --caution: oklch(0.66 0.14 75);
   --caution-foreground: oklch(0.32 0.06 70);
-  --negative: oklch(0.55 0.17 25);
+  --negative: oklch(0.51 0.17 25);
   --negative-foreground: oklch(0.99 0.005 25);
   --neutral: oklch(0.6 0.01 150);
+  /* The veil under a dialog or a drawer. */
+  --scrim: oklch(0.2 0.02 160 / 40%);
   --sidebar: oklch(0.975 0.004 100);
   --sidebar-foreground: oklch(0.23 0.012 150);
   --sidebar-primary: oklch(0.45 0.11 158);
@@ -329,6 +336,7 @@
   --negative: oklch(0.72 0.14 25);
   --negative-foreground: oklch(0.16 0.03 25);
   --neutral: oklch(0.6 0.01 150);
+  --scrim: oklch(0 0 0 / 70%);
   --sidebar: oklch(0.14 0.008 160);
   --sidebar-foreground: oklch(0.9 0.005 140);
   --sidebar-primary: oklch(0.74 0.13 158);

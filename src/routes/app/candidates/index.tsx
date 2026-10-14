@@ -1,28 +1,29 @@
 /**
  * /app/candidates: the talent pool. One toolbar that wraps (a debounced
- * search over the name, the headline and the location; tabs for active
- * and archived; a sort in a select, so it does not read as a third tab;
- * quick filters on the location, the years and one skill, folded behind
- * a chip until used; tag chips from the loaded page), fifty rows a page
- * in a sheet that rise in once, and the two ways in: a batch of CVs or a
- * candidate typed by hand (the import is the one filled button, in the
- * header while the pool holds rows and in the empty state before). A banner above
- * the list follows the documents the service is reading (the set-aside
- * counts and the wave's progress), live through realtime on documents,
- * and every fifteen seconds while something is pending (the list too: a
- * dense burst of events keeps the debounce from firing) so the rate and
- * the estimate move even between two events. The page keeps the start
- * of the wave it follows between two reads, so the bar never steps back
- * as the queue's earliest document moves on, and the end of the wave is
- * counted from it.
+ * search over the name, the headline and the location; a segmented
+ * control for active and archived; a sort in a select, so it does not
+ * read as a third option; quick filters on the location, the years and
+ * one skill, folded behind a chip until used; tag chips from the loaded
+ * page), fifty rows a page in a sheet that rise in once, and the two
+ * ways in: a batch of CVs or a candidate typed by hand (the import is
+ * the one filled button, in the header while the pool holds rows and in
+ * the empty state before). A banner above the list follows the documents
+ * the service is reading (the set-aside counts and the wave's progress),
+ * live through realtime on documents, and every fifteen seconds while
+ * something is pending (the list too: a dense burst of events keeps the
+ * debounce from firing) so the rate and the estimate move even between
+ * two events. The page keeps the start of the wave it follows between
+ * two reads, so the bar never steps back as the queue's earliest
+ * document moves on, and the end of the wave is counted from it.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
-  ArrowUpDown,
   MapPin,
+  RefreshCw,
   Search,
   SlidersHorizontal,
+  TriangleAlert,
   Upload,
   UserPlus,
   Users,
@@ -46,7 +47,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SkeletonRows } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Segmented } from "@/components/ui/tabs";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { distinctSkills, distinctTags, parseYearsMin } from "@/lib/candidates/format";
 import {
@@ -74,10 +75,6 @@ const SEARCH_DEBOUNCE_MS = 300;
 const SKELETON_ROWS = 5;
 /** While something is pending, the wave is read again this often: the rate and the estimate follow the clock. */
 const PROGRESS_INTERVAL_MS = 15_000;
-
-function isStatus(value: string): value is CandidateStatus {
-  return value === "active" || value === "archived";
-}
 
 /** The quick filters as typed, before the debounce turns them into a query. */
 interface FilterText {
@@ -279,28 +276,22 @@ function CandidatesPage() {
               className="pl-11"
             />
           </div>
-          <Tabs
+          <Segmented<CandidateStatus>
             value={status}
-            onValueChange={(value) => {
-              if (isStatus(value)) setStatus(value);
-            }}
-          >
-            <TabsList aria-label={t("candidates.tab.label")}>
-              <TabsTrigger value="active">{t("candidates.tab.active")}</TabsTrigger>
-              <TabsTrigger value="archived">{t("candidates.tab.archived")}</TabsTrigger>
-            </TabsList>
-          </Tabs>
+            onChange={setStatus}
+            aria-label={t("candidates.tab.label")}
+            options={[
+              { value: "active", label: t("candidates.tab.active") },
+              { value: "archived", label: t("candidates.tab.archived") },
+            ]}
+          />
           <Select
             value={sort}
             onValueChange={(value) => {
               if (isCandidateSort(value)) setSort(value);
             }}
           >
-            <SelectTrigger
-              className="w-44 [&>span]:flex-1 [&>span]:text-left"
-              aria-label={t("candidates.sort.label")}
-            >
-              <ArrowUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <SelectTrigger className="w-44" aria-label={t("candidates.sort.label")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -404,9 +395,15 @@ function CandidatesPage() {
 
       {list.error ? (
         <EmptyState
+          icon={<TriangleAlert />}
           title={t("candidates.listError")}
           action={
-            <Button type="button" variant="outline" onClick={() => void refreshList()}>
+            <Button
+              type="button"
+              variant="outline"
+              icon={<RefreshCw />}
+              onClick={() => void refreshList()}
+            >
               {t("common.retry")}
             </Button>
           }

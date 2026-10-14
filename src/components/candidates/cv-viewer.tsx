@@ -8,7 +8,10 @@
  * Escape closes (the drawer traps focus; a click inside the frame hands
  * focus to the browser's own viewer, whose Escape the page does not
  * see: the close button is always one Tab away). The signed links are
- * short-lived: a viewer opened again signs them again.
+ * short-lived: the drawer's content mounts with each opening (the drawer
+ * unmounts it once closed), so a viewer opened again waits for fresh
+ * links (the skeleton, the toolbar's links disabled) and never shows an
+ * earlier opening's.
  */
 import { useEffect, useState } from "react";
 import { Download, ExternalLink, FileSearch, FileText, RefreshCw } from "lucide-react";
@@ -56,7 +59,6 @@ export function CvViewer({
   document: DocumentRow | null;
   candidateName: string;
 }) {
-  const { t, locale } = useI18n();
   const pdfSupported = canDisplayPdf(typeof navigator === "undefined" ? null : navigator);
   const [tab, setTab] = useState<ViewerTab>(() => initialTab(pdfSupported));
   const documentId = doc?.id ?? null;
@@ -66,8 +68,53 @@ export function CvViewer({
     setTab(initialTab(pdfSupported));
   }, [documentId, pdfSupported]);
 
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        size="full"
+        className="flex flex-col gap-0 overflow-y-hidden p-0 sm:p-0 lg:w-[80vw]"
+      >
+        <ViewerContent
+          open={open}
+          document={doc}
+          candidateName={candidateName}
+          pdfSupported={pdfSupported}
+          tab={tab}
+          onTabChange={setTab}
+        />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/**
+ * The toolbar and the body. Mounted by the drawer with each opening and
+ * unmounted once it is closed, so the signed links (and an error) of an
+ * earlier opening never show: it starts on the skeleton until its own
+ * links are signed. It stays mounted while the drawer slides out, so the
+ * content does not blank mid-motion.
+ */
+function ViewerContent({
+  open,
+  document: doc,
+  candidateName,
+  pdfSupported,
+  tab,
+  onTabChange,
+}: {
+  open: boolean;
+  document: DocumentRow | null;
+  candidateName: string;
+  pdfSupported: boolean;
+  tab: ViewerTab;
+  onTabChange: (tab: ViewerTab) => void;
+}) {
+  const { t, locale } = useI18n();
+  const documentId = doc?.id ?? null;
+
   const links = useQuery(
-    `cv-view:${documentId ?? ""}:${open ? "open" : "closed"}`,
+    `cv-view:${documentId ?? ""}`,
     async () => {
       if (!doc) return null;
       const supabase = await requireSupabase();
@@ -98,91 +145,85 @@ export function CvViewer({
     : "";
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        size="full"
-        className="flex flex-col gap-0 overflow-y-hidden p-0 sm:p-0 lg:w-[80vw]"
-      >
-        <SheetHeader className="gap-0 border-b border-border py-3 pl-4 pr-14 sm:pl-6 sm:pr-16">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-            <div className="flex min-w-0 flex-1 basis-64 items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                <FileText className="size-5" aria-hidden="true" />
-              </span>
-              <div className="min-w-0">
-                <SheetTitle className="truncate font-sans text-base font-semibold leading-6 tracking-normal">
-                  {doc?.file_name ?? t("candidates.documents.title")}
-                </SheetTitle>
-                <SheetDescription className="truncate text-meta tabular-nums">
-                  {details || candidateName}
-                </SheetDescription>
-              </div>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {pdfSupported && doc ? (
-                <Segmented
-                  value={tab}
-                  onChange={setTab}
-                  aria-label={t("candidates.viewer.tabs")}
-                  options={[
-                    { value: "pdf", label: t("candidates.viewer.pdf"), icon: <FileText /> },
-                    { value: "text", label: t("candidates.viewer.text"), icon: <FileSearch /> },
-                  ]}
-                />
-              ) : null}
-              <ToolbarLink
-                href={current?.view ?? null}
-                label={t("candidates.documents.openTab")}
-                icon={<ExternalLink />}
-              />
-              <ToolbarLink
-                href={current?.download ?? null}
-                label={t("candidates.documents.download")}
-                icon={<Download />}
-              />
+    <>
+      <SheetHeader className="gap-0 border-b border-border py-3 pl-4 pr-14 sm:pl-6 sm:pr-16">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex min-w-0 flex-1 basis-64 items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <FileText className="size-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <SheetTitle className="truncate font-sans text-base font-semibold leading-6 tracking-normal">
+                {doc?.file_name ?? t("candidates.documents.title")}
+              </SheetTitle>
+              <SheetDescription className="truncate text-meta tabular-nums">
+                {details || candidateName}
+              </SheetDescription>
             </div>
           </div>
-        </SheetHeader>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {pdfSupported && doc ? (
+              <Segmented
+                value={tab}
+                onChange={onTabChange}
+                aria-label={t("candidates.viewer.tabs")}
+                options={[
+                  { value: "pdf", label: t("candidates.viewer.pdf"), icon: <FileText /> },
+                  { value: "text", label: t("candidates.viewer.text"), icon: <FileSearch /> },
+                ]}
+              />
+            ) : null}
+            <ToolbarLink
+              href={current?.view ?? null}
+              label={t("candidates.documents.openTab")}
+              icon={<ExternalLink />}
+            />
+            <ToolbarLink
+              href={current?.download ?? null}
+              label={t("candidates.documents.download")}
+              icon={<Download />}
+            />
+          </div>
+        </div>
+      </SheetHeader>
 
-        <SheetBody className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden p-0 sm:m-0 sm:p-0">
-          {!doc ? null : tab === "pdf" && pdfSupported ? (
-            links.error ? (
-              <EmptyState
-                compact
-                icon={<FileText />}
-                title={t("candidates.documents.openFailed")}
-                action={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    icon={<RefreshCw />}
-                    onClick={() => void links.refresh()}
-                  >
-                    {t("common.retry")}
-                  </Button>
-                }
-                className="m-6"
-              />
-            ) : !current ? (
-              <div className="flex-1 p-6" aria-busy="true">
-                <p className="sr-only">{t("common.loading")}</p>
-                <Skeleton className="h-full w-full rounded-lg" />
-              </div>
-            ) : (
-              <iframe
-                key={current.view}
-                src={pdfFrameSrc(current.view)}
-                title={t("candidates.viewer.frameTitle", { name: candidateName })}
-                className="h-full w-full flex-1 bg-muted"
-              />
-            )
+      <SheetBody className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden p-0 sm:m-0 sm:p-0">
+        {!doc ? null : tab === "pdf" && pdfSupported ? (
+          links.error ? (
+            <EmptyState
+              compact
+              icon={<FileText />}
+              title={t("candidates.documents.openFailed")}
+              action={
+                <Button
+                  type="button"
+                  variant="outline"
+                  icon={<RefreshCw />}
+                  onClick={() => void links.refresh()}
+                >
+                  {t("common.retry")}
+                </Button>
+              }
+              className="m-6"
+            />
+          ) : !current ? (
+            <div className="flex-1 p-6" aria-busy="true">
+              <p className="sr-only">{t("common.loading")}</p>
+              <Skeleton className="h-full w-full rounded-lg" />
+            </div>
           ) : (
-            <TextPane document={doc} enabled={open} pdfSupported={pdfSupported} />
-          )}
-        </SheetBody>
-      </SheetContent>
-    </Sheet>
+            <iframe
+              key={current.view}
+              src={pdfFrameSrc(current.view)}
+              title={t("candidates.viewer.frameTitle", { name: candidateName })}
+              className="h-full w-full flex-1 bg-muted"
+            />
+          )
+        ) : (
+          <TextPane document={doc} enabled={open} pdfSupported={pdfSupported} />
+        )}
+      </SheetBody>
+    </>
   );
 }
 

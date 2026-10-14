@@ -6,7 +6,7 @@
  * session exists the browser goes to `next` (the page that asked) or to
  * the app.
  */
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowRight, Check, Eye, EyeOff, Mail } from "lucide-react";
 
@@ -60,6 +60,8 @@ function SignInPage() {
   const { next } = Route.useSearch();
   const emailErrorId = useId();
   const passwordErrorId = useId();
+  const subtitleId = useId();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [intent, setIntent] = useState<Intent>("signIn");
   const [step, setStep] = useState<Step>("email");
   const [sentKind, setSentKind] = useState<SentKind>("signUp");
@@ -73,6 +75,12 @@ function SignInPage() {
   useEffect(() => {
     if (!loading && user) router.history.replace(safeNext(next));
   }, [loading, next, router, user]);
+
+  // The email and password steps focus their field; the other two have none, so the heading takes
+  // focus (the control that led there is gone) and is read with its sentence.
+  useEffect(() => {
+    if (step === "reset" || step === "sent") headingRef.current?.focus();
+  }, [step]);
 
   function go(target: Step) {
     setError(null);
@@ -320,8 +328,19 @@ function SignInPage() {
         <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
           {step === "sent" ? <Check className="size-6" aria-hidden="true" /> : <BrandIcon className="size-7" />}
         </div>
-        <h1 className="mt-5 font-display text-2xl text-ink">{title}</h1>
-        {subtitle ? <p className="mt-2 text-body text-muted-foreground break-words">{subtitle}</p> : null}
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          aria-describedby={subtitle ? subtitleId : undefined}
+          className="mt-5 font-display text-2xl text-ink outline-none"
+        >
+          {title}
+        </h1>
+        {subtitle ? (
+          <p id={subtitleId} className="mt-2 text-body text-muted-foreground break-words">
+            {subtitle}
+          </p>
+        ) : null}
         {body}
         {isSupabaseConfigured && (step === "email" || step === "password") ? (
           <p className="mt-6 text-center text-sm text-muted-foreground">

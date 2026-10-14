@@ -7,7 +7,7 @@
  */
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { UserPlus, Users } from "lucide-react";
+import { UserPlus } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { PageHeader } from "@/components/app-shell/page-header";
@@ -167,8 +167,6 @@ function MembersPage() {
   const members = data?.members ?? [];
   const invitations = data?.invitations ?? [];
   const ready = !(loading && !data);
-  const membersText =
-    members.length === 0 ? t("members.count.none") : members.length === 1 ? t("members.count.one") : t("members.count.many", { count: members.length });
   const seatsText =
     free === null ? null : free === 0 ? t("members.seatsLeft.none") : free === 1 ? t("members.seatsLeft.one") : t("members.seatsLeft.many", { count: free });
 
@@ -179,17 +177,10 @@ function MembersPage() {
         title={t("nav.members")}
         description={t("members.subtitle", { org: org.name })}
         meta={
-          ready ? (
-            <>
-              <Pill tone="neutral" icon={<Users />}>
-                {membersText}
-              </Pill>
-              {seatsUsed !== null ? (
-                <Pill tone={seatsFull ? "caution" : "neutral"} dot {...(seatsText ? { title: seatsText } : {})}>
-                  {t("shell.org.seats", { used: seatsUsed, limit: org.seat_limit })}
-                </Pill>
-              ) : null}
-            </>
+          ready && seatsUsed !== null ? (
+            <Pill tone={seatsFull ? "caution" : "neutral"} dot {...(seatsText ? { title: seatsText } : {})}>
+              {t("shell.org.seats", { used: seatsUsed, limit: org.seat_limit })}
+            </Pill>
           ) : null
         }
         actions={

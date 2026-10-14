@@ -21,6 +21,7 @@ import { Avatar } from "@/components/app-shell/avatar";
 import { RequirementList } from "@/components/app-shell/requirement-list";
 import { ScoreRing } from "@/components/app-shell/score-ring";
 import { BrandIcon } from "@/components/brand-mark";
+import { Chip } from "@/components/candidates/chip-editor";
 import {
   DecisionPill,
   factsLine,
@@ -35,7 +36,7 @@ import { Button } from "@/components/ui/button";
 import { BRAND } from "@/lib/brand";
 import type { Locale, ShareBrief, ShareItem } from "@/lib/db/types";
 import { formatDate, translate, useI18n, type TranslationKey } from "@/lib/i18n";
-import { metCount } from "@/lib/shares/draft";
+import { metCount, SKILLS_SHOWN } from "@/lib/shares/draft";
 import { shareCvPath } from "@/lib/shares/links";
 import { getShare, type PublicShare } from "@/lib/shares/public.functions";
 import { cn, ratioPercent } from "@/lib/utils";
@@ -332,7 +333,7 @@ function Overview({ items, t }: { items: ShareItem[]; t: Translate }) {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right sm:px-6">
-                    <ScoreText score={item.score} />
+                    <ScoreText score={item.score} t={t} />
                   </td>
                   <td className="px-4 py-3 sm:px-6">
                     <DecisionPill decision={item.decision} t={t} />
@@ -397,6 +398,9 @@ function Sheet({
   t: Translate;
 }) {
   const rows = requirementRowsOf(item);
+  // At most eight chips, the rest counted: print has no expander, and a sheet is never a wall of chips.
+  const skills = item.skills.slice(0, SKILLS_SHOWN);
+  const moreSkills = item.skills.length - skills.length;
   return (
     <article className="sheet space-y-8 p-6 sm:p-8 print:border-0 print:p-0 print:shadow-none">
       <header className="flex flex-wrap items-start justify-between gap-6">
@@ -472,16 +476,20 @@ function Sheet({
       <div className="grid gap-8 sm:grid-cols-2">
         <section>
           <Caption>{t("shares.page.skills")}</Caption>
-          {item.skills.length ? (
-            <ul className="flex flex-wrap gap-1.5">
-              {item.skills.map((skill, skillIndex) => (
-                <li
-                  key={`${skillIndex}-${skill}`}
-                  className="inline-flex h-7 max-w-full items-center rounded-full bg-muted px-2.5 text-meta font-medium text-ink/85"
-                >
-                  {skill}
+          {skills.length ? (
+            <ul className="flex flex-wrap items-center gap-1.5">
+              {skills.map((skill, skillIndex) => (
+                <li key={`${skillIndex}-${skill}`} className="min-w-0 max-w-full">
+                  <Chip>{skill}</Chip>
                 </li>
               ))}
+              {moreSkills > 0 ? (
+                <li className="text-meta text-muted-foreground tabular-nums">
+                  {moreSkills === 1
+                    ? t("shares.page.skills.more.one")
+                    : t("shares.page.skills.more.many", { count: moreSkills })}
+                </li>
+              ) : null}
             </ul>
           ) : (
             <p className="text-sm text-muted-foreground">{t("shares.page.skills.none")}</p>

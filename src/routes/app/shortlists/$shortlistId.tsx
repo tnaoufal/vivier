@@ -1,12 +1,13 @@
 /**
  * /app/shortlists/:shortlistId: the board of one shortlist. The brief in
  * the header with the three counts as pills, a way to the brief's search
- * to add candidates and the share dialog (members); three columns from
- * lg, stacked before, each with a header that stays in view: to review,
- * retained, dismissed, each a list of cards; a drawer for one item, in
- * three tabs; the shares under the board. Live through realtime on the
- * shortlist's items, the organisation's votes and comments, each change
- * debounced into one re-read.
+ * to add candidates and the share dialog (members), folded to their
+ * icons on a phone; the one sentence of the page under it; three
+ * columns from lg, stacked before: to review, retained, dismissed, each
+ * a list of cards; a drawer for one item, in three tabs; the shares
+ * under the board. Live through realtime on the shortlist's items, the
+ * organisation's votes and comments, each change debounced into one
+ * re-read.
  */
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -54,6 +55,8 @@ const COUNT_TONES: Record<ShortlistItemStatus, PillTone> = {
   retained: "positive",
   dismissed: "negative",
 };
+/** A labelled header button folded to its 40px icon under `sm`. */
+const PHONE_ICON = "max-sm:size-10 max-sm:px-0";
 
 function ShortlistPage() {
   const { shortlistId } = Route.useParams();
@@ -161,6 +164,15 @@ function ShortlistPage() {
       <Link to={briefPath(briefId)}>{t("shortlists.addCandidates")}</Link>
     </Button>
   ) : null;
+  // In the slim header a phone has no room for two labelled buttons next to the title: under `sm`
+  // each one is its 40px icon, its name kept for assistive technologies.
+  const addHeaderLink = briefId ? (
+    <Button asChild variant="outline" icon={<UserPlus />} className={PHONE_ICON}>
+      <Link to={briefPath(briefId)}>
+        <span className="max-sm:sr-only">{t("shortlists.addCandidates")}</span>
+      </Link>
+    </Button>
+  ) : null;
 
   return (
     <div>
@@ -168,7 +180,6 @@ function ShortlistPage() {
         sticky
         eyebrow={eyebrow}
         title={title}
-        description={t("shortlists.board.subtitle")}
         meta={
           <>
             {briefId ? (
@@ -180,13 +191,13 @@ function ShortlistPage() {
               </Link>
             ) : null}
             {brief ? (
-              <Pill tone={BRIEF_TONES[brief.status]} dot>
+              <Pill tone={BRIEF_TONES[brief.status]} dot size="sm">
                 {t(`shortlists.brief.status.${brief.status}`)}
               </Pill>
             ) : null}
             {ITEM_STATUSES.map((status) => (
               <Fragment key={status}>
-                <Pill tone={counts[status] === 0 ? "neutral" : COUNT_TONES[status]} dot>
+                <Pill tone={counts[status] === 0 ? "neutral" : COUNT_TONES[status]} dot size="sm">
                   {t(`shortlists.pill.${status}`, { count: counts[status] })}
                 </Pill>
               </Fragment>
@@ -196,18 +207,25 @@ function ShortlistPage() {
         actions={
           canAct ? (
             <>
-              {addLink}
-              <Button type="button" icon={<Share2 />} onClick={() => setShareOpen(true)}>
-                {t("shortlists.share")}
+              {addHeaderLink}
+              <Button
+                type="button"
+                icon={<Share2 />}
+                onClick={() => setShareOpen(true)}
+                className={PHONE_ICON}
+              >
+                <span className="max-sm:sr-only">{t("shortlists.share")}</span>
               </Button>
             </>
           ) : null
         }
       />
 
-      {!canAct ? (
-        <p className="mb-6 text-sm text-muted-foreground">{t("shortlists.viewer")}</p>
-      ) : null}
+      {/* The sticky header folds its description away: the page's sentence reads under it. */}
+      <p className="mb-6 max-w-2xl text-body text-muted-foreground">
+        {t("shortlists.board.subtitle")}
+        {!canAct ? ` ${t("shortlists.viewer")}` : null}
+      </p>
 
       {board.error ? (
         <EmptyState
@@ -236,10 +254,7 @@ function ShortlistPage() {
           action={canAct ? addLink : undefined}
         />
       ) : (
-        <div
-          className="grid items-start gap-6 lg:grid-cols-3"
-          aria-label={t("shortlists.board.columns")}
-        >
+        <div className="grid items-start gap-6 lg:grid-cols-3">
           {ITEM_STATUSES.map((status) => (
             <div key={status} className="min-w-0">
               <StatusSection status={status} count={groups[status].length}>

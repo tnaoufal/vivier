@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 export type ChipTone = "primary" | "neutral";
 
 const CHIP_TONES: Record<ChipTone, string> = {
-  neutral: "bg-muted text-ink/85",
+  neutral: "bg-muted text-ink",
   primary: "bg-primary/10 text-primary",
 };
 

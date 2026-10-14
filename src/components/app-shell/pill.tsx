@@ -45,7 +45,7 @@ export function Pill({
       className={cn(
         "inline-flex max-w-full items-center gap-1.5 rounded-full font-medium whitespace-nowrap tabular-nums [&_svg]:shrink-0",
         size === "sm"
-          ? "h-5 px-2 text-[11px] leading-4 [&_svg]:size-3"
+          ? "h-5 px-2 text-xs leading-4 [&_svg]:size-3"
           : "h-6 px-2.5 text-xs [&_svg]:size-3.5",
         TONES[tone],
         // A pill leads with one mark: next to a dot, an icon left among the children is not drawn.

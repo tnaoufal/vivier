@@ -4,8 +4,9 @@
  * quota), each a bar whose tone turns to caution near the limit and
  * negative at it, with one line under it saying what is left. Counters
  * come from the database functions; one that could not be read shows a
- * dash and the sentence that says so, never a zero. Billing is the
- * owner's, since there is no checkout yet.
+ * dash with the reason on hover and as its text for assistive
+ * technologies, an empty track and no hint: never a zero. Billing is
+ * the owner's, since there is no checkout yet.
  */
 import type { ReactNode } from "react";
 
@@ -17,7 +18,7 @@ import { useT } from "@/lib/i18n";
 import { seatsLeft, usageTone } from "@/lib/team/seats";
 import { cn } from "@/lib/utils";
 
-/** One meter: a label, "used / limit", the bar and what is left. */
+/** One meter: a label, "used / limit", the bar and what is left; built only from a count that was read. */
 function Usage({
   label,
   used,
@@ -30,25 +31,41 @@ function Usage({
   used: number | null;
   limit: number;
   loading: boolean;
-  /** The "used / limit" sentence, also the bar's label. */
-  text: string;
-  hint: ReactNode;
+  /** The "used / limit" sentence for a count that was read, also the bar's label. */
+  text: (used: number) => string;
+  /** What is left, for a count that was read. */
+  hint: (used: number) => ReactNode;
 }) {
+  const t = useT();
+  const unread = !loading && used === null;
   return (
     <div className="min-w-0">
       <div className="flex items-baseline justify-between gap-3">
         <dt className="label-caps">{label}</dt>
-        <dd className="text-sm font-medium text-ink tabular-nums">
-          {loading ? <Skeleton className="h-4 w-24" /> : used === null ? "—" : text}
+        <dd className="text-sm font-medium text-ink tabular-nums" title={unread ? t("settings.plan.unread") : undefined}>
+          {loading ? (
+            <Skeleton className="h-4 w-24" />
+          ) : used === null ? (
+            <>
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">{t("settings.plan.unread")}</span>
+            </>
+          ) : (
+            text(used)
+          )}
         </dd>
       </div>
       <dd className="mt-2">
         {loading ? (
           <Skeleton className="h-1.5 w-full rounded-full" />
+        ) : used === null ? (
+          <div aria-hidden="true" className="h-1.5 w-full rounded-full bg-muted" />
         ) : (
-          <ProgressBar value={used ?? 0} max={limit} size="md" tone={usageTone(used ?? 0, limit)} label={text} />
+          <>
+            <ProgressBar value={used} max={limit} size="md" tone={usageTone(used, limit)} label={text(used)} />
+            <p className="mt-1.5 text-meta text-muted-foreground">{hint(used)}</p>
+          </>
         )}
-        {!loading && used !== null ? <p className="mt-1.5 text-meta text-muted-foreground">{hint}</p> : null}
       </dd>
     </div>
   );
@@ -70,8 +87,6 @@ export function PlanCard({
   const t = useT();
   const unread = !loading && (seatsUsed === null || cvsProcessed === null);
   const planName = t(`shell.org.plan.${org.plan}`);
-  const seatsFree = seatsLeft(seatsUsed ?? 0, org.seat_limit);
-  const cvsFree = seatsLeft(cvsProcessed ?? 0, org.cv_quota_month);
   return (
     <section className={cn("sheet p-6", className)} aria-labelledby="plan-card-title">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -88,28 +103,26 @@ export function PlanCard({
           used={seatsUsed}
           limit={org.seat_limit}
           loading={loading}
-          text={t("shell.org.seats", { used: seatsUsed ?? 0, limit: org.seat_limit })}
-          hint={
-            seatsFree === 0
-              ? t("members.plan.seats.full")
-              : seatsFree === 1
-                ? t("members.seatsLeft.one")
-                : t("members.seatsLeft.many", { count: seatsFree })
-          }
+          text={(used) => t("shell.org.seats", { used, limit: org.seat_limit })}
+          hint={(used) => {
+            const free = seatsLeft(used, org.seat_limit);
+            return free === 0 ? t("members.plan.seats.full") : free === 1 ? t("members.seatsLeft.one") : t("members.seatsLeft.many", { count: free });
+          }}
         />
         <Usage
           label={t("settings.plan.cvs")}
           used={cvsProcessed}
           limit={org.cv_quota_month}
           loading={loading}
-          text={t("shell.org.quota", { used: cvsProcessed ?? 0, limit: org.cv_quota_month })}
-          hint={
-            cvsFree === 0
+          text={(used) => t("shell.org.quota", { used, limit: org.cv_quota_month })}
+          hint={(used) => {
+            const free = seatsLeft(used, org.cv_quota_month);
+            return free === 0
               ? t("members.plan.cvs.left.none")
-              : cvsFree === 1
+              : free === 1
                 ? t("members.plan.cvs.left.one")
-                : t("members.plan.cvs.left.many", { count: cvsFree })
-          }
+                : t("members.plan.cvs.left.many", { count: free });
+          }}
         />
       </dl>
       {unread ? <p className="mt-4 text-meta text-caution-foreground dark:text-caution">{t("settings.plan.unread")}</p> : null}

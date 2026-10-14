@@ -195,7 +195,7 @@ function UserMenu() {
           className="press flex w-full cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-sidebar-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-sidebar-accent/60"
           title={t("shell.nav.account")}
         >
-          <Avatar name={name} size="md" />
+          <Avatar name={name} size="md" decorative />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium text-ink">{name}</span>
             {roleLabel ? (
@@ -238,10 +238,17 @@ function UserMenu() {
   );
 }
 
-function Sidebar({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
+function Sidebar({
+  onNavigate,
+  inSheet = false,
+}: {
+  onNavigate?: (() => void) | undefined;
+  /** Rendered in the phone menu: the top row leaves room for the sheet's close button. */
+  inSheet?: boolean;
+}) {
   return (
     <div className="flex h-full min-h-full flex-col gap-6 p-4">
-      <div className="flex items-center justify-between px-1">
+      <div className={cn("flex items-center justify-between", inSheet ? "pl-1 pr-14" : "px-1")}>
         <BrandMark size="sm" to="/app" />
         <div className="flex items-center gap-0.5">
           <LocaleToggle />
@@ -293,7 +300,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <SheetTitle className="sr-only">{t("common.menu")}</SheetTitle>
             <SheetDescription className="sr-only">{t("shell.nav.label")}</SheetDescription>
-            <Sidebar onNavigate={() => setOpen(false)} />
+            <Sidebar inSheet onNavigate={() => setOpen(false)} />
           </SheetContent>
         </Sheet>
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-8 lg:px-10">

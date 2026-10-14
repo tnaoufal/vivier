@@ -50,6 +50,7 @@ component never hard-codes a colour, a shadow, a duration or a radius.
 | `primary`                               | deep green, oklch 0.45 (AA)   | the one main action, links, active nav, rings   |
 | `positive` / `caution` / `negative`     | green / amber / red           | met, retained / partial, to check / missing     |
 | `neutral`                               | grey                          | not stated (never a judgement)                  |
+| `scrim`                                 | near-black at 40 percent      | under a dialog or drawer (dark: 70 percent)     |
 | `destructive`                           | red                           | erase, delete                                   |
 | `sidebar-*`                             | a shade under the page        | the sidebar surface, its hover and borders      |
 
@@ -182,11 +183,14 @@ Every primitive keeps its earlier props; the new ones are optional.
 - **Avatar** `name`, `size` sm 28 · md 36 · lg 44 · xl 72, `photoUrl` (a
   signed URL; the initials stay under the photo until it loads, then it
   fades in; a failed photo leaves the initials), `variant` disc · profile
-  (square-rounded, for a candidate sheet). The photo identifies a person
-  in the interface only and never reaches a model.
-- **StatTile** `label`, `value` (null draws a dash with the reason on
-  hover and as its text for assistive technologies, never a zero),
-  `icon`, `to`, `loading`, `progress` (a 4px bar
+  (square-rounded, for a candidate sheet), `decorative` (beside the
+  visible name: hidden from assistive technologies, so the name is not
+  read twice). The photo identifies a person in the interface only and
+  never reaches a model.
+- **StatTile** `label` (wraps to two lines, never truncated), `value`
+  (null draws a dash with the reason on hover and as its text for
+  assistive technologies, never a zero), `icon` (its disc shows from
+  `sm`), `to`, `loading`, `progress` (a 4px bar
   with a sheen while it runs), `hint`. **StatGrid** staggers its tiles.
 - **ProgressBar** `value` (null = indeterminate), `max`, `size` sm 4px ·
   md 6px, `active` (the sheen), `tone`, `label` (required, for assistive
@@ -205,7 +209,9 @@ Every primitive keeps its earlier props; the new ones are optional.
   (✓ met, – partial, ✗ missing, ? not stated, each with a text
   alternative), the label, the evidence; `compact` for print.
 - **EmptyState** `icon` (in a tinted disc), `title`, `text` (one
-  sentence), `action` (one), `compact` inside a card or a drawer.
+  sentence), `action` (one), `compact` inside a card or a drawer (the
+  title a paragraph: the card's own title is the heading), `inset`
+  inside a sheet (no card of its own, never a card in a card).
 - **FilterChip** `active`, `onClick`, `icon`, `count`; 40px like the
   field and the tabs beside it, hairline, accent tint when on, never the
   filled primary; the count at full strength, lighter by weight only.
@@ -225,7 +231,8 @@ the ring outside on focus), `label-caps`, `stat-number`, `font-display`,
 `press`, `lift` (the hover lift and the focus ring alone, for a linking
 surface that is not a sheet; never with `sheet-link`), `rise-in`,
 `fade-in`, `page-enter`,
-`stagger`, `shine`, `duration-*`; layers: `z-*`; `share-sheet` for the
+`stagger`, `shine`, `animate-indeterminate` (a bar whose size is
+unknown), `duration-*`; layers: `z-*`; `share-sheet` for the
 public dossier only. Hiding a control in print is Tailwind's
 `print:hidden`.
 
@@ -321,7 +328,8 @@ Known doubles to purge, and what replaces them:
 ## Accessibility
 
 - Contrast AA: ink and muted text on white and on the card, primary on
-  white, white on primary; tints never carry text alone.
+  white, white on primary, a tone's text on its own tint (a pill); tints
+  never carry text alone.
 - Focus is always visible: a 2px ring in the accent on every control,
   inset on rows that are links, outside on cards that are links
   (`sheet-link`).
@@ -333,7 +341,9 @@ Known doubles to purge, and what replaces them:
   phone menu is a dialog.
 - Every icon-only button has an `aria-label`; every progress bar and
   meter a label, min, max and value; every ring and mark a text
-  alternative; a photo has an empty `alt` and the name on its container.
+  alternative; a photo has an empty `alt`; an Avatar beside the visible
+  name is `decorative` (hidden), one standing alone is an image named
+  after the person.
 - Colour is never the only signal: a verdict is an icon and a word in a
   tone; a status pill has a dot or an icon.
 - `prefers-reduced-motion` is respected globally; nothing requires motion

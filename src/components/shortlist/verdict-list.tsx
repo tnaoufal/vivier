@@ -10,6 +10,8 @@
  * a score of zero; a model's sentence is always introduced as the
  * model's.
  */
+import { CircleDashed } from "lucide-react";
+
 import { Pill } from "@/components/app-shell/pill";
 import { RequirementList } from "@/components/app-shell/requirement-list";
 import { ScoreRing } from "@/components/app-shell/score-ring";
@@ -65,7 +67,11 @@ export function VerdictList({
                   {t("shortlists.item.blocked")}
                 </Pill>
               ) : null}
-              {score === null ? <Pill tone="neutral">{t("shortlists.item.noAssessment")}</Pill> : null}
+              {score === null ? (
+                <Pill tone="neutral" icon={<CircleDashed />}>
+                  {t("shortlists.item.noAssessment")}
+                </Pill>
+              ) : null}
             </div>
             <ScoreLine match={match} className="block" />
           </div>

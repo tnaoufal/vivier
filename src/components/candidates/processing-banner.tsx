@@ -168,6 +168,21 @@ export function ProcessingBanner({
                     remaining: count(room),
                   });
 
+  // What the banner says aloud: the end of a wave and the set-aside figures, never the pending
+  // count (it moves with every CV read) nor the unfolded lists. One span per figure, so only the
+  // one that changed is read again, and one that goes (the end of the wave) is not.
+  const announcement: { key: string; text: string }[] = [
+    finished
+      ? {
+          key: "done",
+          text: t("candidates.processing.progress.done", { total: count(finished.total) }),
+        }
+      : null,
+    counts.failed > 0 ? { key: "failed", text: failedText } : null,
+    counts.rejected > 0 ? { key: "rejected", text: rejectedText } : null,
+    counts.quota > 0 ? { key: "quota", text: quotaText } : null,
+  ].filter((part): part is { key: string; text: string } => part !== null);
+
   /**
    * A set-aside file is the service's reading and a quota refusal its
    * state, both said in the person's language; a failure keeps the
@@ -280,7 +295,12 @@ export function ProcessingBanner({
   };
 
   return (
-    <section className="sheet fade-in mb-6 px-5 py-4 text-sm sm:px-6" aria-live="polite">
+    <section className="sheet fade-in mb-6 px-5 py-4 text-sm sm:px-6">
+      <p className="sr-only" role="status">
+        {announcement.map((part) => (
+          <span key={part.key}>{part.text} </span>
+        ))}
+      </p>
       <ProcessingProgress wave={wave} finishedTotal={finished?.total ?? null} className="mb-4" />
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         {pending > 0 ? (

@@ -8,6 +8,7 @@
  */
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Trash2 } from "lucide-react";
 
 import { LocaleChips } from "@/components/app-shell/locale-chips";
 import { PageHeader } from "@/components/app-shell/page-header";
@@ -33,7 +34,7 @@ const RETENTION_MIN = 1;
 const RETENTION_MAX = 24;
 
 /** The photos switch: saved the moment it is flipped, put back if the write fails. */
-function PhotosCard({ orgId, initial, disabled, onSaved }: { orgId: string; initial: boolean; disabled: boolean; onSaved: () => Promise<void> }) {
+function PhotosCard({ orgId, initial, onSaved }: { orgId: string; initial: boolean; onSaved: () => Promise<void> }) {
   const { t } = useI18n();
   const labelId = useId();
   const helpId = useId();
@@ -45,7 +46,7 @@ function PhotosCard({ orgId, initial, disabled, onSaved }: { orgId: string; init
   }, [initial, orgId]);
 
   async function toggle(next: boolean) {
-    if (saving || disabled) return;
+    if (saving) return;
     setShown(next);
     setSaving(true);
     try {
@@ -74,14 +75,13 @@ function PhotosCard({ orgId, initial, disabled, onSaved }: { orgId: string; init
             {t("settings.photos.help")}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-2 pt-1">
-          <Switch checked={shown} onCheckedChange={(next) => void toggle(next)} disabled={saving || disabled} aria-labelledby={labelId} aria-describedby={helpId} />
+        <div className="-mt-1.5 flex shrink-0 flex-col items-end gap-1">
+          <Switch checked={shown} onCheckedChange={(next) => void toggle(next)} disabled={saving} aria-labelledby={labelId} aria-describedby={helpId} />
           <span className="text-meta text-muted-foreground" aria-live="polite">
             {shown ? t("settings.photos.on") : t("settings.photos.off")}
           </span>
         </div>
       </div>
-      {disabled ? <p className="mt-4 text-meta text-muted-foreground">{t("settings.photos.adminOnly")}</p> : null}
     </section>
   );
 }
@@ -91,6 +91,7 @@ function SettingsPage() {
   const { org } = useCurrentOrg();
   const { can, refresh } = useOrg();
   const navigate = useNavigate();
+  const localeLabelId = useId();
   const allowed = can("admin");
   const owner = can("owner");
 
@@ -185,8 +186,10 @@ function SettingsPage() {
               <Input id="org-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required disabled={saving} className="max-w-md" />
             </div>
             <div className="space-y-2">
-              <Label>{t("onboarding.locale")}</Label>
-              <LocaleChips value={orgLocale} onChange={setOrgLocale} disabled={saving} />
+              <Label id={localeLabelId}>{t("onboarding.locale")}</Label>
+              <div role="group" aria-labelledby={localeLabelId}>
+                <LocaleChips value={orgLocale} onChange={setOrgLocale} disabled={saving} />
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="org-retention">{t("settings.retention")}</Label>
@@ -217,7 +220,7 @@ function SettingsPage() {
           </div>
         </form>
 
-        <PhotosCard orgId={org.id} initial={readShowPhotos(org)} disabled={!allowed} onSaved={refresh} />
+        <PhotosCard orgId={org.id} initial={readShowPhotos(org)} onSaved={refresh} />
 
         <section className="sheet border-negative/40 p-6 sm:p-8" aria-labelledby="settings-danger-title">
           <h2 id="settings-danger-title" className="font-display text-xl text-negative">
@@ -225,7 +228,13 @@ function SettingsPage() {
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t("settings.danger.text")}</p>
           {owner ? (
-            <Button variant="destructive" className="mt-6" onClick={() => setDeleteOpen(true)} disabled={deleting}>
+            <Button
+              variant="outline"
+              icon={<Trash2 />}
+              className="mt-6 border-negative/40 text-negative hover:bg-negative/10 hover:text-negative"
+              onClick={() => setDeleteOpen(true)}
+              disabled={deleting}
+            >
               {t("settings.delete")}
             </Button>
           ) : (

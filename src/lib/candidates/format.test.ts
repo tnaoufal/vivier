@@ -103,6 +103,14 @@ describe("yearsLabel", () => {
     expect(yearsLabel("en", 0.5)).toBe("0.5 years");
     expect(yearsLabel("en", null)).toBe("");
   });
+
+  it("agrees the unit with the rounded figure it shows", () => {
+    expect(yearsLabel("fr", 1.96)).toBe("2 ans");
+    expect(yearsLabel("fr", 1.04)).toBe("1 an");
+    expect(yearsLabel("en", 1.04)).toBe("1 year");
+    expect(yearsLabel("en", 0.96)).toBe("1 year");
+    expect(yearsLabel("en", 1.96)).toBe("2 years");
+  });
 });
 
 describe("row summaries", () => {

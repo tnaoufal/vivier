@@ -13,7 +13,7 @@ import type { CandidateRow, CandidateStatus, CommentRow, DocumentRow } from "@/l
 
 import { THROUGHPUT_WINDOW_MINUTES, earliestOf, waveOf, type ProcessingWave } from "./progress";
 import { QUOTA_ERROR_PATTERN } from "./quota";
-import { cleanSearch, searchOrFilter } from "./search";
+import { arrayElement, cleanSearch, searchOrFilter } from "./search";
 
 export const PAGE_SIZE = 50;
 
@@ -111,7 +111,8 @@ export async function listCandidates(supabase: SupabaseClient, query: CandidateL
     .eq("status", query.status);
   const filter = searchOrFilter(query.text);
   if (filter) request = request.or(filter);
-  if (query.tag) request = request.contains("tags", [query.tag]);
+  // A stored tag or skill may hold a comma or a quote: quoted, it stays one element of the literal.
+  if (query.tag) request = request.contains("tags", [arrayElement(query.tag)]);
   const location = cleanSearch(query.filters?.location ?? "");
   if (location) request = request.ilike("location", `%${location}%`);
   const yearsMin = query.filters?.yearsMin;
@@ -119,7 +120,7 @@ export async function listCandidates(supabase: SupabaseClient, query: CandidateL
     request = request.gte("years_experience", yearsMin);
   }
   const skill = (query.filters?.skill ?? "").trim();
-  if (skill) request = request.contains("skills", [skill]);
+  if (skill) request = request.contains("skills", [arrayElement(skill)]);
   const sort = query.sort ?? "recent";
   // A second key on every sort, so a page never shows a row twice across two pages.
   const ordered =

@@ -154,6 +154,7 @@ const fr = {
   "candidates.skills.group.tools": "Outils",
   "candidates.skills.group.methods": "Méthodes",
   "candidates.skills.more": "+ {count} autres",
+  "candidates.skills.more.one": "+ 1 autre",
   "candidates.skills.edit": "Modifier les compétences",
   "candidates.skills.done": "Terminer",
   "candidates.tags.edit": "Modifier les étiquettes",
@@ -181,6 +182,7 @@ const fr = {
   "candidates.link.label": "Libellé",
   "candidates.link.url": "URL",
   "candidates.link.add": "Ajouter un lien",
+  "candidates.link.newTab": "(nouvel onglet)",
 
   // profile
   "candidates.back": "Retour au vivier",
@@ -192,7 +194,7 @@ const fr = {
   "candidates.status.archived": "Archivé",
   "candidates.source.upload": "Depuis un CV",
   "candidates.source.manual": "Saisi à la main",
-  "candidates.consent.unknown": "Consentement inconnu",
+  "candidates.consent.unknown": "Consentement non renseigné",
   "candidates.consent.given": "Consentement donné",
   "candidates.consent.withdrawn": "Consentement retiré",
   "candidates.confidence.unsure": "Incertain",
@@ -243,7 +245,7 @@ const fr = {
   // consent and retention
   "candidates.consent.title": "Consentement et conservation",
   "candidates.consent.status": "Consentement",
-  "candidates.consent.option.unknown": "Inconnu",
+  "candidates.consent.option.unknown": "Non renseigné",
   "candidates.consent.option.given": "Donné",
   "candidates.consent.option.withdrawn": "Retiré",
   "candidates.consent.givenAt": "Donné le {date}.",
@@ -421,6 +423,7 @@ const en = {
   "candidates.skills.group.tools": "Tools",
   "candidates.skills.group.methods": "Methods",
   "candidates.skills.more": "+ {count} more",
+  "candidates.skills.more.one": "+ 1 more",
   "candidates.skills.edit": "Edit skills",
   "candidates.skills.done": "Done",
   "candidates.tags.edit": "Edit tags",
@@ -448,6 +451,7 @@ const en = {
   "candidates.link.label": "Label",
   "candidates.link.url": "URL",
   "candidates.link.add": "Add a link",
+  "candidates.link.newTab": "(new tab)",
 
   "candidates.back": "Back to the talent pool",
   "candidates.notFound.title": "Candidate not found",
@@ -458,7 +462,7 @@ const en = {
   "candidates.status.archived": "Archived",
   "candidates.source.upload": "From a CV",
   "candidates.source.manual": "Typed in",
-  "candidates.consent.unknown": "Consent unknown",
+  "candidates.consent.unknown": "Consent not recorded",
   "candidates.consent.given": "Consent given",
   "candidates.consent.withdrawn": "Consent withdrawn",
   "candidates.confidence.unsure": "Uncertain",
@@ -506,7 +510,7 @@ const en = {
 
   "candidates.consent.title": "Consent and retention",
   "candidates.consent.status": "Consent",
-  "candidates.consent.option.unknown": "Unknown",
+  "candidates.consent.option.unknown": "Not recorded",
   "candidates.consent.option.given": "Given",
   "candidates.consent.option.withdrawn": "Withdrawn",
   "candidates.consent.givenAt": "Given on {date}.",
@@ -516,7 +520,7 @@ const en = {
   "candidates.consent.withdrawTitle": "Withdraw consent?",
   "candidates.consent.withdrawText": "The profile and its files will be deleted by the hourly purge, with no way back.",
   "candidates.consent.withdrawn.note": "Consent withdrawn: this profile is deleted at the next hourly purge.",
-  "candidates.consent.summary": "{consent} · deleted on {date}",
+  "candidates.consent.summary": "{consent} · deletion on {date}",
   "candidates.consent.summaryUnknown": "{consent} · deletion date unknown",
 
   "candidates.archive": "Archive",

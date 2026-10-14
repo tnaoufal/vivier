@@ -39,7 +39,11 @@ function Points({ title, points }: { title: string; points: readonly string[] })
   );
 }
 
-/** The reservations, the counter-reading's one with a pill before it so the two passes read apart. */
+/**
+ * The reservations, the counter-reading's one with a pill before it so the
+ * two passes read apart; the pill is a word without a dot, the bullet
+ * being the line's one mark.
+ */
 function Concerns({ title, mark, points }: { title: string; mark: string; points: readonly ConcernPoint[] }) {
   if (!points.length) return null;
   return (
@@ -49,7 +53,7 @@ function Concerns({ title, mark, points }: { title: string; mark: string; points
         {points.map((point, index) => (
           <li key={`${index}-${point.text}`} className="break-words">
             {point.challenge ? (
-              <Pill tone="caution" dot size="sm" className="mr-1.5 align-text-bottom">
+              <Pill tone="caution" size="sm" className="mr-1.5 align-text-bottom">
                 {mark}
               </Pill>
             ) : null}

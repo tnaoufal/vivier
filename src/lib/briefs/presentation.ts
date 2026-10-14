@@ -2,12 +2,14 @@
  * Pure helpers behind what the briefs pages show, kept apart from the
  * analysis itself (assessment.ts and its rules are the frozen part):
  * the muted line of a brief card, the status filter of the list, the
- * newest analysis of each brief and what it counted, and the turn each
- * card takes when a list unfolds (a batch that lands rises in one card
- * after the other, a card already on screen never moves again). Tested
- * in presentation.test.ts.
+ * newest analysis of each brief and what it counted (kept current from
+ * the realtime rows themselves), the tier a result card names only when
+ * its group does not already say it, and the turn each card takes when
+ * a list unfolds (a batch that lands rises in one card after the other,
+ * a card already on screen never moves again). Tested in
+ * presentation.test.ts.
  */
-import type { BriefRow, BriefStatus, MatchResult } from "@/lib/db/types";
+import type { AssessmentTier, BriefRow, BriefStatus, MatchResult } from "@/lib/db/types";
 
 import { bucketResults } from "./assessment";
 
@@ -85,6 +87,73 @@ export function digestResults(results: readonly MatchResult[]): AnalysisDigest {
     assessed: results.length - buckets.unassessed.length,
     present: buckets.present.length,
   };
+}
+
+/** The newest analysis of a brief as its card says it: when it ran and what it counted. */
+export interface LatestAnalysis extends AnalysisDigest {
+  searchId: string;
+  createdAt: string;
+}
+
+/**
+ * The analysis a realtime change of a search carries, read off the row
+ * itself (an analysis patches its results batch after batch): its
+ * brief, when it ran and what it counted. Null when the row lacks one
+ * of them (realtime leaves out a value too large to carry), so the
+ * caller reads the analyses again instead.
+ */
+export function analysisOfRow(
+  row: Readonly<Record<string, unknown>>,
+): { briefId: string; analysis: LatestAnalysis } | null {
+  const id = row["id"];
+  const briefId = row["brief_id"];
+  const createdAt = row["created_at"];
+  const results: unknown = row["results"];
+  if (typeof id !== "string" || typeof briefId !== "string" || typeof createdAt !== "string")
+    return null;
+  if (!Array.isArray(results)) return null;
+  return {
+    briefId,
+    analysis: { searchId: id, createdAt, ...digestResults(results as MatchResult[]) },
+  };
+}
+
+/**
+ * The newest analyses once one search changed: the change takes its
+ * brief's place when it is the same search or a newer one, so a late
+ * patch of an older search never hides the newest. The map given is
+ * left untouched; it is answered as is when nothing changes.
+ */
+export function withAnalysis(
+  latest: ReadonlyMap<string, LatestAnalysis>,
+  briefId: string,
+  analysis: LatestAnalysis,
+): ReadonlyMap<string, LatestAnalysis> {
+  const kept = latest.get(briefId);
+  if (
+    kept &&
+    kept.searchId !== analysis.searchId &&
+    Date.parse(analysis.createdAt) <= Date.parse(kept.createdAt)
+  )
+    return latest;
+  const next = new Map(latest);
+  next.set(briefId, analysis);
+  return next;
+}
+
+/** The groups the results of an analysis sit in, each under its own title. */
+export type ResultGroupName = "present" | "deeper" | "setAside" | "unassessed" | "ranked";
+
+/**
+ * The group whose title a tier repeats: "to present" for A, "to dig
+ * into" for B; null for C, which no group is named after. A card shows
+ * its tier only when it sits in another group, so the pill never says
+ * what the heading above it already said.
+ */
+export function tierGroup(tier: AssessmentTier): ResultGroupName | null {
+  if (tier === "A") return "present";
+  if (tier === "B") return "deeper";
+  return null;
 }
 
 /**

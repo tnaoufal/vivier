@@ -11,22 +11,28 @@
  * The rules are plain and tested: a portrait-shaped image (both sides
  * between PHOTO_MIN_SIDE and PHOTO_MAX_SIDE, width/height between
  * PHOTO_MIN_RATIO and PHOTO_MAX_RATIO, an area above PHOTO_MIN_AREA, not
- * wider than half the page), so an icon, a logo, a banner, a decorative
- * column or a scan of the whole page is never taken for a face; the
- * largest when several fit. A chosen pixel image is downscaled with a
- * box filter to PHOTO_MAX_SIDE_OUT pixels on its longest side and
+ * drawn wider than half the page), so an icon, a logo, a banner, a
+ * decorative column or a scan of the whole page is never taken for a
+ * face; the largest when several fit. A chosen pixel image is downscaled
+ * with a box filter to PHOTO_MAX_SIDE_OUT pixels on its longest side and
  * encoded as a PNG (png.ts); an image the OCR already encoded (JPEG or
  * PNG) is kept as it is.
  */
 import { encodePng, type PngChannels } from "./png.js";
 
-/** What the choice reads: a width and a height in one unit (pixels). */
+/**
+ * What the choice reads: the image's own width and height (its pixels; for
+ * an image the OCR cut out, its box on the page) and the width the page
+ * draws it at, in the page's unit (absent when unknown: the half-page rule
+ * is then skipped, never guessed).
+ */
 export interface ImageGeometry {
   width: number;
   height: number;
+  drawnWidth?: number;
 }
 
-/** The images found on one page, with the page's width in the images' unit (null when unknown). */
+/** The images found on one page, with the page's width in the unit of their drawn width (null when unknown). */
 export interface ImagesOfPage<T extends ImageGeometry> {
   pageWidth: number | null;
   images: T[];
@@ -59,26 +65,27 @@ export const PHOTO_MIN_AREA = 80 * 80;
 export const PHOTO_MAX_SIDE_OUT = 256;
 /** The `photos` bucket refuses a larger file (its file_size_limit). */
 export const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
-/**
- * The pixel width of a PDF page per point, for the half-page rule: the
- * images of a PDF are measured in their own pixels, the page in points,
- * and the drawn size is not known. A page rendered at 108 dpi (1.5 px a
- * point: an A4 page is 893 px wide, half of it 446) tells a portrait,
- * rarely wider than 400 px in a CV, from a scan of the page or a
- * background, which fills the width at 72 dpi (595 px) and above.
- */
-export const PAGE_PIXELS_PER_POINT = 1.5;
 
-/** True when `image` has the shape of a portrait on a page `pageWidth` wide (same unit). */
+/** True when `image` has the shape of a portrait on a page `pageWidth` wide (the unit of its drawn width). */
 export function isPhotoLike(image: ImageGeometry, pageWidth: number | null): boolean {
-  const { width, height } = image;
+  const { width, height, drawnWidth } = image;
   if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
   if (width < PHOTO_MIN_SIDE || height < PHOTO_MIN_SIDE) return false;
   if (width > PHOTO_MAX_SIDE || height > PHOTO_MAX_SIDE) return false;
   const ratio = width / height;
   if (ratio < PHOTO_MIN_RATIO || ratio > PHOTO_MAX_RATIO) return false;
   if (width * height <= PHOTO_MIN_AREA) return false;
-  if (pageWidth !== null && Number.isFinite(pageWidth) && width > pageWidth / 2) return false;
+  // A scan of the page or a background is drawn across it, whatever its
+  // resolution; a portrait kept at a high resolution is drawn small.
+  if (
+    drawnWidth !== undefined &&
+    Number.isFinite(drawnWidth) &&
+    pageWidth !== null &&
+    Number.isFinite(pageWidth) &&
+    drawnWidth > pageWidth / 2
+  ) {
+    return false;
+  }
   return true;
 }
 

@@ -8,8 +8,8 @@
 import { useState, type FormEvent } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 
-import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
+import { NotAllowed } from "@/components/team/not-allowed";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,14 +70,7 @@ function NewBriefPage() {
     return (
       <div>
         <PageHeader eyebrow={eyebrow} title={t("briefs.new.title")} />
-        <EmptyState
-          title={t("common.forbidden")}
-          action={
-            <Button asChild variant="outline">
-              <Link to="/app/briefs">{t("briefs.back")}</Link>
-            </Button>
-          }
-        />
+        <NotAllowed text={t("briefs.new.forbidden")} />
       </div>
     );
   }

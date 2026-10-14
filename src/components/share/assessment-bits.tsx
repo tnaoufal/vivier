@@ -66,9 +66,20 @@ const SCORE_TEXT = {
   negative: "text-negative",
 } as const;
 
-/** The score as a tabular number in the ring's tone, or an em dash in muted text. */
-export function ScoreText({ score }: { score: number | null }) {
-  if (score === null) return <span className="tabular-nums text-muted-foreground">—</span>;
+/**
+ * The score as a tabular number in the ring's tone; without one, a muted
+ * dash (as the ring draws it) whose reason is its text for assistive
+ * technologies and its hover, never a bare dash read as "none".
+ */
+export function ScoreText({ score, t }: { score: number | null; t: Translate }) {
+  if (score === null) {
+    return (
+      <span className="tabular-nums text-muted-foreground" title={t("shares.score.none")}>
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">{t("shares.score.none")}</span>
+      </span>
+    );
+  }
   return <span className={`font-semibold tabular-nums ${SCORE_TEXT[ringTone(score)]}`}>{score}</span>;
 }
 

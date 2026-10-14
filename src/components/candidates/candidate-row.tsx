@@ -57,7 +57,7 @@ export function CandidateRow({ row, showPhotos }: { row: CandidateListRow; showP
             </Pill>
           ) : null}
         </div>
-        <p className="mt-0.5 truncate text-sm text-ink/85">
+        <p className="mt-0.5 truncate text-sm text-ink">
           {position ? (
             <>
               {position.title}

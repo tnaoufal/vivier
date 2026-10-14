@@ -4,9 +4,9 @@
  * new-password form leads after a reset link), the session, and the
  * deletion of the account behind a confirmation.
  */
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { KeyRound, LogOut, Moon, Sun } from "lucide-react";
+import { KeyRound, LogOut, Moon, Sun, Trash2 } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
@@ -38,6 +38,7 @@ function AccountPage() {
   const { refresh } = useOrg();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
+  const localeLabelId = useId();
   const userId = user?.id ?? "";
   const email = user?.email ?? "";
 
@@ -187,8 +188,10 @@ function AccountPage() {
           </h2>
           <div className="mt-6 grid gap-8 sm:grid-cols-2">
             <div className="min-w-0 space-y-2">
-              <Label>{t("account.locale")}</Label>
-              <LocaleChips value={savedLocale} onChange={(next) => void chooseLocale(next)} disabled={savingLocale || profile.loading} />
+              <Label id={localeLabelId}>{t("account.locale")}</Label>
+              <div role="group" aria-labelledby={localeLabelId}>
+                <LocaleChips value={savedLocale} onChange={(next) => void chooseLocale(next)} disabled={savingLocale || profile.loading} />
+              </div>
               <p className="text-meta text-muted-foreground">{t("account.locale.help")}</p>
             </div>
             <div className="min-w-0 space-y-2">
@@ -224,7 +227,13 @@ function AccountPage() {
             {t("account.danger")}
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t("account.danger.text")}</p>
-          <Button variant="destructive" className="mt-6" onClick={() => setDeleteOpen(true)} disabled={deleting}>
+          <Button
+            variant="outline"
+            icon={<Trash2 />}
+            className="mt-6 border-negative/40 text-negative hover:bg-negative/10 hover:text-negative"
+            onClick={() => setDeleteOpen(true)}
+            disabled={deleting}
+          >
             {t("account.danger")}
           </Button>
         </section>

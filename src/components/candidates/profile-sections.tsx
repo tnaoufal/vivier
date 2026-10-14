@@ -92,10 +92,11 @@ function ContactRow({
       {clean && href ? (
         <a
           href={href}
-          className="min-w-0 truncate text-primary hover:underline"
+          className="min-w-0 truncate rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
         >
           {clean}
+          {external ? <span className="sr-only"> {t("candidates.link.newTab")}</span> : null}
         </a>
       ) : (
         <span className="text-sm text-muted-foreground">{t("common.unknown")}</span>
@@ -151,7 +152,6 @@ function SkillsBlock({
             variant={editing ? "outline" : "ghost"}
             icon={editing ? <Check /> : <Pencil />}
             onClick={() => setEditing((value) => !value)}
-            aria-pressed={editing}
             className={cn(!editing && "text-muted-foreground hover:text-ink")}
           >
             {editing ? t("candidates.skills.done") : t("candidates.skills.edit")}
@@ -193,9 +193,11 @@ function SkillsBlock({
               aria-expanded={expanded}
               className="cursor-pointer rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {hidden > 0
-                ? t("candidates.skills.more", { count: hidden })
-                : t("candidates.showLess")}
+              {hidden === 1
+                ? t("candidates.skills.more.one")
+                : hidden > 0
+                  ? t("candidates.skills.more", { count: hidden })
+                  : t("candidates.showLess")}
             </button>
           ) : null}
         </div>
@@ -267,7 +269,7 @@ export function ProfileSections({
                       <ClampedText
                         text={description}
                         lines={2}
-                        className="text-sm leading-6 text-ink/85"
+                        className="text-sm leading-6 text-ink"
                       />
                     ) : null}
                   </TimelineItem>
@@ -286,11 +288,11 @@ export function ProfileSections({
         count={education.length}
       >
         {education.length ? (
-          <ul className="divide-y divide-border/70">
+          <ul className="stagger divide-y divide-border/70">
             {education.map((entry, index) => (
               <li
                 key={`${entry.degree}-${index}`}
-                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-3 first:pt-0 last:pb-0"
+                className="rise-in flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-3 first:pt-0 last:pb-0"
               >
                 <div className="min-w-0 flex-1 basis-64">
                   <p className="text-body font-medium text-ink break-words">

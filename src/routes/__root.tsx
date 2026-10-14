@@ -29,9 +29,11 @@ import appCss from "../styles.css?url";
 /*
  * The browser chrome's colour (the address bar on a phone) follows the
  * app's theme, not the OS: the two are the page background of each theme
- * (`--background` in styles.css, in hex because the meta takes no oklch).
+ * (`--background` in styles.css, in hex because the meta takes no oklch:
+ * oklch 0.985 0.003 100 and oklch 0.155 0.008 160 converted to sRGB; change
+ * them together).
  */
-const THEME_COLOR = { light: "#fbfbfa", dark: "#171a18" } as const;
+const THEME_COLOR = { light: "#fafaf8", dark: "#090d0b" } as const;
 
 /*
  * Light is the default; a saved dark preference applies before CSS

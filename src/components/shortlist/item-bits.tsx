@@ -65,6 +65,7 @@ export function ScoreLine({ match, className }: { match: MatchResult | null; cla
   );
 }
 
+/** One vote and its count; the name carries the visible count, so the tally reaches assistive technologies too. */
 function VoteButton({
   value,
   count,
@@ -88,7 +89,7 @@ function VoteButton({
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}
-      aria-label={label}
+      aria-label={`${label} ${count}`}
       title={active ? `${label} · ${t("shortlists.vote.mine")}` : label}
       className={cn(
         "press inline-flex h-10 items-center gap-1.5 rounded-full px-3 text-meta font-medium tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default [&_svg]:size-4",

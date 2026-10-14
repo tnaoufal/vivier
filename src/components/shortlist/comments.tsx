@@ -12,6 +12,7 @@ import { MessageSquare, Pencil, Send, Trash2 } from "lucide-react";
 import { Avatar } from "@/components/app-shell/avatar";
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import type { CommentRow } from "@/lib/db/types";
@@ -194,10 +195,15 @@ export function CommentsThread({
             );
           })}
         </ul>
+      ) : loading ? (
+        <>
+          <p className="sr-only">{t("common.loading")}</p>
+          <SkeletonRows rows={2} className="[&>li]:px-0" />
+        </>
       ) : (
         <div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
           <MessageSquare className="size-4 shrink-0" aria-hidden="true" />
-          {loading ? t("common.loading") : t("shortlists.comments.empty")}
+          {t("shortlists.comments.empty")}
         </div>
       )}
 

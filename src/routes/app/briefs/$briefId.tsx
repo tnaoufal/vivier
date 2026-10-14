@@ -101,27 +101,47 @@ function BriefPage() {
     </Button>
   );
 
+  // The way back is the header's eyebrow in every state: the header keeps its place while the brief loads, fails or is missing.
+  const eyebrow = (
+    <Link
+      to="/app/briefs"
+      className="rounded-sm hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {t("nav.briefs")}
+    </Link>
+  );
+
   if (brief.error) {
     return (
-      <EmptyState
-        title={t("briefs.loadError")}
-        action={
-          <Button type="button" variant="outline" onClick={() => void refreshBrief()}>
-            {t("common.retry")}
-          </Button>
-        }
-      />
+      <div>
+        <PageHeader sticky eyebrow={eyebrow} title={t("briefs.title")} />
+        <EmptyState
+          title={t("briefs.loadError")}
+          action={
+            <Button type="button" variant="outline" onClick={() => void refreshBrief()}>
+              {t("common.retry")}
+            </Button>
+          }
+        />
+      </div>
     );
   }
 
   if (brief.loading && !brief.data) {
     return (
-      <div className="space-y-8" aria-busy="true">
-        <div className="space-y-2">
-          <Skeleton className="h-3 w-16" />
-          <Skeleton className="h-7 w-1/2 max-w-sm" />
-        </div>
-        <div className="grid gap-6 lg:grid-cols-5 lg:gap-8">
+      <div>
+        <PageHeader
+          sticky
+          eyebrow={eyebrow}
+          title={
+            <span
+              className="skeleton inline-block h-5 w-56 max-w-full rounded-sm align-middle"
+              aria-hidden="true"
+            />
+          }
+        />
+        <p className="sr-only">{t("common.loading")}</p>
+        <div className="grid gap-6 lg:grid-cols-5 lg:gap-8" aria-busy="true">
           <div className="space-y-6 lg:col-span-2">
             <div className="sheet space-y-4 p-6">
               <Skeleton className="h-4 w-1/3" />
@@ -146,11 +166,14 @@ function BriefPage() {
 
   if (!row) {
     return (
-      <EmptyState
-        title={t("briefs.notFound.title")}
-        text={t("briefs.notFound.text")}
-        action={backLink}
-      />
+      <div>
+        <PageHeader sticky eyebrow={eyebrow} title={t("briefs.title")} />
+        <EmptyState
+          title={t("briefs.notFound.title")}
+          text={t("briefs.notFound.text")}
+          action={backLink}
+        />
+      </div>
     );
   }
 
@@ -158,14 +181,7 @@ function BriefPage() {
     <div>
       <PageHeader
         sticky
-        eyebrow={
-          <Link
-            to="/app/briefs"
-            className="rounded-sm hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {t("nav.briefs")}
-          </Link>
-        }
+        eyebrow={eyebrow}
         title={row.title}
         meta={
           <>

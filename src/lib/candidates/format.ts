@@ -89,12 +89,17 @@ export function formatDateRange(
   return "";
 }
 
-/** "3 ans" / "3 years", "1 an" / "1 year", "2,5 ans"; "" when not stated. */
+/**
+ * "3 ans" / "3 years", "1 an" / "1 year", "2,5 ans"; "" when not stated.
+ * Rounded to one decimal first, and the noun agrees with the figure shown
+ * (1.96 reads "2 ans", 1.04 "1 year").
+ */
 export function yearsLabel(locale: Locale, years: number | null | undefined): string {
   if (typeof years !== "number" || !Number.isFinite(years)) return "";
-  const number = numberFormat(locale, 1).format(years);
-  if (locale === "fr") return `${number} ${years < 2 ? "an" : "ans"}`;
-  return `${number} ${years === 1 ? "year" : "years"}`;
+  const shown = Math.round(years * 10) / 10;
+  const number = numberFormat(locale, 1).format(shown);
+  if (locale === "fr") return `${number} ${shown < 2 ? "an" : "ans"}`;
+  return `${number} ${shown === 1 ? "year" : "years"}`;
 }
 
 /** The name to show, or the fallback ("Sans nom") when none was read. */

@@ -55,9 +55,9 @@ export function ProcessingProgress({
           });
 
   return (
-    // While active the figures move every few seconds: not read aloud each time (the bar says
-    // where it stands on demand); the end of the wave is, through the banner's live region.
-    <div className={cn("space-y-2", className)} aria-live={active ? "off" : undefined}>
+    // While active the figures move every few seconds: not read aloud (the bar says where it
+    // stands on demand); the end of the wave is announced by the banner's status line.
+    <div className={cn("space-y-2", className)}>
       <p className="font-display text-xl leading-7 text-ink tabular-nums">{sentence}</p>
       <ProgressBar
         size="md"

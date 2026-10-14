@@ -200,6 +200,7 @@ function BriefCard({ item }: { item: BriefOverview }) {
           >
             {present}
           </Pill>
+          <span className="sr-only">{t("dashboard.briefs.present.help")}</span>
           <Pill
             tone={shortlist.retained > 0 ? "positive" : "neutral"}
             icon={<Check />}
@@ -207,6 +208,7 @@ function BriefCard({ item }: { item: BriefOverview }) {
           >
             {retained}
           </Pill>
+          <span className="sr-only">{t("dashboard.briefs.retained.help")}</span>
         </div>
       ) : (
         <p className="text-meta text-muted-foreground">{t("dashboard.briefs.noShortlist")}</p>
@@ -362,7 +364,7 @@ function DashboardPage() {
           title={t("dashboard.briefs.title")}
           count={briefs ? briefs.length : undefined}
           action={
-            <Button asChild variant="ghost" size="sm">
+            <Button asChild variant="ghost">
               <Link to={BRIEFS_PATH}>{t("dashboard.briefs.all")}</Link>
             </Button>
           }
@@ -399,7 +401,7 @@ function DashboardPage() {
         <Section
           title={t("shell.dashboard.recentActivity")}
           action={
-            <Button asChild variant="ghost" size="sm">
+            <Button asChild variant="ghost">
               <Link to="/app/activity">{t("dashboard.viewAll")}</Link>
             </Button>
           }

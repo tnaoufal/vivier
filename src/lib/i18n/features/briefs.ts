@@ -33,6 +33,8 @@ const fr = {
     "Un titre et le besoin en texte libre. Les critères viennent ensuite, proposés par le modèle quand il y en a un, validés par vous.",
   "briefs.new.create": "Créer le brief",
   "briefs.new.created": "Brief créé.",
+  "briefs.new.forbidden":
+    "Votre rôle ne permet pas de créer un brief. Demandez à un administrateur.",
 
   // the brief page
   "briefs.back": "Retour aux briefs",
@@ -237,7 +239,6 @@ const fr = {
   "briefs.results.addedToast": "Ajouté à la shortlist.",
   "briefs.results.alreadyAdded": "Ce candidat est déjà dans la shortlist.",
   "briefs.results.seeShortlist": "Voir la shortlist",
-  "briefs.results.openCandidate": "Voir la fiche",
   "briefs.decision.fit": "Correspond",
   "briefs.decision.borderline": "À vérifier",
   "briefs.decision.no_fit": "Ne correspond pas",
@@ -358,6 +359,7 @@ const en = {
     "A title and the need as free text. The criteria come next, proposed by the model when there is one, validated by you.",
   "briefs.new.create": "Create the brief",
   "briefs.new.created": "Brief created.",
+  "briefs.new.forbidden": "Your role does not allow creating a brief. Ask an administrator.",
 
   "briefs.back": "Back to briefs",
   "briefs.notFound.title": "This brief does not exist",
@@ -551,7 +553,6 @@ const en = {
   "briefs.results.addedToast": "Added to the shortlist.",
   "briefs.results.alreadyAdded": "This candidate is already on the shortlist.",
   "briefs.results.seeShortlist": "See the shortlist",
-  "briefs.results.openCandidate": "Open the profile",
   "briefs.decision.fit": "Matches",
   "briefs.decision.borderline": "To check",
   "briefs.decision.no_fit": "Does not match",

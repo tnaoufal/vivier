@@ -111,7 +111,11 @@ export function decodeOcrImage(value: string | null | undefined): Pick<OcrImage,
   return contentType ? { bytes, contentType } : null;
 }
 
-/** One answered image with its size on the page, or null when it has no usable bytes or box. */
+/**
+ * One answered image with its size on the page, or null when it has no
+ * usable bytes or box. The box is where the page draws it, in the OCR's
+ * pixels like the page's width, so it is also its drawn width.
+ */
 export function ocrImageOf(answer: OcrImageAnswer): OcrImage | null {
   const decoded = decodeOcrImage(answer.image_base64);
   if (!decoded) return null;
@@ -122,7 +126,7 @@ export function ocrImageOf(answer: OcrImageAnswer): OcrImage | null {
   const width = Math.round(x1 - x0);
   const height = Math.round(y1 - y0);
   if (width <= 0 || height <= 0) return null;
-  return { ...decoded, width, height };
+  return { ...decoded, width, height, drawnWidth: width };
 }
 
 export async function ocrPdf(

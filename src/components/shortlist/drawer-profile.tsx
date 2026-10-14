@@ -2,9 +2,10 @@
  * The profile tab of the drawer: who this person is, in short. The three
  * facts that place a profile (location, years of experience,
  * availability), each "not stated" when the CV gave nothing; the summary
- * the structuring read; the first eight skills with the rest counted,
- * never a wall of chips; the languages; and the way to the full profile
- * page. Falls back to the board's columns while the full row loads.
+ * the structuring read; eight skills, the ones the brief names first,
+ * with the rest counted, never a wall of chips; the languages; and the
+ * way to the full profile page. Falls back to the board's columns while
+ * the full row loads.
  */
 import { Link } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
@@ -13,11 +14,11 @@ import { Pill } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { languagesLine, topSkills, yearsLabel } from "@/lib/candidates/format";
+import { SKILLS_SHOWN } from "@/lib/candidates/skills";
+import type { BriefCriterion } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
 import type { DrawerCandidate, ItemCandidate } from "@/lib/shortlists/queries";
-
-/** The most skills shown as chips before the rest is counted. */
-const SKILLS_SHOWN = 8;
+import { relevantFirst } from "@/lib/shortlists/skills";
 
 function Fact({ label, value }: { label: string; value: string }) {
   const { t } = useI18n();
@@ -35,10 +36,13 @@ export function DrawerProfile({
   candidate,
   fallback,
   loading,
+  criteria,
 }: {
   candidate: DrawerCandidate | null;
   fallback: ItemCandidate | null;
   loading: boolean;
+  /** The brief's criteria: the skills its skill criteria name come first. */
+  criteria: readonly BriefCriterion[];
 }) {
   const { t, locale } = useI18n();
   const candidateId = candidate?.id ?? fallback?.id ?? null;
@@ -46,7 +50,7 @@ export function DrawerProfile({
     return <p className="text-sm text-muted-foreground">{t("shortlists.item.candidateGone")}</p>;
   }
   const stored = candidate?.skills ?? fallback?.skills ?? [];
-  const allSkills = topSkills(stored, stored.length);
+  const allSkills = relevantFirst(topSkills(stored, stored.length), criteria);
   const skills = allSkills.slice(0, SKILLS_SHOWN);
   const more = allSkills.length - skills.length;
   const languages = candidate ? languagesLine(candidate.languages) : "";

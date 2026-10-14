@@ -11,12 +11,14 @@
  * objects of decoded pixels with their width, height and channel count;
  * 0.12.0 and 0.12.1 answered bare pixel arrays. The answer is checked at
  * runtime, so an unpdf of another signature yields no image and one log
- * line, never a failed document.
+ * line, never a failed document. The width each image is drawn at comes
+ * from the page's operator list (the one `extractImages` reads, cached
+ * by pdf.js), walked with its transformation matrices.
  */
-import { extractImages, extractText, getDocumentProxy } from "unpdf";
+import { extractImages, extractText, getDocumentProxy, getResolvedPDFJS } from "unpdf";
 
-import { logWarn } from "./log.js";
-import { PAGE_PIXELS_PER_POINT, type ImagesOfPage, type RawImage } from "./photo.js";
+import { logWarn, type LogFields } from "./log.js";
+import { PHOTO_MAX_SIDE, type ImagesOfPage, type RawImage } from "./photo.js";
 
 export interface PdfText {
   pageCount: number;
@@ -66,64 +68,205 @@ export function pageImageOf(value: unknown): PageImage | null {
   };
 }
 
-/** The images unpdf answered that have the expected shape; the others are counted in one log line. */
-export function pageImagesOf(answer: unknown): PageImage[] {
+/** True for an image whose bytes are laid out otherwise (a mask packs its bits): routine, no new signature. */
+function isOtherLayout(value: unknown): boolean {
+  const item = looseOf(value);
+  return item !== null && isSize(item["width"]) && isSize(item["height"]) && ArrayBuffer.isView(item["data"]);
+}
+
+/**
+ * The images unpdf answered that have the expected shape. An image in
+ * another layout (a mask packs its bits) is routine and dropped quietly;
+ * when nothing is even an image of another layout, that is an unpdf of
+ * another signature, said in one log line with `context` (the document).
+ */
+export function pageImagesOf(answer: unknown, context: LogFields = {}): PageImage[] {
   if (!Array.isArray(answer)) {
-    logWarn("photo_images_unsupported", { reason: "unpdf answered no array of images" });
+    logWarn("photo_images_unsupported", { ...context, reason: "unpdf answered no array of images" });
     return [];
   }
   const images: PageImage[] = [];
-  let dropped = 0;
+  let unknown = 0;
   for (const item of answer) {
     const image = pageImageOf(item);
     if (image) images.push(image);
-    else dropped += 1;
+    else if (!isOtherLayout(item)) unknown += 1;
   }
-  // A mask among photos is normal; nothing readable at all is not: that
-  // is an unpdf of another signature, said once per document.
-  if (dropped > 0 && images.length === 0) {
-    logWarn("photo_images_unsupported", { dropped, reason: "no image of the known shape" });
+  if (unknown > 0 && images.length === 0) {
+    logWarn("photo_images_unsupported", { ...context, unknown, reason: "no image of the known shape" });
   }
   return images;
 }
 
-/** The two pdf.js calls the page width needs, as methods so `this` stays bound. */
+/** A PDF matrix [a, b, c, d, e, f], in pdf.js's order. */
+type Matrix = readonly [number, number, number, number, number, number];
+
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+
+function matrixOf(value: unknown): Matrix | null {
+  if (!Array.isArray(value) && !ArrayBuffer.isView(value)) return null;
+  const items: unknown[] = Array.from(value as ArrayLike<unknown>);
+  const numbers = items.filter((item): item is number => typeof item === "number" && Number.isFinite(item));
+  if (items.length !== 6 || numbers.length !== 6) return null;
+  const [a = 1, b = 0, c = 0, d = 1, e = 0, f = 0] = numbers;
+  return [a, b, c, d, e, f];
+}
+
+/** `m` applied first, then `current`: what `cm m` leaves (pdf.js's Util.transform). */
+function multiply(current: Matrix, m: Matrix): Matrix {
+  const [a1, b1, c1, d1, e1, f1] = current;
+  const [a2, b2, c2, d2, e2, f2] = m;
+  return [
+    a1 * a2 + c1 * b2,
+    b1 * a2 + d1 * b2,
+    a1 * c2 + c1 * d2,
+    b1 * c2 + d1 * d2,
+    a1 * e2 + c1 * f2 + e1,
+    b1 * e2 + d1 * f2 + f1,
+  ];
+}
+
+/** The pdf.js operators the walk follows; without all of them, nothing is measured. */
+const WALKED_OPS = [
+  "save",
+  "restore",
+  "transform",
+  "paintFormXObjectBegin",
+  "paintFormXObjectEnd",
+  "beginAnnotation",
+  "endAnnotation",
+  "paintImageXObject",
+];
+
+/**
+ * The width each image of an operator list is drawn at on the page, in
+ * the page's unit (points), by pdf.js object key: the operators are
+ * walked with the transformation matrix as a canvas would apply it
+ * (`q`/`Q`, `cm`, a form's matrix, an annotation's), and an image covers
+ * the unit square under that matrix, so its width on the page is
+ * |a| + |c|. An image drawn twice keeps its widest. `ops` is pdf.js's
+ * `OPS` table; anything unexpected yields fewer entries, never a guess.
+ */
+export function drawnWidthsOf(fnArray: unknown, argsArray: unknown, ops: unknown): Map<string, number> {
+  const drawn = new Map<string, number>();
+  const codes = looseOf(ops);
+  if (!codes || !Array.isArray(fnArray) || !Array.isArray(argsArray)) return drawn;
+  if (!WALKED_OPS.every((name) => typeof codes[name] === "number")) return drawn;
+  const {
+    save,
+    restore,
+    transform,
+    paintFormXObjectBegin,
+    paintFormXObjectEnd,
+    beginAnnotation,
+    endAnnotation,
+    paintImageXObject,
+  } = codes;
+  const stack: Matrix[] = [];
+  let ctm: Matrix = IDENTITY;
+  for (let i = 0; i < fnArray.length; i++) {
+    const fn: unknown = fnArray[i];
+    const entry: unknown = argsArray[i];
+    const args: unknown[] = Array.isArray(entry) ? entry : [];
+    if (fn === save) {
+      stack.push(ctm);
+    } else if (fn === restore || fn === paintFormXObjectEnd || fn === endAnnotation) {
+      ctm = stack.pop() ?? ctm;
+    } else if (fn === transform) {
+      const m = matrixOf(args);
+      if (m) ctm = multiply(ctm, m);
+    } else if (fn === paintFormXObjectBegin) {
+      stack.push(ctm);
+      const m = matrixOf(args[0]);
+      if (m) ctm = multiply(ctm, m);
+    } else if (fn === beginAnnotation) {
+      // An annotation is drawn from the page's initial state, then its
+      // rectangle's transform and its appearance's matrix.
+      stack.push(ctm);
+      ctm = IDENTITY;
+      for (const value of [args[2], args[3]]) {
+        const m = matrixOf(value);
+        if (m) ctm = multiply(ctm, m);
+      }
+    } else if (fn === paintImageXObject) {
+      const key = args[0];
+      if (typeof key !== "string") continue;
+      const width = Math.abs(ctm[0]) + Math.abs(ctm[2]);
+      if (Number.isFinite(width)) drawn.set(key, Math.max(drawn.get(key) ?? 0, width));
+    }
+  }
+  return drawn;
+}
+
+/** The pdf.js page calls the geometry needs, as methods so `this` stays bound. */
+interface PageProxyLike {
+  view?: unknown;
+  getOperatorList?: () => Promise<unknown>;
+}
+
 interface DocumentProxyLike {
-  getPage?: (pageNumber: number) => Promise<{ getViewport?: (options: { scale: number }) => unknown }>;
+  getPage?: (pageNumber: number) => Promise<PageProxyLike>;
+}
+
+interface PageGeometry {
+  /** The page's width in points (user space, as the matrices are), or null. */
+  pageWidth: number | null;
+  /** The width each image is drawn at, in points, by pdf.js object key. */
+  drawn: Map<string, number>;
 }
 
 /**
- * The page's width in the images' pixel unit (PAGE_PIXELS_PER_POINT per
- * point), or null when the proxy cannot say: the half-page rule is then
- * skipped, never guessed.
+ * The page's width and the width its images are drawn at, both in user
+ * space; what the proxy cannot say stays unknown and the half-page rule
+ * is then skipped, never guessed.
  */
-async function pageWidthOf(pdf: unknown, pageNumber: number): Promise<number | null> {
+async function pageGeometryOf(pdf: unknown, pageNumber: number): Promise<PageGeometry> {
+  const geometry: PageGeometry = { pageWidth: null, drawn: new Map() };
   try {
     const proxy = pdf as DocumentProxyLike;
-    if (typeof proxy.getPage !== "function") return null;
+    if (typeof proxy.getPage !== "function") return geometry;
     const page = await proxy.getPage(pageNumber);
-    if (typeof page.getViewport !== "function") return null;
-    const width = looseOf(page.getViewport({ scale: 1 }))?.["width"];
-    return typeof width === "number" && Number.isFinite(width) && width > 0
-      ? width * PAGE_PIXELS_PER_POINT
-      : null;
+    const view = Array.isArray(page.view) ? page.view : [];
+    const [x0, , x1] = view;
+    if (typeof x0 !== "number" || typeof x1 !== "number" || !Number.isFinite(x1 - x0) || x1 === x0) {
+      return geometry;
+    }
+    geometry.pageWidth = Math.abs(x1 - x0);
+    if (typeof page.getOperatorList !== "function") return geometry;
+    const list = looseOf(await page.getOperatorList());
+    const pdfjs: unknown = await getResolvedPDFJS();
+    geometry.drawn = drawnWidthsOf(list?.["fnArray"], list?.["argsArray"], looseOf(pdfjs)?.["OPS"]);
+    return geometry;
   } catch {
-    return null;
+    return geometry;
   }
 }
 
 /**
- * The images of page `pageNumber` (1-based) with the page's width, for
- * the photo. The caller treats a thrown error as "no photo" (pipeline.ts).
+ * The images of page `pageNumber` (1-based) with the page's width and the
+ * width each is drawn at, for the photo. `context` names the document in
+ * the log. The caller treats a thrown error as "no photo" (pipeline.ts).
  */
-export async function extractPageImages(buffer: Uint8Array, pageNumber = 1): Promise<PageImages> {
-  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+export async function extractPageImages(
+  buffer: Uint8Array,
+  pageNumber = 1,
+  context: LogFields = {},
+): Promise<PageImages> {
+  // pdf.js skips (with a warning) any image whose width * height exceeds
+  // this, before decoding it: exactly the images isPhotoLike rejects (a
+  // side over PHOTO_MAX_SIDE), so a page background or a 12 MP photo
+  // costs neither the memory nor the time of its pixels.
+  const pdf = await getDocumentProxy(new Uint8Array(buffer), { maxImageSize: PHOTO_MAX_SIDE * PHOTO_MAX_SIDE });
   try {
-    const pageWidth = await pageWidthOf(pdf, pageNumber);
+    const { pageWidth, drawn } = await pageGeometryOf(pdf, pageNumber);
     // Typed as unknown on purpose: the shape is checked, not trusted,
     // whatever this unpdf's signature says.
     const answer: unknown = await extractImages(pdf, pageNumber);
-    return { pageWidth, images: pageImagesOf(answer) };
+    const images = pageImagesOf(answer, context).map((image) => {
+      const drawnWidth = drawn.get(image.key);
+      return drawnWidth === undefined ? image : { ...image, drawnWidth };
+    });
+    return { pageWidth, images };
   } finally {
     const proxy = pdf as unknown as { destroy?: () => Promise<void> };
     if (typeof proxy.destroy === "function") {

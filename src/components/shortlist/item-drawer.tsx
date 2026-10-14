@@ -241,6 +241,7 @@ export function ItemDrawer({
                     candidate={candidate.data ?? null}
                     fallback={shown.candidates}
                     loading={candidate.loading}
+                    criteria={criteria}
                   />
                 </TabsContent>
                 <TabsContent value="team" className="mt-0 fade-in space-y-8">

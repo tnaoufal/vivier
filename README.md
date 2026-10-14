@@ -325,7 +325,7 @@ fatal, the processor looks at the CV's first page for a portrait
 `extractImages`, 0.12.2 at least) or, for a scanned PDF, the images the
 OCR cut out (`include_image_base64`, stripped from the text). The largest
 with the shape of a portrait is kept (both sides 80 to 1200 px, width
-over height 0.6 to 1.1, not wider than half the page, so a logo, a
+over height 0.6 to 1.1, not drawn wider than half the page, so a logo, a
 banner or a scan of the page is never taken for a face), downscaled to
 256 px and encoded as a PNG by the processor's own encoder (the OCR's
 JPEG or PNG kept as it is), written to the private `photos` bucket at
