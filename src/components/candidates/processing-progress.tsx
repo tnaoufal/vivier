@@ -1,14 +1,14 @@
 /**
- * The progress of the wave the service is reading, at the top of the
- * processing banner: one sentence at display scale (done out of total,
- * the percent), the system's 6px bar whose width eases to the figure
- * and carries a sheen while the service works (none under reduced
- * motion), then the rate and the estimate, or that the rate is still
- * being measured.
- * Once the wave ends the block says so for a moment (`finishedTotal`,
- * which wins over a wave with nothing pending), then the banner lets it
- * go. Nothing here is estimated by hand: the figures are the database's
- * counts, the rate what left the queue lately.
+ * The progress of the wave the service is reading, one line at the top
+ * of the processing banner: the figure (done out of total), the
+ * system's 6px bar whose width eases to the figure and carries a sheen
+ * while the service works (none under reduced motion), then the rate
+ * and the estimate, or that the rate is still being measured. On a
+ * phone the three wrap, the bar on a line of its own. Once the wave
+ * ends the line says so for a moment (`finishedTotal`, which wins over
+ * a wave with nothing pending), then the banner lets it go. Nothing
+ * here is estimated by hand: the figures are the database's counts, the
+ * rate what left the queue lately.
  */
 import { ProgressBar } from "@/components/app-shell/progress-bar";
 import { formatCount } from "@/lib/candidates/format";
@@ -38,7 +38,6 @@ export function ProcessingProgress({
     ? t("candidates.processing.progress.active", {
         done: count(progress.done),
         total: count(progress.total),
-        percent: progress.percent,
       })
     : t("candidates.processing.progress.done", { total: count(total) });
   const rate = !active
@@ -57,17 +56,19 @@ export function ProcessingProgress({
   return (
     // While active the figures move every few seconds: not read aloud (the bar says where it
     // stands on demand); the end of the wave is announced by the banner's status line.
-    <div className={cn("space-y-2", className)}>
-      <p className="font-display text-xl leading-7 text-ink tabular-nums">{sentence}</p>
+    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-2", className)}>
+      <p className="shrink-0 text-sm font-medium text-ink tabular-nums">{sentence}</p>
       <ProgressBar
         size="md"
         value={done}
         max={Math.max(1, total)}
         active={active}
-        tone={active ? "primary" : "positive"}
         label={t("candidates.processing.progress.label")}
+        className="min-w-0 basis-full sm:flex-1 sm:basis-40"
       />
-      {rate ? <p className="text-meta text-muted-foreground tabular-nums">{rate}</p> : null}
+      {rate ? (
+        <p className="shrink-0 text-meta text-muted-foreground tabular-nums">{rate}</p>
+      ) : null}
     </div>
   );
 }

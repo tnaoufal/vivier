@@ -1,11 +1,11 @@
 /**
  * Skills and tags as chips. `Chip` is the quiet chip the sheet reads
- * (no remove mark); `ChipEditor` adds the remove mark on each and a line
- * to type more, each change saved at once by the parent (one column).
- * Typing "a, b" adds two chips. Two tones: `neutral` for what the CV
- * states, `primary` for the team's own labels. One height (28px) in both
- * modes, so a skill does not grow when the sheet enters edit mode: the
- * editable chip only trades its right padding for the remove mark.
+ * (grey 100, ink text, no remove mark); `ChipEditor` adds the remove
+ * mark on each and a line to type more, each change saved at once by
+ * the parent (one column). Typing "a, b" adds two chips. One height
+ * (28px) in both modes, so a skill does not grow when the sheet enters
+ * edit mode: the editable chip only trades its right padding for the
+ * remove mark.
  */
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Plus, X } from "lucide-react";
@@ -16,27 +16,13 @@ import { addChips, removeChip } from "@/lib/candidates/draft";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-export type ChipTone = "primary" | "neutral";
-
-const CHIP_TONES: Record<ChipTone, string> = {
-  neutral: "bg-muted text-ink",
-  primary: "bg-primary/10 text-primary",
-};
-
 /** The one content chip: 28px, 13px text, read on the sheet and in the editor alike. */
-const CHIP_BASE = "inline-flex h-7 max-w-full items-center rounded-full text-meta font-medium";
+const CHIP_BASE =
+  "inline-flex h-7 max-w-full items-center rounded-full bg-muted text-meta font-medium text-ink";
 
-export function Chip({
-  tone = "neutral",
-  children,
-  className,
-}: {
-  tone?: ChipTone;
-  children: ReactNode;
-  className?: string;
-}) {
+export function Chip({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <span className={cn(CHIP_BASE, "px-2.5", CHIP_TONES[tone], className)}>
+    <span className={cn(CHIP_BASE, "px-2.5", className)}>
       <span className="min-w-0 truncate">{children}</span>
     </span>
   );
@@ -46,14 +32,12 @@ export function ChipEditor({
   values,
   canEdit,
   placeholder,
-  tone = "neutral",
   emptyKey = "common.none",
   onChange,
 }: {
   values: string[];
   canEdit: boolean;
   placeholder: string;
-  tone?: ChipTone;
   /** What an empty list says: "none" for the team's own tags, "not stated" for what a CV did not say. */
   emptyKey?: "common.none" | "common.unknown";
   onChange: (values: string[]) => Promise<void>;
@@ -90,7 +74,7 @@ export function ChipEditor({
           {values.map((value) => (
             <li
               key={value}
-              className={cn(CHIP_BASE, "gap-0.5 pl-2.5", canEdit ? "pr-1" : "pr-2.5", CHIP_TONES[tone])}
+              className={cn(CHIP_BASE, "gap-0.5 pl-2.5", canEdit ? "pr-1" : "pr-2.5")}
             >
               <span className="min-w-0 truncate">{value}</span>
               {canEdit ? (

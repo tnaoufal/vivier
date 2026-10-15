@@ -1,8 +1,8 @@
 /**
- * The team's own labels on a profile, in the aside: quiet chips, and for
- * a member a pencil that turns them into the chip editor in place (the
- * remove marks show only then). Tags are the team's, not the CV's, so an
- * empty list reads "none", never "not stated".
+ * The team's own labels on a profile: quiet chips, and for a member a
+ * pencil that turns them into the chip editor in place (the remove
+ * marks show only then). Tags are the team's, not the CV's, so an empty
+ * list reads "none", never "not stated".
  */
 import { useState } from "react";
 import { Check, Pencil } from "lucide-react";
@@ -10,7 +10,7 @@ import { Check, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
 
-import { ChipEditor, Chip } from "./chip-editor";
+import { Chip, ChipEditor } from "./chip-editor";
 
 export function TagsCard({
   tags,
@@ -45,14 +45,13 @@ export function TagsCard({
           values={tags}
           canEdit
           placeholder={t("candidates.tags.placeholder")}
-          tone="primary"
           onChange={onChange}
         />
       ) : tags.length ? (
         <ul className="flex flex-wrap gap-1.5">
           {tags.map((tag) => (
             <li key={tag} className="min-w-0">
-              <Chip tone="primary">{tag}</Chip>
+              <Chip>{tag}</Chip>
             </li>
           ))}
         </ul>

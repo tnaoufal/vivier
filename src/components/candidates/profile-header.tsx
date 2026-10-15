@@ -1,21 +1,26 @@
 /**
- * The head of a CV, under the page's sticky header: the photo (when the
- * organisation shows photos and the CV had one; the initials otherwise,
- * square-rounded), the name, editable in place by a member, the position
- * held today, where and for how long and when available, the languages
- * with their level. The page title, the status pills and the actions
- * live in the PageHeader above, so the name here is a card title, not a
- * second h1. "Not stated" in muted text where the CV said nothing.
+ * The head of a CV, under the page's sticky header: the photo in
+ * greyscale (when the organisation shows photos and the CV had one; the
+ * initials otherwise, square-rounded), the name, the position held
+ * today, one line that reads the seniority first, then where and when
+ * available, the languages with their level as quiet text, and the
+ * small pills that set this profile apart (archived, typed by hand,
+ * consent withdrawn). The page title and the actions live in the
+ * PageHeader above, so the name here is a card title, not a second h1;
+ * the name and the fields are edited through the form's drawer. "Not
+ * stated" in muted text where the CV said nothing; a hint where the
+ * structuring was unsure, explained once behind the info icon.
  */
-import { useEffect, useState, type FormEvent } from "react";
-import { Check, Pencil, X } from "lucide-react";
-
 import { Avatar } from "@/components/app-shell/avatar";
 import { InfoTip } from "@/components/app-shell/info-tip";
 import { Pill } from "@/components/app-shell/pill";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { confidenceTone, currentPosition, displayName, metaLine } from "@/lib/candidates/format";
+import {
+  confidenceTone,
+  currentPosition,
+  displayName,
+  languagesSummary,
+  metaLine,
+} from "@/lib/candidates/format";
 import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
 import type { CandidateRow, ConfidenceMap } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
@@ -37,129 +42,80 @@ const HINTED_FIELDS: readonly (keyof ConfidenceMap)[] = [
 
 export function ProfileHeader({
   candidate,
-  canEdit,
   showPhotos,
-  onRename,
 }: {
   candidate: CandidateRow;
-  canEdit: boolean;
   /** The organisation's choice: a team that practises anonymous CVs turns photos off. */
   showPhotos: boolean;
-  onRename: (name: string | null) => Promise<void>;
 }) {
   const { t, locale } = useI18n();
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(candidate.full_name ?? "");
-  const [busy, setBusy] = useState(false);
   const name = displayName(candidate, t("candidates.noName"));
   const photoUrl = usePhotoUrl(candidate.photo_path, showPhotos);
   const position = currentPosition(candidate);
   const meta = metaLine(locale, candidate);
-  const languages = (candidate.languages ?? []).filter((language) => language?.name?.trim());
+  const languages = languagesSummary(candidate.languages);
+  const confidence: ConfidenceMap = candidate.confidence ?? {};
   // One explanation for every "to check" pill of the page, beside the card's title, only when one shows.
-  const doubtful = HINTED_FIELDS.some((field) => confidenceTone(candidate.confidence[field]) !== "none");
-
-  useEffect(() => {
-    if (!editing) setValue(candidate.full_name ?? "");
-  }, [candidate.full_name, editing]);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (busy) return;
-    const next = value.trim() || null;
-    if (next === (candidate.full_name ?? null)) {
-      setEditing(false);
-      return;
-    }
-    setBusy(true);
-    try {
-      await onRename(next);
-      setEditing(false);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const doubtful = HINTED_FIELDS.some((field) => confidenceTone(confidence[field]) !== "none");
+  const marked =
+    candidate.status === "archived" ||
+    candidate.source === "manual" ||
+    candidate.consent_status === "withdrawn";
 
   return (
-    <section className="sheet mb-8 p-6 sm:p-8" aria-label={name}>
+    <section className="sheet p-6 sm:p-8" aria-label={name}>
       <div className="flex items-start gap-5">
         <Avatar name={name} size="xl" variant="profile" photoUrl={photoUrl} decorative />
         <div className="min-w-0 flex-1">
-        {editing ? (
-          <form onSubmit={(event) => void submit(event)} className="flex flex-wrap items-center gap-2">
-            <Input
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              placeholder={t("candidates.name.placeholder")}
-              aria-label={t("candidates.field.full_name")}
-              maxLength={200}
-              autoFocus
-              disabled={busy}
-              className="max-w-sm"
-            />
-            <Button type="submit" variant="outline" icon={<Check />} disabled={busy}>
-              {t("common.save")}
-            </Button>
-            <Button type="button" variant="ghost" icon={<X />} onClick={() => setEditing(false)} disabled={busy}>
-              {t("common.cancel")}
-            </Button>
-          </form>
-        ) : (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="min-w-0 break-words text-base font-semibold text-ink">{name}</p>
-            <ConfidenceHint value={candidate.confidence.full_name} />
-            {canEdit ? (
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                icon={<Pencil />}
-                onClick={() => setEditing(true)}
-                aria-label={t("candidates.name.edit")}
-                className="text-muted-foreground hover:text-ink"
-              />
+            <p className="min-w-0 text-base font-semibold text-ink break-words">{name}</p>
+            <ConfidenceHint value={confidence.full_name} />
+            {doubtful ? (
+              <InfoTip label={t("candidates.review")}>
+                {t("candidates.confidence.help.check")}
+              </InfoTip>
             ) : null}
-            {doubtful ? <InfoTip label={t("candidates.review")}>{t("candidates.confidence.help.check")}</InfoTip> : null}
           </div>
-        )}
-        <p className="mt-1 text-body text-ink">
-          {position ? (
-            <>
-              <span className="font-medium text-ink">{position.title}</span>
-              {position.company ? (
-                <span className="text-muted-foreground"> {t("candidates.atCompany", { company: position.company })}</span>
+          <p className="mt-1 text-body text-ink">
+            {position ? (
+              <>
+                <span className="font-medium text-ink">{position.title}</span>
+                {position.company ? (
+                  <span className="text-muted-foreground">
+                    {" "}
+                    {t("candidates.atCompany", { company: position.company })}
+                  </span>
+                ) : null}{" "}
+                <ConfidenceHint value={confidence.headline} />
+              </>
+            ) : (
+              <span className="text-muted-foreground">{t("common.unknown")}</span>
+            )}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground tabular-nums">
+            {meta || t("common.unknown")}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {languages || `${t("candidates.field.languages")} · ${t("common.unknown")}`}{" "}
+            <ConfidenceHint value={confidence.languages} />
+          </p>
+          {marked ? (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              {candidate.status === "archived" ? (
+                <Pill size="sm" dot>
+                  {t("candidates.status.archived")}
+                </Pill>
               ) : null}
-            </>
-          ) : (
-            <span className="text-muted-foreground">{t("common.unknown")}</span>
-          )}
-          {position ? (
-            <>
-              {" "}
-              <ConfidenceHint value={candidate.confidence.headline} />
-            </>
+              {candidate.source === "manual" ? (
+                <Pill size="sm">{t("candidates.source.manual")}</Pill>
+              ) : null}
+              {candidate.consent_status === "withdrawn" ? (
+                <Pill size="sm" tone="negative">
+                  {t("candidates.consent.withdrawn")}
+                </Pill>
+              ) : null}
+            </div>
           ) : null}
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground tabular-nums">{meta || t("common.unknown")}</p>
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          {languages.length ? (
-            <ul className="contents" aria-label={t("candidates.field.languages")}>
-              {languages.map((language, index) => (
-                <li key={`${language.name}-${index}`} className="min-w-0">
-                  <Pill size="sm">
-                    {language.name.trim()}
-                    {language.level?.trim() ? ` · ${language.level.trim()}` : ""}
-                  </Pill>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <span className="text-meta text-muted-foreground">
-              {t("candidates.field.languages")} · {t("common.unknown")}
-            </span>
-          )}
-          <ConfidenceHint value={candidate.confidence.languages} />
-        </div>
         </div>
       </div>
     </section>

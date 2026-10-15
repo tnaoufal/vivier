@@ -42,7 +42,11 @@ export function ClampedText({
     <div className="min-w-0">
       <p
         ref={ref}
-        className={cn("whitespace-pre-line text-body text-ink break-words", !expanded && LINE_CLAMP[lines], className)}
+        className={cn(
+          "whitespace-pre-line text-body text-ink break-words",
+          !expanded && LINE_CLAMP[lines],
+          className,
+        )}
       >
         {text}
       </p>
@@ -51,7 +55,7 @@ export function ClampedText({
           type="button"
           onClick={() => setExpanded((value) => !value)}
           aria-expanded={expanded}
-          className="mt-1 cursor-pointer rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-1 cursor-pointer rounded-sm text-sm font-medium text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {expanded ? t("candidates.showLess") : t("candidates.showMore")}
         </button>

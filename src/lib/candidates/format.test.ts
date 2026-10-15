@@ -16,11 +16,13 @@ import {
   formatCount,
   formatDateRange,
   formatDuration,
+  headerLine,
   keySkills,
   languagesLine,
+  languagesSummary,
+  listLine,
   metaLine,
   monthIndex,
-  needsReview,
   parseYearsMin,
   topSkills,
   yearsLabel,
@@ -40,15 +42,6 @@ describe("confidenceTone", () => {
     expect(confidenceTone(0.5)).toBe("caution");
     expect(confidenceTone(0.49)).toBe("negative");
     expect(confidenceTone(0)).toBe("negative");
-  });
-});
-
-describe("needsReview", () => {
-  it("flags a profile with any field under 0.6", () => {
-    expect(needsReview({ full_name: 0.9, email: 0.55 })).toBe(true);
-    expect(needsReview({ full_name: 0.9, email: 0.6 })).toBe(false);
-    expect(needsReview({})).toBe(false);
-    expect(needsReview(null)).toBe(false);
   });
 });
 
@@ -129,6 +122,19 @@ describe("row summaries", () => {
     expect(languagesLine([])).toBe("");
   });
 
+  it("reads the languages as a sheet's head does, the level after the name", () => {
+    expect(
+      languagesSummary([
+        { name: " Français ", level: "C2" },
+        { name: "Anglais", level: " B2 " },
+        { name: "Arabe", level: null },
+        { name: "  ", level: "A1" },
+      ]),
+    ).toBe("Français C2 · Anglais B2 · Arabe");
+    expect(languagesSummary([])).toBe("");
+    expect(languagesSummary(null)).toBe("");
+  });
+
   it("keeps the first skills only", () => {
     expect(topSkills(["a", " ", "b", "c", "d", "e"], 4)).toEqual(["a", "b", "c", "d"]);
     expect(topSkills(null, 4)).toEqual([]);
@@ -139,11 +145,9 @@ describe("row summaries", () => {
   });
 
   it("collects distinct skills in order, for the filter's suggestions", () => {
-    expect(distinctSkills([{ skills: ["Python", " SQL "] }, { skills: ["SQL", "", "dbt"] }])).toEqual([
-      "Python",
-      "SQL",
-      "dbt",
-    ]);
+    expect(
+      distinctSkills([{ skills: ["Python", " SQL "] }, { skills: ["SQL", "", "dbt"] }]),
+    ).toEqual(["Python", "SQL", "dbt"]);
     expect(distinctSkills([])).toEqual([]);
   });
 
@@ -228,7 +232,9 @@ describe("currentPosition", () => {
   });
 
   it("leaves the company null when the CV names none", () => {
-    expect(currentPosition({ headline: null, experiences: [experience("Freelance", "", null)] })).toEqual({
+    expect(
+      currentPosition({ headline: null, experiences: [experience("Freelance", "", null)] }),
+    ).toEqual({
       title: "Freelance",
       company: null,
     });
@@ -236,13 +242,57 @@ describe("currentPosition", () => {
 });
 
 describe("metaLine", () => {
-  it("joins what the CV states, in order, and nothing else", () => {
-    expect(metaLine("fr", { location: "Paris", years_experience: 6, availability: "Janvier" })).toBe(
-      "Paris · 6 ans · Janvier",
+  it("joins what the CV states, the seniority first, and nothing else", () => {
+    expect(
+      metaLine("fr", { location: "Paris", years_experience: 6, availability: "Janvier" }),
+    ).toBe("6 ans · Paris · Janvier");
+    expect(metaLine("en", { location: " Lyon ", years_experience: null, availability: null })).toBe(
+      "Lyon",
     );
-    expect(metaLine("en", { location: " Lyon ", years_experience: null, availability: null })).toBe("Lyon");
-    expect(metaLine("en", { location: null, years_experience: 1, availability: " " })).toBe("1 year");
+    expect(metaLine("en", { location: null, years_experience: 1, availability: " " })).toBe(
+      "1 year",
+    );
     expect(metaLine("fr", { location: null, years_experience: null, availability: null })).toBe("");
+  });
+});
+
+describe("listLine", () => {
+  it("reads the seniority, the location, then the three key skills", () => {
+    expect(
+      listLine("fr", {
+        location: " Casablanca ",
+        years_experience: 12,
+        skills: ["Python", "SAP", " MS Project ", "Excel"],
+      }),
+    ).toBe("12 ans · Casablanca · Python, SAP, MS Project");
+    expect(listLine("en", { location: null, years_experience: 2.5, skills: [] })).toBe("2.5 years");
+    expect(listLine("en", { location: "Lyon", years_experience: null, skills: null })).toBe("Lyon");
+    expect(listLine("fr", { location: null, years_experience: null, skills: [" "] })).toBe("");
+  });
+});
+
+describe("headerLine", () => {
+  it("reminds the position held today, the years and the place", () => {
+    expect(
+      headerLine("fr", {
+        headline: "Designer",
+        location: "Casablanca",
+        years_experience: 12,
+        experiences: [
+          {
+            title: "Lead designer",
+            company: "Acme",
+            start: "2020-01",
+            end: null,
+            description: null,
+          },
+        ],
+      }),
+    ).toBe("Lead designer · 12 ans · Casablanca");
+    expect(
+      headerLine("en", { headline: " Product designer ", location: null, years_experience: null }),
+    ).toBe("Product designer");
+    expect(headerLine("en", { headline: null, location: null, years_experience: null })).toBe("");
   });
 });
 
