@@ -497,6 +497,8 @@ export interface ScreenedPage {
 
 /** The most ids one read excludes in its query string (the gateway refuses a URL past 16 KB); the rest are left out here. */
 const EXCLUDE_LOT = 100;
+/** The id no candidate carries: what the exclusion names when there is nothing to leave out. */
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * The profiles a whole-pool search's screening scored but the
@@ -519,18 +521,19 @@ export async function listScreened(
   const from = Math.max(0, Math.floor(Number.isFinite(page.from) ? page.from : 0));
   const first = from === 0;
   const excluded = new Set(page.exclude);
-  // The count is asked on every page (one builder type, so the conditional exclusion below
-  // keeps the chain's type shallow enough for tsc); only the first page reports it.
-  let request = supabase
+  const named = [...excluded].slice(0, EXCLUDE_LOT);
+  // One chain, nothing reassigned (tsc refuses the builder assigned to itself as too deep
+  // an instantiation): with nothing to leave out, the exclusion names the nil UUID, which
+  // no candidate carries. The count is asked on every page; the first alone reports it.
+  const leftOut = named.length ? `(${named.join(",")})` : `(${NIL_UUID})`;
+  const { data, error, count } = await supabase
     .from("search_triage")
     .select("candidate_id, verdict, score, score_reason", { count: "exact" })
     .eq("org_id", orgId)
     .eq("search_id", searchId)
     .in("verdict", [...KEPT_VERDICTS])
-    .not("score", "is", null);
-  const named = [...excluded].slice(0, EXCLUDE_LOT);
-  if (named.length) request = request.not("candidate_id", "in", `(${named.join(",")})`);
-  const { data, error, count } = await request
+    .not("score", "is", null)
+    .not("candidate_id", "in", leftOut)
     .order("score", { ascending: false })
     .order("candidate_id", { ascending: true })
     .range(from, from + size - 1);

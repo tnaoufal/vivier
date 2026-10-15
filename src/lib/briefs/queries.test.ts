@@ -317,7 +317,10 @@ describe("listScreened", () => {
     expect(argsOf(calls, "select")).toEqual([
       ["candidate_id, verdict, score, score_reason", { count: "exact" }],
     ]);
-    expect(argsOf(calls, "not")).toEqual([["score", "is", null]]);
+    expect(argsOf(calls, "not")).toEqual([
+      ["score", "is", null],
+      ["candidate_id", "in", "(00000000-0000-0000-0000-000000000000)"],
+    ]);
     expect(argsOf(calls, "range")).toEqual([[50, 99]]);
   });
 
