@@ -1,8 +1,9 @@
 /**
- * One row per requirement of a brief: the mark (met, partially met, not
- * met, the CV says nothing), the label, and the evidence in muted text.
- * Colour is never the only signal: each mark is an icon with a text
- * alternative. Used by the search results, the shortlist drawer and the
+ * One row per requirement of a brief: the mark (met: an ink disc with a
+ * paper check; partially met: an ink outline with a minus; not met: a
+ * grey outline with a cross; the CV says nothing: a grey 100 disc with
+ * a question mark), the label, and the evidence in muted text. Each
+ * mark is a shape and an icon with a text alternative, never a hue. Used by the search results, the shortlist drawer and the
  * dossier a link opens (`compact` for the dossier's print layout).
  * `stagger` lets the rows rise in one after the other, once, like every
  * list arriving on screen (off for print).
@@ -21,9 +22,9 @@ export interface RequirementRow {
 }
 
 const MARKS: Record<RequirementMet, { icon: typeof Check; className: string }> = {
-  yes: { icon: Check, className: "bg-positive/12 text-positive" },
-  partial: { icon: Minus, className: "bg-caution/15 text-caution-foreground" },
-  no: { icon: X, className: "bg-negative/12 text-negative" },
+  yes: { icon: Check, className: "bg-ink text-background" },
+  partial: { icon: Minus, className: "border border-ink text-ink" },
+  no: { icon: X, className: "border border-neutral text-negative" },
   unknown: { icon: CircleHelp, className: "bg-muted text-muted-foreground" },
 };
 

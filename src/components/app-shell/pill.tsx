@@ -1,8 +1,12 @@
 /**
  * A small rounded label: a status, a verdict, a role. Tones carry
- * meaning only (positive, caution, negative, neutral, primary). A pill
- * leads with a dot OR one 14px icon, never both, so colour is never the
- * only signal and a label never shows two marks: `icon` wins over `dot`.
+ * meaning only, in monochrome: positive is the ink filled with paper
+ * text, caution a 1px ink outline, negative a 1px grey 400 outline with
+ * grey 500 text, neutral a grey 100 fill; primary (the old accent) draws
+ * like caution. A verdict tone always carries a mark: one 14px `icon`,
+ * or a 6px dot in the pill's own ink, implied when no icon is given
+ * (`dot={false}` for a letter that is its own mark); `icon` wins over
+ * `dot`, so a label never shows two marks.
  */
 import type { ReactNode } from "react";
 
@@ -12,15 +16,18 @@ export type PillTone = "neutral" | "positive" | "caution" | "negative" | "primar
 
 const TONES: Record<PillTone, string> = {
   neutral: "bg-muted text-muted-foreground",
-  positive: "bg-positive/12 text-positive",
-  caution: "bg-caution/15 text-caution-foreground",
-  negative: "bg-negative/12 text-negative",
-  primary: "bg-primary/12 text-primary",
+  positive: "bg-ink text-background",
+  caution: "border border-ink bg-transparent text-ink",
+  negative: "border border-neutral bg-transparent text-negative",
+  primary: "border border-ink bg-transparent text-ink",
 };
+
+/** The tones that state a verdict: a mark is implied, so shape never stands alone. */
+const MARKED: ReadonlySet<PillTone> = new Set<PillTone>(["positive", "caution", "negative"]);
 
 export function Pill({
   tone = "neutral",
-  dot = false,
+  dot,
   icon,
   size = "md",
   children,
@@ -28,7 +35,7 @@ export function Pill({
   title,
 }: {
   tone?: PillTone;
-  /** A leading dot in the tone's colour, for a pill without an icon. */
+  /** A leading dot in the pill's ink; implied for a verdict tone without an icon, `false` to withhold it. */
   dot?: boolean;
   /** One leading 14px icon; when given, the dot is not drawn. */
   icon?: ReactNode;
@@ -39,6 +46,7 @@ export function Pill({
   title?: string;
 }) {
   const hasIcon = icon !== undefined && icon !== null;
+  const hasDot = !hasIcon && (dot ?? MARKED.has(tone));
   return (
     <span
       title={title}
@@ -49,7 +57,7 @@ export function Pill({
           : "h-6 px-2.5 text-xs [&_svg]:size-3.5",
         TONES[tone],
         // A pill leads with one mark: next to a dot, an icon left among the children is not drawn.
-        !hasIcon && dot && "[&_[data-slot=label]_svg]:hidden",
+        hasDot && "[&_[data-slot=label]_svg]:hidden",
         className,
       )}
     >
@@ -57,7 +65,7 @@ export function Pill({
         <span aria-hidden="true" className="inline-flex shrink-0">
           {icon}
         </span>
-      ) : dot ? (
+      ) : hasDot ? (
         <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />
       ) : null}
       <span data-slot="label" className="min-w-0 truncate">

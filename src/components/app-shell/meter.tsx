@@ -1,33 +1,24 @@
 /**
  * One measured dimension of a profile (the five dimensions of an
  * assessment): the label on the left, the value on the right in tabular
- * digits, a 4px bar under them. A dimension the model could not read is
- * null and reads "Non renseigné" in muted text with an empty bar, never a
- * zero: that bar is decoration (no meter role, so nothing announces an
- * empty meter under the words). `tone` "score" colours the bar like the
- * fit ring (green from 80, amber from 60, red below); "primary" keeps it
- * neutral. `name` is the meter's accessible name when `label` is a node.
+ * digits, a 4px ink bar on a grey 200 track under them. A dimension the
+ * model could not read is null and reads "Non renseigné" in muted text
+ * with an empty bar, never a zero: that bar is decoration (no meter
+ * role, so nothing announces an empty meter under the words). `tone` is
+ * kept for the call sites and changes nothing: every bar is the ink,
+ * the figure says the rest. `name` is the meter's accessible name when
+ * `label` is a node.
  */
 import type { ReactNode } from "react";
 
 import { useT } from "@/lib/i18n";
 import { cn, ratioPercent } from "@/lib/utils";
 
-import { ringTone } from "./score-ring";
-
-const FILLS = {
-  primary: "bg-primary",
-  positive: "bg-positive",
-  caution: "bg-caution",
-  negative: "bg-negative",
-} as const;
-
 export function Meter({
   label,
   value,
   max = 100,
   hint,
-  tone = "primary",
   name,
   className,
 }: {
@@ -39,13 +30,12 @@ export function Meter({
   name?: string | undefined;
   /** One short sentence under the bar: the evidence, or why the value is missing. */
   hint?: ReactNode;
+  /** Accepted for the call sites; the bar is the ink either way. */
   tone?: "primary" | "score";
   className?: string;
 }) {
   const t = useT();
   const percent = value === null ? 0 : ratioPercent(value, max);
-  const fill =
-    value === null ? FILLS.primary : tone === "score" ? FILLS[ringTone(percent)] : FILLS.primary;
   return (
     <div className={cn("min-w-0", className)}>
       <div className="flex items-baseline justify-between gap-3">
@@ -68,13 +58,10 @@ export function Meter({
               "aria-valuemax": max,
               "aria-valuenow": Math.round(value),
             })}
-        className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted"
+        className="mt-2 h-1 w-full overflow-hidden rounded-full bg-track"
       >
         <div
-          className={cn(
-            "h-full rounded-full transition-[width] duration-slower ease-out-soft",
-            fill,
-          )}
+          className="h-full rounded-full bg-ink transition-[width] duration-slower ease-out-soft"
           style={{ width: `${percent}%` }}
         />
       </div>

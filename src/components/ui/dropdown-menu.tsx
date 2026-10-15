@@ -1,8 +1,10 @@
 /**
- * The menu behind a "more" button or a switcher: the float surface, 4px
- * of padding, items 36px high with ONE leading 16px icon at most (a
- * trailing shortcut is text, never a second icon), a label in the meta
- * style, hairline separators. Opens above any drawer.
+ * The menu behind a "more" button or a switcher: the float surface (a
+ * 1px border, paper), 4px of padding, items 36px high with ONE leading
+ * 16px icon at most (a trailing shortcut is text, never a second icon),
+ * a label in the meta style, hairline separators. A destructive item is
+ * the ink at medium weight with its icon: the word says the consequence.
+ * Opens above any drawer.
  */
 "use client";
 
@@ -82,18 +84,13 @@ const DropdownMenuItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
     inset?: boolean;
-    /** A destructive item reads in the negative tone, icon included. */
+    /** A destructive item reads heavier, its icon in the ink: no colour, the word says it. */
     destructive?: boolean;
   }
 >(({ className, inset, destructive = false, ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     ref={ref}
-    className={cn(
-      ITEM,
-      inset && "pl-9",
-      destructive && "text-negative focus:bg-negative/10 focus:text-negative [&_svg]:text-negative",
-      className,
-    )}
+    className={cn(ITEM, inset && "pl-9", destructive && "font-medium [&_svg]:text-ink", className)}
     {...props}
   />
 ));
@@ -104,7 +101,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
 >(({ className, children, ...props }, ref) => (
   <DropdownMenuPrimitive.CheckboxItem ref={ref} className={cn(ITEM, "pl-9", className)} {...props}>
-    <span className="absolute left-2.5 flex size-4 items-center justify-center text-primary">
+    <span className="absolute left-2.5 flex size-4 items-center justify-center text-ink">
       <DropdownMenuPrimitive.ItemIndicator>
         <Check className="size-4" aria-hidden="true" />
       </DropdownMenuPrimitive.ItemIndicator>
@@ -119,7 +116,7 @@ const DropdownMenuRadioItem = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem>
 >(({ className, children, ...props }, ref) => (
   <DropdownMenuPrimitive.RadioItem ref={ref} className={cn(ITEM, "pl-9", className)} {...props}>
-    <span className="absolute left-2.5 flex size-4 items-center justify-center text-primary">
+    <span className="absolute left-2.5 flex size-4 items-center justify-center text-ink">
       <DropdownMenuPrimitive.ItemIndicator>
         <Circle className="size-2 fill-current" aria-hidden="true" />
       </DropdownMenuPrimitive.ItemIndicator>

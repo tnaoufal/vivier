@@ -1,8 +1,9 @@
 /**
- * A tooltip: ink on light, 13px, one line, for the sentence behind an
- * icon-only control (the control still carries its aria-label; a tooltip
- * is never the only name). The root route mounts one `TooltipProvider`
- * for the whole app, so a page uses `Tooltip` directly.
+ * A tooltip: the inverse surface (paper on ink, ink on paper in dark),
+ * 13px, one line, for the sentence behind an icon-only control (the
+ * control still carries its aria-label; a tooltip is never the only
+ * name). The root route mounts one `TooltipProvider` for the whole app,
+ * so a page uses `Tooltip` directly.
  */
 "use client";
 
@@ -26,7 +27,7 @@ const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-popover max-w-xs overflow-hidden rounded-sm bg-ink px-2.5 py-1.5 text-meta text-background shadow-float duration-fast ease-out-soft animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 origin-(--radix-tooltip-content-transform-origin)",
+        "z-popover max-w-xs overflow-hidden rounded-sm bg-inverse px-2.5 py-1.5 text-meta text-inverse-foreground shadow-float duration-fast ease-out-soft animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 origin-(--radix-tooltip-content-transform-origin)",
         className,
       )}
       {...props}

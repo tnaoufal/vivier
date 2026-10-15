@@ -1,12 +1,16 @@
-/** The status of a brief as a pill with a leading dot: draft, open, closed. */
+/**
+ * The status of a brief as a pill: open is an ink outline with a dot,
+ * closed a grey outline, draft a grey fill. The shape tells them apart;
+ * the word says it.
+ */
 import { Pill, type PillTone } from "@/components/app-shell/pill";
 import type { BriefStatus } from "@/lib/db/types";
 import { useT } from "@/lib/i18n";
 
 const TONES: Record<BriefStatus, PillTone> = {
   draft: "neutral",
-  open: "positive",
-  closed: "caution",
+  open: "caution",
+  closed: "negative",
 };
 
 export function BriefStatusPill({
@@ -18,7 +22,7 @@ export function BriefStatusPill({
 }) {
   const t = useT();
   return (
-    <Pill tone={TONES[status]} dot size={size}>
+    <Pill tone={TONES[status]} dot={status === "open"} size={size}>
       {t(`briefs.status.${status}`)}
     </Pill>
   );

@@ -1,10 +1,12 @@
 /**
- * The fit score 0..100 as a ring with the number inside: green from 80,
- * amber from 60, red below, and a dash when there is no score (no model
- * assessed the profile). Sizes: sm (40px) in a dense row, md (56px) in a
+ * The fit score 0..100 as a ring with the number inside: an ink arc on a
+ * grey 200 track, the number in the ink, and a dash when there is no
+ * score (no model assessed the profile). The figure is the signal; no
+ * colour grades it. Sizes: sm (40px) in a dense row, md (56px) in a
  * list, lg (72px) on a dossier. The arc draws itself once on mount (the
  * public dossier passes `static` so print sees it at rest). The label is
- * read by screen readers and shown on hover.
+ * read by screen readers and shown on hover. `ringTone` names the band
+ * of a score for the words a page may say about it, never for a colour.
  */
 import { useEffect, useState } from "react";
 
@@ -19,17 +21,12 @@ const SIZES = {
   lg: "size-18 text-base",
 } as const;
 
+/** The band of a score: strong from 80, middling from 60, weak below. For words, not colours. */
 export function ringTone(score: number): "positive" | "caution" | "negative" {
   if (score >= 80) return "positive";
   if (score >= 60) return "caution";
   return "negative";
 }
-
-const STROKES = {
-  positive: "stroke-positive",
-  caution: "stroke-caution",
-  negative: "stroke-negative",
-} as const;
 
 export function ScoreRing({
   score,
@@ -48,7 +45,6 @@ export function ScoreRing({
   className?: string;
 }) {
   const clamped = score === null ? 0 : Math.max(0, Math.min(100, Math.round(score)));
-  const tone = score === null ? null : ringTone(clamped);
   // The arc starts empty and eases to its value after the first paint, once.
   const [drawn, setDrawn] = useState(drawnAtRest);
   useEffect(() => {
@@ -64,8 +60,8 @@ export function ScoreRing({
       title={label}
     >
       <svg viewBox="0 0 48 48" className="size-full -rotate-90">
-        <circle cx="24" cy="24" r={RADIUS} fill="none" strokeWidth="4" className="stroke-muted" />
-        {tone ? (
+        <circle cx="24" cy="24" r={RADIUS} fill="none" strokeWidth="4" className="stroke-track" />
+        {score !== null ? (
           <circle
             cx="24"
             cy="24"
@@ -74,10 +70,7 @@ export function ScoreRing({
             strokeWidth="4"
             strokeLinecap="round"
             strokeDasharray={`${length} ${LENGTH}`}
-            className={cn(
-              "transition-[stroke-dasharray] duration-slower ease-out-soft",
-              STROKES[tone],
-            )}
+            className="stroke-ink transition-[stroke-dasharray] duration-slower ease-out-soft"
           />
         ) : null}
       </svg>

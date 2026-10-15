@@ -1,8 +1,8 @@
 /**
- * The frame of every signed-in page: a 264px sidebar with the brand, the
- * organisation switcher (name and plan), the five sections with an
- * active mark that slides to the current one, and, at the bottom, the
- * person (avatar, name, role) with their menu. On phones a top bar with
+ * The frame of every signed-in page: a 264px grey 50 sidebar with the
+ * brand, the organisation switcher (name and plan), the five sections
+ * with an ink mark (paper text) that slides to the current one, and, at
+ * the bottom, the person (avatar, name, role) with their menu. On phones a top bar with
  * the brand opens the same sidebar as a full-screen sheet, closed on
  * navigation. Content renders in the outlet, centred, at most 72rem
  * wide, and each page change fades and rises in (`PageTransition`).
@@ -67,9 +67,10 @@ function isActive(item: NavItem, pathname: string): boolean {
 }
 
 /**
- * The five sections. The active mark is one pill behind the links that
- * slides to the current one: its top offset is measured from the active
- * link and moved with a transition, so it travels instead of jumping.
+ * The five sections. The active mark is one ink pill behind the links
+ * that slides to the current one: its top offset is measured from the
+ * active link and moved with a transition, so it travels instead of
+ * jumping. The current link reads in paper over it.
  */
 function NavLinks({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
   const { t } = useI18n();
@@ -97,7 +98,7 @@ function NavLinks({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
       {mark ? (
         <span
           aria-hidden="true"
-          className="absolute inset-x-0 rounded-md bg-primary/10 transition-[transform,height] duration-base ease-out-soft"
+          className="absolute inset-x-0 rounded-md bg-ink transition-[transform,height] duration-base ease-out-soft"
           style={{ transform: `translateY(${mark.top}px)`, height: mark.height }}
         />
       ) : null}
@@ -111,10 +112,10 @@ function NavLinks({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
             className={cn(
               "press relative z-10 flex h-10 items-center gap-3 rounded-md px-3 text-body font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-5 [&_svg]:shrink-0",
               active
-                ? "text-primary"
+                ? "text-background"
                 : "text-ink-soft hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
               // Without a measured mark (first paint), the active link still reads as active.
-              active && !mark && "bg-primary/10",
+              active && !mark && "bg-ink",
             )}
             aria-current={active ? "page" : undefined}
           >
@@ -142,7 +143,7 @@ function OrgSwitcher() {
         >
           {/* The accessible name keeps the organisation and its plan: "Switch organisation · Acme · Pro". */}
           <span className="sr-only">{t("nav.switchOrg")} · </span>
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 font-display text-base text-primary">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted font-display text-base text-ink">
             {org.name.slice(0, 1).toUpperCase()}
           </span>
           <span className="min-w-0 flex-1">

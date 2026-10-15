@@ -1,7 +1,9 @@
 /**
  * The button of the product: a pill, 40px high by default (`sm` 32 for a
- * dense desktop row, `lg` 44 for a hero), one filled primary per view and
- * the rest secondary, outline or ghost. `asChild` lets a Link take the
+ * dense desktop row, `lg` 44 for a hero), one ink-filled primary per view
+ * and the rest secondary (grey 100), outline (1px ink) or ghost; erase is
+ * the same ink fill with its icon, the words carry the consequence. Focus
+ * is a 2px ink ring 2px off the control. `asChild` lets a Link take the
  * look. The `icon` prop is the one leading icon slot: it renders exactly
  * one 16px icon; a literal `<svg>` child is dropped and any svg a child
  * component renders (a lucide icon) is hidden by the label slot's rule,
@@ -19,15 +21,14 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground shadow-raised hover:bg-primary/92",
-        primary: "bg-primary text-primary-foreground shadow-raised hover:bg-primary/92",
-        destructive:
-          "bg-destructive text-destructive-foreground shadow-raised hover:bg-destructive/92",
-        outline:
-          "border border-input bg-card text-ink shadow-hairline hover:bg-accent hover:text-accent-foreground",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-accent",
-        ghost: "text-ink hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        primary: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline: "border border-ink bg-transparent text-ink hover:bg-accent",
+        // Grey 100 at rest, grey 200 under the pointer (the ink at 10 percent over the paper).
+        secondary: "bg-secondary text-secondary-foreground hover:bg-ink/10",
+        ghost: "text-ink hover:bg-accent",
+        link: "text-ink underline underline-offset-4 hover:decoration-2",
       },
       size: {
         default: "h-10 px-5",

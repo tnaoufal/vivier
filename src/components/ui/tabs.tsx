@@ -1,9 +1,10 @@
 /**
  * Two ways to switch between views of the same thing.
  *
- * `Tabs` (Radix): a 40px muted track with pill triggers, the active one
- * lifted on the card colour, with panels (`TabsContent`). For the filters
- * of a list (active / archived, a brief's status).
+ * `Tabs` (Radix): a 40px grey 100 track with pill triggers, the active
+ * one a paper thumb with a 1px edge and ink text, with panels
+ * (`TabsContent`). For the filters of a list (active / archived, a
+ * brief's status).
  *
  * `Segmented`: the same track as a plain controlled control without
  * panels, for a value a page reads (a sort, a view, a period). Its thumb
@@ -40,7 +41,7 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "press inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-medium hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed data-[state=active]:bg-card data-[state=active]:text-ink data-[state=active]:shadow-hairline [&_svg]:size-4 [&_svg]:shrink-0",
+      "press inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-medium hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed data-[state=active]:bg-card data-[state=active]:text-ink data-[state=active]:ring-1 data-[state=active]:ring-border [&_svg]:size-4 [&_svg]:shrink-0",
       className,
     )}
     {...props}
@@ -154,7 +155,7 @@ function Segmented<V extends string>({
       {thumb ? (
         <span
           aria-hidden="true"
-          className="absolute top-1 bottom-1 left-0 rounded-full bg-card shadow-hairline transition-[transform,width] duration-base ease-out-soft"
+          className="absolute top-1 bottom-1 left-0 rounded-full bg-card ring-1 ring-border transition-[transform,width] duration-base ease-out-soft"
           style={{ transform: `translateX(${thumb.left}px)`, width: thumb.width }}
         />
       ) : null}
@@ -176,7 +177,7 @@ function Segmented<V extends string>({
               size === "sm" ? "h-7 px-3 text-meta" : "h-8 px-4 text-sm",
               checked ? "text-ink" : "text-muted-foreground",
               // Without a measured thumb (first paint, a test), the chosen option still reads as chosen.
-              checked && !thumb && "bg-card shadow-hairline",
+              checked && !thumb && "bg-card ring-1 ring-border",
             )}
           >
             {option.icon ? (

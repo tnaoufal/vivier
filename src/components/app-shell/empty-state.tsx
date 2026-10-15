@@ -1,6 +1,6 @@
 /**
- * What a list shows when it has nothing: an icon in a tinted disc, one
- * sentence, the one action that fills it. `compact` is the version
+ * What a list shows when it has nothing: an icon in a grey 100 disc, a
+ * title of a few words, the one action that fills it. `compact` is the version
  * inside a card or a drawer (less air, a smaller disc, and the title a
  * paragraph: the card's or the drawer's own title is the heading).
  * `inset` is for a place that already draws the card (a `sheet p-6`):
@@ -41,7 +41,7 @@ export function EmptyState({
       {icon ? (
         <div
           className={cn(
-            "mb-5 flex items-center justify-center rounded-full bg-primary/10 text-primary",
+            "mb-5 flex items-center justify-center rounded-full bg-muted text-ink",
             compact ? "size-11 [&_svg]:size-5" : "size-14 [&_svg]:size-6",
           )}
         >

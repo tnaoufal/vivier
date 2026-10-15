@@ -1,8 +1,9 @@
 /**
- * The select: a trigger shaped like an Input with ONE chevron (the
- * trigger draws it; a caller never adds another), a floating list with
- * a check mark on the chosen item. The list opens with the same float
- * surface and motion as every popover.
+ * The select: a trigger shaped like an Input (a 1px grey 300 border, a
+ * 2px ink edge on focus) with ONE chevron (the trigger draws it; a caller
+ * never adds another), a floating list with an ink check mark on the
+ * chosen item. The list opens with the same float surface and motion as
+ * every popover.
  */
 "use client";
 
@@ -25,7 +26,7 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "group flex h-10 w-full min-w-0 cursor-pointer items-center justify-between gap-2 whitespace-nowrap rounded-full border border-input bg-card px-4 text-sm text-ink shadow-hairline transition-[border-color,box-shadow] duration-fast ease-out-soft data-[placeholder]:text-muted-foreground hover:border-ink/25 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60 [&>span]:line-clamp-1 [&>span]:min-w-0 [&>span_svg.lucide-chevron-down]:hidden",
+      "group flex h-10 w-full min-w-0 cursor-pointer items-center justify-between gap-2 whitespace-nowrap rounded-full border border-input bg-card px-4 text-sm text-ink transition-[border-color,box-shadow] duration-fast ease-out-soft data-[placeholder]:text-muted-foreground hover:border-neutral focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink disabled:cursor-not-allowed disabled:opacity-60 [&>span]:line-clamp-1 [&>span]:min-w-0 [&>span_svg.lucide-chevron-down]:hidden",
       className,
     )}
     {...props}
@@ -127,7 +128,7 @@ const SelectItem = React.forwardRef<
     )}
     {...props}
   >
-    <span className="absolute right-2.5 flex size-4 items-center justify-center text-primary">
+    <span className="absolute right-2.5 flex size-4 items-center justify-center text-ink">
       <SelectPrimitive.ItemIndicator>
         <Check className="size-4" aria-hidden="true" />
       </SelectPrimitive.ItemIndicator>

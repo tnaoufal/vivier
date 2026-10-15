@@ -1,12 +1,14 @@
 /**
- * A person: a disc of initials, or their photo when the organisation
- * shows photos and one was read from the CV (`photoUrl`, a signed URL).
- * The initials stay under the photo until it has loaded, then the photo
- * fades in; a photo that fails leaves the initials. The photo identifies
- * a person in the interface only: it never reaches a model. `profile`
- * is the square-rounded variant of a candidate sheet. On its own the
- * avatar is an image named after the person; next to the visible name it
- * is `decorative`, so a screen reader does not read the name twice.
+ * A person: a grey 100 disc of initials in the ink, or their photo when
+ * the organisation shows photos and one was read from the CV
+ * (`photoUrl`, a signed URL). Every photo is shown in greyscale (the
+ * `photo` utility): identification stays, colour goes. The initials stay
+ * under the photo until it has loaded, then the photo fades in; a photo
+ * that fails leaves the initials. The photo identifies a person in the
+ * interface only: it never reaches a model. `profile` is the
+ * square-rounded variant of a candidate sheet. On its own the avatar is
+ * an image named after the person; next to the visible name it is
+ * `decorative`, so a screen reader does not read the name twice.
  */
 import { useState } from "react";
 
@@ -41,7 +43,7 @@ function Photo({ url, onFailed }: { url: string; onFailed: () => void }) {
       onLoad={() => setLoadedUrl(url)}
       onError={onFailed}
       className={cn(
-        "absolute inset-0 size-full object-cover transition-opacity duration-slow ease-out-soft",
+        "photo absolute inset-0 size-full object-cover transition-opacity duration-slow ease-out-soft",
         loaded ? "opacity-100" : "opacity-0",
       )}
     />
@@ -71,7 +73,7 @@ export function Avatar({
   return (
     <span
       className={cn(
-        "relative inline-flex shrink-0 select-none items-center justify-center overflow-hidden bg-primary/12 font-semibold text-primary",
+        "relative inline-flex shrink-0 select-none items-center justify-center overflow-hidden bg-muted font-semibold text-ink",
         variant === "profile" ? PROFILE_RADII[size] : "rounded-full",
         SIZES[size],
         className,
