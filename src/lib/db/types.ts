@@ -353,6 +353,13 @@ export interface RoleProfile {
   /** Which model wrote it, and when; edits by the team keep these. */
   model: string | null;
   createdAt: string;
+  /**
+   * fnv1a32 of the brief's title and description the profile was read
+   * from (briefSourceHash, src/lib/briefs/role-profile.ts): a search
+   * reads the brief again only when its text changed. Absent on a
+   * profile written before the hash existed, which is read again once.
+   */
+  sourceHash?: string;
 }
 
 /** A candidate near another one (similar_candidates). */
@@ -360,6 +367,8 @@ export interface SimilarCandidate {
   candidate_id: string;
   similarity: number;
   method: "embedding" | "skills";
+  /** The neighbour's years of experience as the function read them; null when the profile states none, or when an older version of the function answered. */
+  years_experience: number | null;
 }
 
 export interface MatchResult {

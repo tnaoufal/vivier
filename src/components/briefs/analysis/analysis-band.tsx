@@ -10,9 +10,7 @@
  * gained since are counted, with the way to analyse them.
  * Running, the live figure comes first with the way to stop (a heading
  * from the first moment, while the search is prepared), then the bar of
- * the current step with how far it is and the time left when known.
- * Waiting for the team's check, one line and the way to the role (the
- * header's "Lancer la recherche" then starts the analysis). An
+ * the current step with how far it is and the time left when known. An
  * interrupted analysis says how many profiles are left, with "Reprendre",
  * or that another session drives it; one stored before the whole pool
  * was read says how many it read in full, the reason behind an info
@@ -61,7 +59,7 @@ export function AnalysisBand({
   analysis: AnalysisController;
   canEdit: boolean;
   modelAvailable: boolean | null;
-  /** Shows the "Le poste" tab, where the team checks what the model wrote. */
+  /** Shows the "Le poste" tab: the way back to the job when nothing matches. */
   onCheckRole: () => void;
   /** Opens the list of the profiles set aside, the figure's count as its title. */
   onShowSetAside: () => void;
@@ -223,27 +221,6 @@ export function AnalysisBand({
       );
     }
     return <EmptyState compact icon={<Sparkles />} title={t("briefs.analysis.empty")} />;
-  }
-
-  // One way forward: the role, checked on its tab. The header's "Lancer
-  // la recherche" then starts this search, or a new one on what the team changed.
-  if (band === "needsCheck") {
-    return shell(
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 id={headingId} className="min-w-0 text-body text-ink">
-          {t("briefs.analysis.check")}
-        </h2>
-        <Button
-          type="button"
-          variant="outline"
-          icon={<Briefcase />}
-          onClick={onCheckRole}
-          className="shrink-0 self-start sm:self-auto"
-        >
-          {t("briefs.analysis.check.open")}
-        </Button>
-      </div>,
-    );
   }
 
   const date = formatDateTime(locale, view.createdAt);

@@ -1,13 +1,16 @@
 /**
- * The profiles near one candidate, as the database ranks them
- * (similar_candidates): by the meaning of the career when both profiles
- * carry a vector, else by the words of the headline and the skills. The
- * RPC answers ids with a similarity and the method that produced it;
- * this module guards those rows (a shape it promises is still checked
- * at the boundary), reads the profiles the person may see under RLS,
- * and hands them back in the database's order. A proximity is a reading
- * aid for a person who compares, never a verdict. The pure helpers are
- * tested in similar.test.ts.
+ * The profiles near one candidate, seniority first. The database
+ * (similar_candidates) answers the nearest by the meaning of the career
+ * when both profiles carry a vector, else by the words of the headline
+ * and the skills: ids with a similarity, the method that produced it
+ * and the neighbour's years. This module guards those rows (a shape it
+ * promises is still checked at the boundary), reads the profiles the
+ * person may see under RLS, and orders them the way the function does
+ * (orderSimilar: the distance between seniority bands first, the
+ * similarity next), so the list reads the same whatever version of the
+ * function the database runs. A proximity is a reading aid for a person
+ * who compares, never a verdict. The pure helpers are tested in
+ * similar.test.ts.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -17,11 +20,19 @@ import type { CandidateRow, SimilarCandidate } from "@/lib/db/types";
 export const SIMILAR_LIMIT = 10;
 
 /** What a neighbour's row shows (the photo signed in the browser); the embedding and the contact details never travel. */
-export const SIMILAR_COLUMNS = "id, full_name, headline, location, skills, status, photo_path";
+export const SIMILAR_COLUMNS =
+  "id, full_name, headline, location, skills, status, photo_path, years_experience";
 
 export type SimilarProfileRow = Pick<
   CandidateRow,
-  "id" | "full_name" | "headline" | "location" | "skills" | "status" | "photo_path"
+  | "id"
+  | "full_name"
+  | "headline"
+  | "location"
+  | "skills"
+  | "status"
+  | "photo_path"
+  | "years_experience"
 >;
 
 export type SimilarMethod = SimilarCandidate["method"];
@@ -48,12 +59,19 @@ export function guardSimilarRow(value: unknown): SimilarCandidate | null {
   const id = row["candidate_id"];
   const similarity = row["similarity"];
   const method = row["method"];
+  const years = row["years_experience"];
   if (typeof id !== "string" || !UUID.test(id)) return null;
   if (typeof similarity !== "number" || !Number.isFinite(similarity)) return null;
   if (!isSimilarMethod(method)) return null;
-  // Cosine distance runs 0..2, so an unrelated profile reads below 0 and rounding
-  // can read a twin above 1: clamped to 0..1 rather than dropped from the list.
-  return { candidate_id: id, similarity: Math.min(1, Math.max(0, similarity)), method };
+  return {
+    candidate_id: id,
+    // Cosine distance runs 0..2, so an unrelated profile reads below 0 and rounding
+    // can read a twin above 1: clamped to 0..1 rather than dropped from the list.
+    similarity: Math.min(1, Math.max(0, similarity)),
+    method,
+    // The years come with the function's second version; an older one answers none, and the profile read next states them anyway.
+    years_experience: typeof years === "number" && Number.isFinite(years) ? years : null,
+  };
 }
 
 /** The rows the guard accepts, in the RPC's order, each candidate once; [] for anything but an array. */
@@ -87,6 +105,50 @@ export function percentOf(similarity: number): number {
   return Math.round(Math.min(1, Math.max(0, similarity)) * 100);
 }
 
+/**
+ * The seniority band of a number of years, 0 to 4 (0-2, 3-5, 6-9,
+ * 10-14, 15 and more), null when the years are not stated. The same
+ * bands as the database's seniority_band().
+ */
+export function seniorityBand(years: number | null | undefined): number | null {
+  if (typeof years !== "number" || !Number.isFinite(years)) return null;
+  if (years < 3) return 0;
+  if (years < 6) return 1;
+  if (years < 10) return 2;
+  if (years < 15) return 3;
+  return 4;
+}
+
+/**
+ * The rows in the order the drawer shows them, the same as the
+ * database's (similar_candidates v2): the distance between the row's
+ * seniority band and the reference's first (a band unknown on either
+ * side last), then the similarity, highest first; two rows alike keep
+ * their order. Applied to what the database answered, so the list reads
+ * the same whatever version of the function it runs.
+ */
+export function orderSimilar<T extends { years_experience: number | null; similarity: number }>(
+  reference: { years_experience: number | null },
+  rows: readonly T[],
+): T[] {
+  const band = seniorityBand(reference.years_experience);
+  const distanceOf = (row: T): number | null => {
+    const own = seniorityBand(row.years_experience);
+    return band === null || own === null ? null : Math.abs(own - band);
+  };
+  return rows
+    .map((row, index) => ({ row, index, distance: distanceOf(row) }))
+    .sort((a, b) => {
+      if (a.distance !== b.distance) {
+        if (a.distance === null) return 1;
+        if (b.distance === null) return -1;
+        return a.distance - b.distance;
+      }
+      return b.row.similarity - a.row.similarity || a.index - b.index;
+    })
+    .map((entry) => entry.row);
+}
+
 /** The neighbours the person may read, in the RPC's order, each with its similarity and method. */
 export function mergeSimilar(
   neighbours: readonly SimilarCandidate[],
@@ -106,10 +168,11 @@ export function mergeSimilar(
 }
 
 /**
- * The profiles closest to a candidate in the organisation, nearest
- * first. The RPC runs under the caller's RLS and the second read filters
- * by the organisation again, so a neighbour the person may not see is
- * simply absent.
+ * The profiles closest to a candidate in the organisation, the closest
+ * seniority first. The RPC runs under the caller's RLS and the second
+ * read filters by the organisation again, so a neighbour the person may
+ * not see is simply absent; the candidate itself is read with them, so
+ * its years give the band the order starts from.
  */
 export async function listSimilar(
   supabase: SupabaseClient,
@@ -129,10 +192,9 @@ export async function listSimilar(
     .from("candidates")
     .select(SIMILAR_COLUMNS)
     .eq("org_id", orgId)
-    .in(
-      "id",
-      neighbours.map((neighbour) => neighbour.candidate_id),
-    );
+    .in("id", [candidateId, ...neighbours.map((neighbour) => neighbour.candidate_id)]);
   if (read.error) throw read.error;
-  return mergeSimilar(neighbours, (read.data ?? []) as unknown as SimilarProfileRow[]);
+  const rows = (read.data ?? []) as unknown as SimilarProfileRow[];
+  const reference = rows.find((row) => row.id === candidateId) ?? { years_experience: null };
+  return orderSimilar(reference, mergeSimilar(neighbours, rows));
 }

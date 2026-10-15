@@ -2,30 +2,28 @@
  * The controller of a brief's analysis, used by the brief page: the
  * list of its analyses (summaries only), the one on screen with its
  * results and, for a whole-pool search, where its triage stands; the
- * search itself ("Lancer la recherche"), then the loop the browser
- * drives on it, stage after stage (the triage of every profile of the
- * pool, TRIAGE_CONCURRENCY batches at once; the promotion of the ones
- * kept; the full reading, READ_CONCURRENCY batches at once; the second
- * opinion; the tiering, then the final comparison), merging each answer
- * into the view as it lands; the way to stop it, to resume it from what
- * is stored, and to open an earlier analysis; the candidates the rows
- * show; the brief's shortlist. Once the team checked what the model
- * wrote, "Lancer la recherche" starts the search on screen when the job
- * is unchanged, or runs a new one on what they saved. A batch that fails
- * is sent once more at the end of its stage; an error that no retry
- * fixes (rights, setup, the session) stops the loop and says why; a rate
- * limit waits, longer each time, before the call counts as failed. A
- * candidate gone from the pool since the search is settled: never sent
- * again, never keeping an analysis from being complete, never listed. An
- * analysis another tab or a colleague is driving (its triage moves, its
- * row changes) is followed, not resumed a second time; a stopped loop
- * lands the calls it had in flight before "Reprendre" comes back. A
- * whole-pool search takes in the profiles the pool gained each time it
- * starts or resumes, and says how many the pool gained since it ended;
- * a profile its triage set aside can be brought back to be read in
- * full. The team's check of the model's draft survives a reload: an
- * untouched search the model's draft rests on opens at that check.
- * Leaving the page stops the loop; nothing stored is lost.
+ * search itself ("Lancer la recherche": the server reads the brief once
+ * when it was never read or its text changed, and nothing waits for a
+ * check), then, at once, the loop the browser drives on it, stage after
+ * stage (the triage of every profile of the pool, TRIAGE_CONCURRENCY
+ * batches at once; the promotion of the ones kept; the full reading,
+ * READ_CONCURRENCY batches at once; the second opinion; the tiering,
+ * then the final comparison), merging each answer into the view as it
+ * lands; the way to stop it, to resume it from what is stored, and to
+ * open an earlier analysis; the candidates the rows show; the brief's
+ * shortlist. A batch that fails is sent once more at the end of its
+ * stage; an error that no retry fixes (rights, setup, the session)
+ * stops the loop and says why; a rate limit waits, longer each time,
+ * before the call counts as failed. A candidate gone from the pool
+ * since the search is settled: never sent again, never keeping an
+ * analysis from being complete, never listed. An analysis another tab
+ * or a colleague is driving (its triage moves, its row changes) is
+ * followed, not resumed a second time; a stopped loop lands the calls
+ * it had in flight before "Reprendre" comes back. A whole-pool search
+ * takes in the profiles the pool gained each time it starts or resumes,
+ * and says how many the pool gained since it ended; a profile its
+ * triage set aside can be brought back to be read in full. Leaving the
+ * page stops the loop; nothing stored is lost.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -47,7 +45,6 @@ import { rankResults } from "@/lib/briefs/matching";
 import {
   bandStateOf,
   funnelOf,
-  jobChangedSince,
   matchesOf,
   mergeResults,
   nearOf,
@@ -141,8 +138,6 @@ const TRIAGE_POLL_MS = 15_000;
 const ELSEWHERE_QUIET_MS = 90_000;
 /** How long the writes of a loop of this page may still echo back (realtime, the last reads) once it ended. */
 const OWN_ECHO_MS = 5_000;
-/** How long after a search was stored the brief may still have been written by it (the model's draft is saved just before). */
-const DRAFT_SAVED_MS = 5_000;
 
 /** Waits `ms`, or less once `stop` says the loop ended (checked every second). */
 async function pause(ms: number, stop: () => boolean = () => false): Promise<void> {
@@ -198,7 +193,7 @@ export interface AnalysisController {
   canResume: boolean;
   /** True when the profiles the pool gained can be analysed now (resume() takes them in). */
   canAnalyseNew: boolean;
-  /** A new search, or the start of the one on screen once the team checked the job and changed nothing. */
+  /** A new search: the server reads the brief once when it has to, then the stages start at once. */
   run: () => Promise<void>;
   /** Sends what the analysis on screen still lacks. */
   resume: () => void;
@@ -231,9 +226,6 @@ export function useAnalysis({
   const briefId = brief.id;
 
   const [view, setView] = useState<AnalysisView | null>(null);
-  // The brief as load() reads it, without making load() change with every edit of the brief.
-  const briefRef = useRef(brief);
-  briefRef.current = brief;
   const [opening, setOpening] = useState<string | null>(null);
   const [openFailed, setOpenFailed] = useState<string | null>(null);
   const [autoOpened, setAutoOpened] = useState(false);
@@ -242,8 +234,6 @@ export function useAnalysis({
   const startingRef = useRef(starting);
   startingRef.current = starting;
   const [progress, setProgress] = useState<RunProgress | null>(null);
-  // The search whose understanding of the job the model wrote and the team has not checked yet.
-  const [checkFor, setCheckFor] = useState<string | null>(null);
   const [triage, setTriage] = useState<{ searchId: string; state: TriageState } | null>(null);
   const triageRef = useRef(triage);
   triageRef.current = triage;
@@ -401,7 +391,8 @@ export function useAnalysis({
     model: modelAvailable,
     method: view?.method ?? null,
     running,
-    needsCheck: view !== null && checkFor === view.id,
+    // Nothing waits for a check: the brief is read in one click (the input stays until presentation.ts drops it).
+    needsCheck: false,
     criteriaCount: view?.criteria.length ?? 0,
     resultCount: results.length,
     poolSize: view?.poolSize ?? null,
@@ -428,8 +419,6 @@ export function useAnalysis({
       if (!quiet) {
         setOpening(searchId);
         setOpenFailed(null);
-        // Another analysis opened: the check waiting on the previous one no longer applies.
-        setCheckFor((pending) => (pending === searchId ? pending : null));
       }
       try {
         const supabase = await requireSupabase();
@@ -447,21 +436,6 @@ export function useAnalysis({
           poolSize: typeof row.pool_size === "number" ? row.pool_size : null,
         });
         setTriage(state ? { searchId: row.id, state } : null);
-        // A whole-pool search nothing was read of, resting on the model's
-        // draft of the role that nobody touched since it ran (a reload
-        // forgets the check in memory): it opens at the check again,
-        // never resumed on an unchecked job.
-        const saved = briefRef.current;
-        if (
-          !quiet &&
-          row.method === "triage" &&
-          row.results.length === 0 &&
-          state !== null &&
-          state.read === 0 &&
-          saved.role_profile?.model &&
-          Date.parse(saved.updated_at) <= Date.parse(row.created_at) + DRAFT_SAVED_MS
-        )
-          setCheckFor(row.id);
       } catch (error) {
         console.error(error);
         if (!quiet && current()) {
@@ -627,7 +601,6 @@ export function useAnalysis({
       let fatal = false;
       const stopped = () => !live() || fatal;
       const now = Date.now();
-      setCheckFor(null);
       setProgress({
         step: start.method === "triage" ? "triage" : "read",
         done: 0,
@@ -891,20 +864,6 @@ export function useAnalysis({
 
   const run = useCallback(async () => {
     if (!canEdit || criteriaDirty || runningRef.current) return;
-    // The team checked what the model wrote for the search on screen:
-    // left as it was, that search starts; changed, a new search takes
-    // what they saved (a search reads the criteria it was run with).
-    const checked = viewRef.current;
-    if (
-      checked !== null &&
-      checkFor === checked.id &&
-      modelAvailable !== false &&
-      !jobChangedSince(brief, checked.criteria)
-    ) {
-      onStarted?.();
-      void analyse(checked);
-      return;
-    }
     // An analysis still being opened gives way to the new one, and the newest of the list no longer opens by itself.
     loadSeq.current += 1;
     setOpening(null);
@@ -947,11 +906,7 @@ export function useAnalysis({
       // Nothing a model can read: the ranking on the text is all there is.
       if (next.method !== "triage" && (modelAvailable === false || !next.criteria.length)) return;
       if (next.method !== "triage" && !next.results.length) return;
-      // The model wrote the job's understanding this search rests on: the team checks it before a profile is read.
-      if (answer.needsCheck) {
-        setCheckFor(next.id);
-        return;
-      }
+      // The stages start at once: the server read the brief when it had to, and nothing waits for a check.
       if (runToken.current !== token) return;
       void analyse(next);
     } catch (error) {
@@ -965,10 +920,8 @@ export function useAnalysis({
     }
   }, [
     analyse,
-    brief,
     briefId,
     canEdit,
-    checkFor,
     criteriaDirty,
     locale,
     modelAvailable,
@@ -984,21 +937,8 @@ export function useAnalysis({
       return;
     // Driven elsewhere, or a stopped loop of this page still landing its calls: resuming now would send its profiles a second time.
     if (elsewhere === current.id || draining > 0) return;
-    // Nothing of it was read and the team changed the job since it ran
-    // (the check of the model's draft, seen again after a reload): a new
-    // search takes what they saved.
-    const read = triageRef.current;
-    const untouched =
-      current.method === "triage" &&
-      current.results.length === 0 &&
-      read?.searchId === current.id &&
-      read.state.read === 0;
-    if (untouched && jobChangedSince(brief, current.criteria)) {
-      void run();
-      return;
-    }
     void analyse(current);
-  }, [analyse, brief, canEdit, criteriaDirty, draining, elsewhere, modelAvailable, run]);
+  }, [analyse, canEdit, criteriaDirty, draining, elsewhere, modelAvailable]);
 
   const add = useCallback(
     async (result: MatchResult) => {

@@ -1,20 +1,21 @@
 /**
  * The role profile: the understanding of the job a senior recruiter
  * writes down before reading a single CV (briefs.role_profile). The
- * model writes it once, from the brief, at the first analysis; the team
- * edits it in the browser; every screening reads it as context. This
- * module is the pure side: the prompt that asks for it (opening with
- * what the brief does not state, for the team to confirm before a CV is
- * read), the schema of the model's answer, the parser of a stored
- * column (a damaged or foreign value is null, never a crash), the
- * clean-up that clips every field to what a page can show, the guard
- * that drops any field naming a protected characteristic (the core
- * list, as a role's definition is read: the wider words name products,
- * policies and sectors), the test of whether the brief itself states a
- * maximum of years (the only case a ceiling the model wrote is kept: a
- * ceiling on experience is a proxy for age), the role criterion's
- * definition derived from it, and the empty profile the editor starts
- * from. No model, no data access; tested in role-profile.test.ts.
+ * model reads it off the brief, with the criteria, in one call
+ * (readBriefPrompt, prompts.ts) at the first analysis and again when
+ * the brief's text changed since (briefSourceHash, needsDerivation);
+ * every screening reads it as context. This module is the pure side:
+ * the schema of the model's answer, the parser of a stored column (a
+ * damaged or foreign value is null, never a crash), the clean-up that
+ * clips every field to what a page can show, the guard that drops any
+ * field naming a protected characteristic (the core list, as a role's
+ * definition is read: the wider words name products, policies and
+ * sectors), the test of whether the brief itself states a maximum of
+ * years (the only case a ceiling the model wrote is kept: a ceiling on
+ * experience is a proxy for age), the role criterion's definition
+ * derived from it, the job as the brief names it, the hash of the text
+ * a profile was read from, and the empty profile. No model, no data
+ * access; tested in role-profile.test.ts.
  */
 import { z } from "zod";
 
@@ -138,6 +139,7 @@ const storedRoleProfile = z.object({
   assumptions: answerList.optional(),
   model: z.string().max(200).nullable().optional(),
   createdAt: z.string().max(64).optional(),
+  sourceHash: z.string().max(64).optional(),
 });
 
 /** Every field of a profile, each optional: what cleanRoleProfile() reads, from the model, from the column or from the editor. */
@@ -158,6 +160,7 @@ export interface RoleProfileInput {
   assumptions?: string[] | undefined;
   model?: string | null | undefined;
   createdAt?: string | undefined;
+  sourceHash?: string | null | undefined;
 }
 
 function clipText(value: unknown, max: number): string {
@@ -199,7 +202,9 @@ function clipYears(value: unknown): number | null {
  * of 160 (the missions to 6, the assumptions to 4), a seniority the
  * schema knows (else "confirmed"), years as whole numbers in 0..60 with
  * the minimum first, a context of four nullable fields. `title`, `model`
- * and `createdAt` come from the caller when the input lacks them.
+ * and `createdAt` come from the caller when the input lacks them; the
+ * hash of the text the profile was read from stays only when the input
+ * holds one (an older profile has none, and is read again once).
  */
 export function cleanRoleProfile(
   input: RoleProfileInput,
@@ -240,6 +245,9 @@ export function cleanRoleProfile(
       typeof input.createdAt === "string" && input.createdAt.trim()
         ? input.createdAt.trim()
         : defaults.createdAt,
+    ...(typeof input.sourceHash === "string" && input.sourceHash.trim()
+      ? { sourceHash: input.sourceHash.trim().slice(0, 64) }
+      : {}),
   };
 }
 
@@ -365,31 +373,43 @@ export function roleDefinitionOf(profile: RoleProfile): string {
 }
 
 // ---------------------------------------------------------------------
-// the prompt
+// the brief the profile is read from
 // ---------------------------------------------------------------------
 
-export function roleProfileSystemPrompt(): string {
-  return [
-    "You are a senior recruitment consultant. Before reading a single CV, you write down your understanding of the job a brief is about, the way you would brief a junior recruiter on what to look for. The team edits what you write; nothing you answer is applied by itself.",
-    'Answer with JSON only: {"assumptions":["..."],"domain":"...","seniority":"junior|confirmed|senior|manager|executive","yearsMin":3,"yearsMax":null,"missions":["..."],"equivalentTitles":["..."],"adjacentProfiles":["..."],"context":{"sector":null,"product":null,"clients":null,"scope":null},"mustHaves":["..."],"niceToHaves":["..."],"successFactors":["..."],"questions":["..."]}.',
-    "Rules:",
-    `- assumptions: two to four sentences saying what the brief does not state and you had to assume (the exact métier when the title is ambiguous, the level, the scope), for the team to confirm or correct before any CV is read; [] when the brief is explicit. At most ${ROLE_ASSUMPTIONS_MAX} sentences.`,
-    `- domain: the domain of the job as it is in the market (sales, finance, engineering, care...), written from what this job is, not only from the brief's words; at most ${ROLE_PROFILE_TEXT_MAX} characters. Write "domain" or "métier", not "family" or "famille", for the job's domain.`,
-    '- seniority: the level the brief asks for: "junior" (first years), "confirmed" (autonomous in the role), "senior" (reference in the role, mentors), "manager" (leads people doing the job), "executive" (leads the function).',
-    "- yearsMin: the years of experience in the role the brief states, or the minimum the level implies; null when nothing says. yearsMax: ONLY when the brief itself states a maximum; never infer one from the level: a ceiling on experience is a proxy for age and is not yours to write.",
-    `- missions: the ${ROLE_MISSIONS_MIN} to ${ROLE_MISSIONS_MAX} core missions that define the job (for a business developer: prospecting new accounts, selling and negotiating, growing revenue from new clients), from your knowledge of the job: the brief rarely spells them out.`,
-    "- equivalentTitles: the usual titles under which other companies name the same job, in the brief's language and in English when the market uses it.",
-    '- adjacentProfiles: the neighbouring backgrounds that can succeed in the job, each with what it lacks in a few words (e.g. "account manager : keeps clients, does not win them").',
-    "- context: the sector, the product, the clients and the scope markers (team size, budget, deal size, territory) ONLY when the brief states them; null for each one the brief does not state. Never guess a context.",
-    "- mustHaves: the deal-breakers in words, as the brief states them (a language, a degree, a place, a tool, years in the role), nothing the brief does not say. niceToHaves: what the brief welcomes without requiring it.",
-    "- successFactors: what makes someone succeed in this job, as a senior recruiter would say it: the behaviours and the know-how that separate a good hire from a bad one.",
-    "- questions: three to five points to verify in an interview with every candidate for this job.",
-    `- Lists hold at most ${ROLE_PROFILE_LIST_MAX} items of at most ${ROLE_PROFILE_ITEM_MAX} characters, in the language of the brief, plain words, no markdown.`,
-    "- Never a protected characteristic: no age, date of birth, gender, origin, nationality, ethnicity, family situation, pregnancy, health, disability, religion, union membership, political opinion, sexual orientation, appearance, and none of the words that name one, in any field, even when the brief asks for it: leave it out.",
-  ].join("\n");
+/** The job as the brief names it: the title, else the first line of the text, else nothing (there is no job to name). */
+export function jobTitleOf(brief: Pick<BriefRow, "title" | "description">): string {
+  return brief.title.trim() || brief.description.trim().split("\n")[0]?.trim() || "";
 }
 
-export function roleProfileUserPrompt(brief: Pick<BriefRow, "title" | "description">): string {
-  const description = brief.description.trim().slice(0, ROLE_PROFILE_BRIEF_MAX);
-  return `Title: ${brief.title.trim()}\n\nBrief:\n${description || "(no description)"}`;
+/**
+ * FNV-1a, 32 bits, over the UTF-8 bytes of a text, as eight lowercase
+ * hexadecimal digits: small, the same in every runtime, and enough to
+ * tell whether a brief's text changed (a collision would only read a
+ * changed brief as unchanged, until its next edit).
+ */
+export function fnv1a32(text: string): string {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(text)) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/** The hash of the text (the title, a line break, the description) a profile and the criteria are read from. */
+export function briefSourceHash(brief: Pick<BriefRow, "title" | "description">): string {
+  return fnv1a32(`${brief.title}\n${brief.description}`);
+}
+
+/**
+ * True when a search must read the brief again before anything else:
+ * the brief has no profile, or the one it has was read from another
+ * text (or before the hash existed). Otherwise the stored profile and
+ * criteria stand, and no model call comes before the triage.
+ */
+export function needsDerivation(
+  brief: Pick<BriefRow, "title" | "description" | "role_profile">,
+): boolean {
+  const profile = brief.role_profile;
+  return !profile || profile.sourceHash !== briefSourceHash(brief);
 }
