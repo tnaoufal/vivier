@@ -2,9 +2,9 @@
  * Fastify app. Server-to-server only (the Worker calls it with the shared
  * secret): no CORS headers, every route but GET /health behind the bearer
  * secret, every answer JSON, every error a sentence without internals.
- * The runtime (what to do on /process and /maintenance) is injected so
- * the app builds without Supabase, as it does in CI's smoke test and in
- * the tests.
+ * The runtime (what to do on /process, /maintenance and
+ * /analyses/:searchId) is injected so the app builds without Supabase,
+ * as it does in CI's smoke test and in the tests.
  */
 import Fastify, { type FastifyInstance } from "fastify";
 
@@ -15,6 +15,12 @@ import type { MaintenanceReport } from "./maintenance.js";
 import { readMetrics } from "./metrics.js";
 import { bearerTokenOf, secretsMatch } from "./secret.js";
 
+/** The analysis runner as the routes see it: a poke claims the queued searches now, `running` counts the runs in flight. */
+export interface AnalysisHooks {
+  poke: (searchId: string) => void;
+  running: () => number;
+}
+
 export interface AppRuntime {
   /** True when the poller runs (Supabase configured and POLL_INTERVAL_MS > 0). */
   polling: boolean;
@@ -23,6 +29,8 @@ export interface AppRuntime {
   schedule: ((ids: string[]) => number) | null;
   /** Runs (or joins) a maintenance pass; null when Supabase is not configured. */
   maintenance: (() => Promise<MaintenanceReport>) | null;
+  /** The analysis runner; null or absent when Supabase is not configured. */
+  analysis?: AnalysisHooks | null;
 }
 
 export const PROCESS_MAX_IDS = 50;
@@ -51,7 +59,10 @@ export function idleRuntime(): AppRuntime {
   return { polling: false, inFlight: () => 0, schedule: null, maintenance: null };
 }
 
-export function buildApp(config: ProcessorConfig, runtime: AppRuntime = idleRuntime()): FastifyInstance {
+export function buildApp(
+  config: ProcessorConfig,
+  runtime: AppRuntime = idleRuntime(),
+): FastifyInstance {
   const app = Fastify({
     logger: false,
     bodyLimit: BODY_LIMIT_BYTES,
@@ -97,13 +108,34 @@ export function buildApp(config: ProcessorConfig, runtime: AppRuntime = idleRunt
     return reply.send({
       ...readMetrics(),
       inFlight: runtime.inFlight(),
+      analysesRunning: runtime.analysis ? runtime.analysis.running() : 0,
       setup: {
         ...setup(),
         concurrency: config.concurrency,
         pollIntervalMs: config.pollIntervalMs,
         maintenanceIntervalMs: config.maintenanceIntervalMs,
+        analysisConcurrency: config.analysisConcurrency,
+        analysisMaxRuns: config.analysisMaxRuns,
+        analysisPollIntervalMs: config.analysisPollIntervalMs,
       },
     });
+  });
+
+  // The web app queued the searches row; the poke makes the runner claim
+  // it now instead of at its next scan. Nothing is awaited: the run can
+  // take minutes, and a lost poke costs one scan interval at most.
+  app.post("/analyses/:searchId", async (request, reply) => {
+    const analysis = runtime.analysis;
+    if (!analysis) {
+      return reply.code(503).send({ error: "Supabase is not configured on this service." });
+    }
+    const params = request.params as { searchId?: unknown } | null | undefined;
+    const searchId = params?.searchId;
+    if (typeof searchId !== "string" || !UUID_RE.test(searchId)) {
+      return reply.code(400).send({ error: "The path must name a search id." });
+    }
+    analysis.poke(searchId.toLowerCase());
+    return reply.code(202).send({ queued: true });
   });
 
   app.post("/process", async (request, reply) => {

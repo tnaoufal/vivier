@@ -4,7 +4,8 @@ The processor turns the CVs HR teams upload into structured candidates. The web 
 a PDF in the private `cvs` bucket (`<org_id>/<document_id>.pdf`) and inserts a row in
 `public.documents` with `status = 'queued'`; this service, on Railway with the Supabase
 service role key, takes each queued document, reads it, structures it and writes a
-`public.candidates` row. It also runs the retention purge.
+`public.candidates` row. It also runs the analysis of a brief against the whole pool as
+a job (see "The analysis as a job") and the retention purge.
 
 It is a plain Node 22 + Fastify 5 service in TypeScript (`src/`), with no state of its
 own: everything lives in Supabase; the counters on `/metrics` are in memory since the
@@ -118,7 +119,9 @@ process started.
    organisation that practises anonymous CVs turns its display off
    (`organizations.show_photos`). A failure to read, encode or upload it is logged
    (`photo_read_failed`, `photo_write_failed`) and the document is processed all the
-   same; `candidate_written` says whether a photo was written.
+   same; `candidate_written` says whether a photo was written. A candidate read before
+   the photo existed gets theirs from the maintenance pass ("Photos" below), which
+   reads page 1 of their newest CV the same way.
 
 Any other error leaves the document `failed` with one sentence for the person ("Le
 fichier n'a pas pu être lu.", "Le modèle n'a pas répondu." or "Le traitement a
@@ -152,9 +155,13 @@ the next poll, unless it has already been claimed three times: it is then left `
 | `MISTRAL_OCR_MODEL` | no | `mistral-ocr-latest` | OCR model. |
 | `PORT` | no | `8080` | |
 | `POLL_INTERVAL_MS` | no | `20000` | How often the queue is read. `0` disables polling (`POST /process` still works). |
-| `MAINTENANCE_INTERVAL_MS` | no | `3600000` | How often the retention purge runs. `0` disables the timer (`POST /maintenance` still works). |
+| `MAINTENANCE_INTERVAL_MS` | no | `3600000` | How often the maintenance pass runs (the retention purge, the re-embed, the photos). `0` disables the timer (`POST /maintenance` still works). |
 | `PROCESSOR_CONCURRENCY` | no | `4` | Documents processed at once, 1..8. A document mostly waits on the model and the storage, so four in flight drain a queue of hundreds of files at a steady pace; raise it on a larger container, lower it if the model's rate limit answers 429. |
 | `MAX_TEXT_CHARS` | no | `200000` | Cap on the text kept per document. |
+| `LLM_ANALYSIS_MODEL` | no | `LLM_MODEL` | The chat model the analysis's calls go to (the brief's reading, the triage, the screening, the readings, the tiering); written on each run's row (`searches.analysis_model`). |
+| `ANALYSIS_CONCURRENCY` | no | `4` | Model calls one analysis keeps in flight, 1..8. Four drain a pool of a thousand profiles in a few minutes; lower it if the model answers 429. |
+| `ANALYSIS_MAX_RUNS` | no | `2` | Analyses run at once by one process, 1..4. |
+| `ANALYSIS_POLL_INTERVAL_MS` | no | `30000` | How often the queued and the stale analyses are claimed, 5 s at least. `0` disables the scan (the claim at boot and `POST /analyses/:searchId` still work). |
 
 No value is ever logged or returned: `/health` and `/metrics` say which parts are set up,
 not what they hold.
@@ -166,11 +173,99 @@ not what they hold.
 | `GET /health` | none | `200 { ok: true, version, uptimeSeconds, supabase, model, ocr, embedding, polling }` as soon as the process listens. `embedding` is `"off"` without a model (and until the startup probe has answered), then `"ok"`, `"mismatch"` (the model answers the wrong width: set at once, kept until a call succeeds) or `"unavailable"` (the probe failed, or three calls in a row did, for another reason: one 429 or one timeout among the documents in flight does not flip it); it is read from memory, never from a call, so the route stays instant. |
 | `GET /metrics` | bearer | Counters since start: documents by outcome (processed, failed, needsOcr, duplicates, quotaRefused, rejected, skipped), pages, model and OCR calls, purged candidates, last poll time, queue depth, documents in flight, the setup flags. |
 | `POST /process` | bearer | `{ "documentIds": ["<uuid>", ...] }` (1..50, body ≤ 64 KiB). Schedules them without waiting; `202 { accepted }`. The web app calls it right after an upload so the person does not wait for the next poll. `503` without Supabase. |
-| `POST /maintenance` | bearer | Runs the maintenance pass now and answers its report `{ ranAt, purged, filesRemoved, failed, staleRequeued, staleFailed, reembedded, reembedFailed, reembedSkipped, ms }`. `503` without Supabase. |
+| `POST /maintenance` | bearer | Runs the maintenance pass now and answers its report `{ ranAt, purged, filesRemoved, failed, staleRequeued, staleFailed, reembedded, reembedFailed, reembedSkipped, photosChecked, photosFound, photosFailed, ms }`. `503` without Supabase. |
+| `POST /analyses/:searchId` | bearer | The web app queued the `searches` row; this makes the runner claim it now instead of at its next scan. Nothing is awaited: `202 { queued: true }` at once, `400` for a path that is not a UUID, `503` without Supabase. A poke that never arrives costs one scan interval at most; one that lands while a claim pass runs is followed by another pass. |
 
 The bearer is compared in constant time. Every other path answers `401` without the
 bearer and `404 { error }` with it; every error is `{ error: "<sentence>" }` without
 internals.
+
+## The analysis as a job
+
+The analysis of a brief against the whole pool runs here, never in the browser
+(`src/analysis/`: `runner.ts` claims and ends the runs, `steps.ts` holds the nine
+steps, `batches.ts` the pool and the splitting, `schemas.ts` the zod schemas of the
+model's answers and of the stored JSON). The web app's `runSearch` inserts the
+`searches` row with `status = 'queued'` and pokes `POST /analyses/:searchId`; the
+runner claims the queued rows and the running rows whose heartbeat is older than
+120 s (a lost poke, a crash, a redeploy) at boot and every `ANALYSIS_POLL_INTERVAL_MS`,
+`ANALYSIS_MAX_RUNS` at a time (`claimAnalyses`: one conditional write per row, so two
+processors never hold the same run), and writes its name (`hostname:pid`) on the row.
+Every step is idempotent: it reads what it lacks from the database, writes what it
+settles as it goes (the verdicts and the scores first-write-wins through
+`record_triage` and `record_screen`, the results through `merge_search_results`),
+and the package's `nextStage()` names the next one from what is left, so a run
+stopped, crashed or redeployed in the middle resumes where it was. The row carries
+the stage (written before a step runs), `progress_done / progress_total` (the
+stage's own count, patched after every batch with the heartbeat), and the browser
+reads it through realtime.
+
+1. **reading**: the brief read once (one call, temperature 0, `readBriefPrompt`)
+   when it was never read or its text changed (`needsDerivation`), bound by
+   `enforceBriefReading`, saved into the brief with the criteria; the search's
+   criteria snapshot and `analysis_model` written. A brief with neither a title
+   nor a text fails `brief_empty`; one whose text changed since this search read
+   profiles on its earlier reading fails `brief_changed` (a new analysis runs on
+   the new text).
+2. **snapshot**: `start_triage` (one row per active candidate the search lacks,
+   so a resumed run reads the profiles the pool gained), `pool_size` from the count.
+3. **triage**: the pending rows, paged by 1000; a card with no headline and no
+   titled position is `unknown` without a call ("Fiche sans poste ni intitulé"),
+   a candidate gone from the pool too ("Profil sorti du vivier"); the rest in
+   batches of 40 cards, `ANALYSIS_CONCURRENCY` calls in flight, each answer bound by
+   `enforceTriage`. A batch the model cannot answer (no valid JSON, a 400 or 413, a
+   timeout) counts one failure on its cards (`bump_triage_attempts`) and is read
+   again in halves down to 10 cards; a part of 10 or fewer that failed twice at
+   that size (what a batch of 40 could not get past says nothing of its parts) is
+   settled `unknown` with "Fiche illisible par le modèle", so no batch is retried
+   for ever. `unknown` is never kept.
+4. **screening**: the kept cards (yes, close) without a score, batches of 25, the
+   same splitting; a score 0..100 against the brief's reading and a reason of
+   twelve words at most, `enforceScreen`, written to `search_triage`; an
+   unscorable card keeps a null score and is never sent again.
+5. **promotion**: `promotable()`: every `forced` row (a person brought the profile
+   back), then the 30 best by score (ties: yes before close); those the results
+   lack are read in full, scored by the deterministic pass and written with their
+   triage and screening on the entry. No model call.
+6. **assessing**: one call per entry without an assessment (`assessmentPayload`,
+   `enforceAssessment` with every quote checked against the payload's texts), the
+   entry merged at once and carried to the brief's shortlist item when that item
+   holds a match without assessment. A call the model cannot answer is sent once
+   more; then the entry is left unread for this run and the row ends with
+   `error = "assess_failed:<n>"` next to `status = 'done'` (a count, not a failure:
+   the same row queued again reads those entries alone, since the step reads its
+   remaining work from the results).
+7. **challenging**: the retained entries without a second opinion, batches of 6
+   (`challengePayload`, `applyChallenge`).
+8. **ranking**: the retained and borderline entries without a tier, groups of 8
+   (`rankingSheets`, `applyRanking`); **final**: when the tiering spanned several
+   groups, the A's compared once more so their order is one comparison.
+9. **done**: `status = 'done'`, `finished_at`, the stage cleared, the progress at
+   its total.
+
+A failure of the provider (its rate, a server error, the network) is sent again
+after 2 s, 6 s, 15 s, 30 s and 60 s (or after the Retry-After the refusal names
+when that is longer, up to a minute), so a rate limit's window is waited out and a
+provider down for two minutes fails the run; any thrown error ends the run
+`status = 'failed'` with a short code in `error` (`processor_error`,
+`model_unavailable`, `brief_missing`, `brief_empty`, `brief_unreadable`,
+`brief_changed`), the stage kept and the cause in the log; the row is claimed again
+only once a person queues it (nothing retries by itself). `stop_requested`
+(set by the web app's `stopAnalysis`) is read after every batch: no new batch
+starts, the row ends `status = 'stopped'`, and "Reprendre" queues the same row.
+A SIGTERM lets the batches in flight end, writes their progress and leaves the row
+running with its heartbeat cleared: the next boot claims it at once (after a crash
+the heartbeat stays, and the row is claimed once it is 120 s old). Every call is one
+`ai_usage` row for the organisation (`brief`, `triage`, `screen`, `assess`), a
+failed call too when its error carries what it billed (`ModelError.usage`). The
+logs: one `analysis_step` line per step with its counts, calls, tokens and ms; one
+`analysis_batch_failed` line per failed batch with the error class, never a card;
+`analysis_claimed`, `analysis_done`, `analysis_stopped`, `analysis_failed`,
+`analysis_interrupted` per run. The payloads are the shared package's: no name, no
+e-mail, no phone, no photo in any of them; no place on a triage or screening card
+either (the assessment reads the location for the brief's location requirement).
+The tests (`test/analysis.test.ts`) run a whole analysis on 95 fake profiles against
+the in-memory database and a fake model, and check every payload for those.
 
 ## Maintenance pass
 
@@ -202,6 +297,32 @@ Every `MAINTENANCE_INTERVAL_MS` (and 30 s after start), in this order:
   says `"mismatch"` until a call succeeds. Any other failure is logged and the pass
   goes on. The report counts `reembedded`, `reembedFailed` and `reembedSkipped`; a
   pass that only skipped logs `reembed_skipped`, since its counts look healthy.
+- **Photos** (`photo-backfill.ts`), last: the candidates without a photo the pass never
+  checked (`photo_path` and `photo_checked_at` both null, the
+  `candidates_photo_pending_idx` index) that have a processed document, 50 a batch
+  (`PHOTO_BACKFILL_BATCH`), two CVs read at once (one PDF in memory per worker). For
+  each, the newest document read from its text layer (`extraction_method = 'pdf-text'`)
+  is downloaded from the `cvs` bucket and its first page read exactly as step 9 does
+  (`extractPageImages`, `choosePhoto`, a 256 px PNG), the file upserted in the `photos`
+  bucket at `<org_id>/<candidate_id>.png` and its key written on the row
+  (`setPhotoPath`). Every candidate listed is marked checked, portrait or not
+  (`photo_checked_at`), so no CV is read twice by this pass: a scanned CV (read by the
+  OCR; its portrait is among the images the OCR cut out, a billed call the pass never
+  makes), a copy never read on its own (`'none'`), a CV without a portrait, a file that
+  could not be downloaded or read, a photo the bucket refused: each is one log line
+  (`photo_backfill_none`, `photo_backfill_read_failed`, `photo_backfill_write_failed`)
+  and the row is settled. Only a row the database refused to mark
+  (`photo_backfill_mark_failed`) is listed again next pass. A run loops over up to 10
+  batches (`PHOTO_BACKFILL_PASSES`) while full batches come back, so a pool of a
+  thousand profiles is done in two or three hourly runs; a batch that settled nothing
+  stops the run rather than listing the same rows again. The report counts
+  `photosChecked` (candidates settled, with a photo or without), `photosFound` (photos
+  written) and `photosFailed` (candidates a step failed for; settled too, unless the
+  write itself failed), and one `photo_backfill` line gives them with the batches read
+  and whether rows remain. Nothing of this pass reaches a model: no call, no
+  `ai_usage` row, and the reader is given the CV's bytes and the ids, never a name. A
+  candidate without any processed document (a manual profile) is never listed: a CV
+  uploaded from their page gives them a photo through step 9.
 
 ## Embedding probe
 
@@ -221,7 +342,8 @@ variable, redeploy, and the hourly re-embed pass gives them one.
 
 ```sh
 cd vivier/services/processor
-npm install            # generates package-lock.json the first time: commit it
+npm install            # generates package-lock.json the first time: commit it; links packages/analysis (file:)
+npm run build:analysis # the shared package into packages/analysis/dist; test, typecheck and build run it themselves
 cp .env.example .env   # fill PROCESSOR_SHARED_SECRET at least
 npm run dev            # tsx watch src/server.ts, reads .env through your shell (e.g. `set -a; . ./.env; set +a`)
 npm test
@@ -234,6 +356,14 @@ committed by the first person with network access (`npm install`, then commit th
 lockfile). Until then CI and the Dockerfile install from the ranges in `package.json`;
 once the lockfile is there, switch the Dockerfile's two `npm install` lines to `npm ci`.
 
+The analysis's pure code is the shared package `packages/analysis`
+(`@vivier/analysis`, a `file:` dependency, no dependency of its own): the
+processor imports its built `dist/`, so a change there needs `npm run
+build:analysis` (or any of `build`, `test`, `typecheck`) before `npm run dev`
+sees it. The Dockerfile keeps the repository's layout (`/app/packages/analysis`
+next to `/app/services/processor`), builds the package in the build stage and
+ships its `dist/` with the processor's.
+
 Production image, from the repository root:
 
 ```sh
@@ -245,13 +375,21 @@ curl -s http://127.0.0.1:8080/health
 ## Railway
 
 - Service from this repository, **root directory** `vivier`, **Dockerfile path**
-  `services/processor/Dockerfile` (watch paths `services/processor/**`).
+  `services/processor/Dockerfile` (watch paths `services/processor/**` and
+  `packages/analysis/**`).
 - **Health check** `/health`; the process answers it as soon as it listens.
 - **Variables**: `PROCESSOR_SHARED_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
   and when wanted `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_EMBEDDING_MODEL`,
-  `MISTRAL_OCR_API_KEY`. `PORT` is set by Railway.
+  `LLM_ANALYSIS_MODEL` (the analysis's model; a stronger one of the same endpoint
+  when budget allows), `MISTRAL_OCR_API_KEY`; `ANALYSIS_CONCURRENCY`,
+  `ANALYSIS_MAX_RUNS` and `ANALYSIS_POLL_INTERVAL_MS` only to change their
+  defaults. `PORT` is set by Railway.
+- The analyses run here since evolution 7 (the web app only queues `searches`
+  rows): deploy this service, after migration `20261015150000`, before the
+  Worker that queues them, or every analysis waits on "Démarrage…".
 - On the Worker (Cloudflare dashboard): `PROCESSOR_URL` (the service's public URL) and
   the same `PROCESSOR_SHARED_SECRET`.
-- A stop sends SIGTERM: the poller stops, the server closes, the documents in flight get
-  up to 25 s, then the process exits 0. What did not finish goes back to the queue within
-  ten minutes.
+- A stop sends SIGTERM: the poller and the analysis runner stop, the server closes, the
+  documents and the analysis batches in flight get up to 25 s, then the process exits 0.
+  What did not finish goes back to the queue within ten minutes; a run left running has
+  its heartbeat cleared on the way out, so the next boot claims it at once.
