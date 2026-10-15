@@ -2,8 +2,61 @@
  * Row types of the Vivier schema (supabase/migrations). Hand-written and
  * kept in step with the migration: the browser reads rows through
  * supabase-js under RLS, the server through the service client. Column
- * names are the database's (snake_case); the UI maps what it shows.
+ * names are the database's (snake_case); the UI maps what it shows. The
+ * types of the analysis (the criteria, the role profile, the verdicts,
+ * the assessment, the triage, the run's status and stages) are the
+ * shared package's (@vivier/analysis, used by the processor too) and
+ * are re-exported here, so every import of them keeps its path.
  */
+import type {
+  AnalysisStage,
+  AnalysisStatus,
+  Assessment,
+  AssessmentChallenge,
+  AssessmentDecision,
+  AssessmentDimension,
+  AssessmentTier,
+  BriefCriterion,
+  CandidateEducation,
+  CandidateExperience,
+  CandidateLanguage,
+  CriterionKind,
+  CriterionResult,
+  CriterionVerdict,
+  DimensionScore,
+  MatchResult,
+  RequirementAssessment,
+  RequirementMet,
+  RoleProfile,
+  RoleSeniority,
+  SearchMethod,
+  TriageVerdict,
+} from "@vivier/analysis";
+
+export type {
+  AnalysisStage,
+  AnalysisStatus,
+  Assessment,
+  AssessmentChallenge,
+  AssessmentDecision,
+  AssessmentDimension,
+  AssessmentTier,
+  BriefCriterion,
+  CandidateEducation,
+  CandidateExperience,
+  CandidateLanguage,
+  CriterionKind,
+  CriterionResult,
+  CriterionVerdict,
+  DimensionScore,
+  MatchResult,
+  RequirementAssessment,
+  RequirementMet,
+  RoleProfile,
+  RoleSeniority,
+  SearchMethod,
+  TriageVerdict,
+};
 
 export type Locale = "fr" | "en";
 
@@ -60,32 +113,6 @@ export interface InvitationRow {
   created_at: string;
 }
 
-export interface CandidateLanguage {
-  name: string;
-  /** CEFR level (A1..C2), "native", or free text as written. */
-  level: string | null;
-}
-
-export interface CandidateExperience {
-  title: string;
-  company: string | null;
-  /** ISO-like "YYYY-MM" or "YYYY", as read; null when unknown. */
-  start: string | null;
-  end: string | null;
-  description: string | null;
-}
-
-export interface CandidateEducation {
-  degree: string;
-  school: string | null;
-  year: string | null;
-}
-
-export interface CandidateLink {
-  label: string;
-  url: string;
-}
-
 export type CandidateSource = "upload" | "manual";
 export type ConsentStatus = "unknown" | "given" | "withdrawn";
 export type CandidateStatus = "active" | "archived";
@@ -136,6 +163,8 @@ export interface CandidateRow {
   search_text: string | null;
   /** `<org_id>/<candidate_id>.png` (or `.jpg` for a JPEG the OCR cut out) in the private `photos` bucket, read from page 1 of the CV; identification only, never sent to the model. */
   photo_path: string | null;
+  /** When the processor last looked for a portrait in the candidate's CV (the maintenance pass reads every candidate without a photo once); null until then. */
+  photo_checked_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -197,33 +226,6 @@ export interface DocumentRow {
   updated_at: string;
 }
 
-/**
- * "role" is the job itself (one per brief, judged first): its label is
- * the job as the team names it, its value the role's definition (job
- * family, core missions, equivalent titles) that the assessment reads.
- */
-export type CriterionKind =
-  | "role"
-  | "skill"
-  | "experience"
-  | "language"
-  | "location"
-  | "education"
-  | "availability"
-  | "other";
-
-export interface BriefCriterion {
-  id: string;
-  kind: CriterionKind;
-  /** Short label shown on chips, e.g. "Anglais courant"; for a role, the job title as the brief names it. */
-  label: string;
-  /** The value matched against the profile, e.g. "anglais" / "C1" / "5" (years); for a role, its definition (up to 600 characters). */
-  value: string;
-  required: boolean;
-  /** 1 nice to have, 2 important, 3 essential. */
-  weight: 1 | 2 | 3;
-}
-
 export type BriefStatus = "draft" | "open" | "closed";
 
 export interface BriefRow {
@@ -240,128 +242,6 @@ export interface BriefRow {
   updated_at: string;
 }
 
-/** What one criterion says about one candidate. "not_stated" never counts against them. */
-export type CriterionVerdict = "match" | "partial" | "missing" | "not_stated";
-
-export interface CriterionResult {
-  criterionId: string;
-  verdict: CriterionVerdict;
-  /** What in the profile the verdict rests on, quoted or named; null when nothing. */
-  evidence: string | null;
-}
-
-/** The model's answer on one requirement of the brief, with the evidence it quotes from the CV. */
-export type RequirementMet = "yes" | "partial" | "no" | "unknown";
-
-export interface RequirementAssessment {
-  criterionId: string;
-  met: RequirementMet;
-  /** A short quote or fact from the profile; null when nothing in the CV speaks to it. */
-  evidence: string | null;
-  /** True when the evidence was not found in what the model was given: a "yes" so marked is read as "partial". */
-  evidenceUnverified?: boolean;
-}
-
-/** The model's expert reading of a candidate against the whole brief. */
-export type AssessmentDecision = "fit" | "borderline" | "no_fit";
-
-/** One of the five dimensions a senior recruiter scores a profile on. */
-export interface DimensionScore {
-  /** 0..100 */
-  score: number;
-  /** One factual sentence in the brief's language. */
-  note: string;
-  /** A quote or fact from the profile; null when nothing speaks to it. */
-  evidence: string | null;
-  /** True when the evidence was not found in what the model was given: the score is then neutral at most. */
-  evidenceUnverified?: boolean;
-}
-
-export type AssessmentDimension = "role" | "seniority" | "context" | "trajectory" | "achievements";
-
-/** The shortlist tier the comparative pass gives: A present now, B worth a deeper look, C do not present. */
-export type AssessmentTier = "A" | "B" | "C";
-
-/** The second opinion on a retained profile: the reason not to present it, if any. */
-export interface AssessmentChallenge {
-  verdict: "confirmed" | "doubt";
-  reason: string | null;
-  evidence: string | null;
-}
-
-export interface Assessment {
-  decision: AssessmentDecision;
-  /** 0..100: the composite score computed in code (src/lib/briefs/scoring.ts), gated by the rules. */
-  score: number;
-  /** Two to four factual sentences for a hiring manager, in the brief's language. */
-  summary: string;
-  requirements: RequirementAssessment[];
-  /** Which model answered, for the audit. */
-  model: string;
-  /** The model's own overall score, advisory; absent on assessments made before the dimensions. */
-  modelScore?: number;
-  /** The five dimensions with their evidence; absent on older assessments. */
-  dimensions?: Record<AssessmentDimension, DimensionScore>;
-  /** Facts in the profile's favour, as a recruiter would list them. */
-  strengths?: string[];
-  /** Reservations to weigh, never a protected characteristic, never a career break. */
-  concerns?: string[];
-  /** What to check in an interview. */
-  questions?: string[];
-  /** Set by the comparative pass over the retained profiles. */
-  tier?: AssessmentTier;
-  /** One line from the comparative pass: why this rank among the others. */
-  rankNote?: string | null;
-  /** Set by the second-opinion pass on retained profiles. */
-  challenge?: AssessmentChallenge;
-  /** How many of the model's sentences the filter withheld (a protected characteristic, a period without a position): the reading shown is incomplete by that much. */
-  withheld?: number;
-}
-
-/** The structured understanding of the job, derived from the brief and edited by the team (briefs.role_profile). */
-export type RoleSeniority = "junior" | "confirmed" | "senior" | "manager" | "executive";
-
-export interface RoleProfile {
-  /** The job as the team names it. */
-  title: string;
-  /** The domain written from what the job is in the market (e.g. "développement commercial B2B"). */
-  domain: string;
-  seniority: RoleSeniority;
-  yearsMin: number | null;
-  yearsMax: number | null;
-  /** Three to six core missions that define the job. */
-  missions: string[];
-  equivalentTitles: string[];
-  /** Neighbouring backgrounds that can succeed, each with what it lacks. */
-  adjacentProfiles: string[];
-  context: {
-    sector: string | null;
-    product: string | null;
-    clients: string | null;
-    /** Team size, budget, deal size, territory: the scope markers the brief states. */
-    scope: string | null;
-  };
-  /** Deal-breakers in words, as the brief states them. */
-  mustHaves: string[];
-  niceToHaves: string[];
-  /** What makes someone succeed in this job, as a senior recruiter would say it. */
-  successFactors: string[];
-  /** Points to verify in an interview with every candidate. */
-  questions: string[];
-  /** What the brief does not state and the model had to assume (the exact métier, the level, the scope): for the team to confirm before a CV is read. */
-  assumptions: string[];
-  /** Which model wrote it, and when; edits by the team keep these. */
-  model: string | null;
-  createdAt: string;
-  /**
-   * fnv1a32 of the brief's title and description the profile was read
-   * from (briefSourceHash, src/lib/briefs/role-profile.ts): a search
-   * reads the brief again only when its text changed. Absent on a
-   * profile written before the hash existed, which is read again once.
-   */
-  sourceHash?: string;
-}
-
 /** A candidate near another one (similar_candidates). */
 export interface SimilarCandidate {
   candidate_id: string;
@@ -370,49 +250,6 @@ export interface SimilarCandidate {
   /** The neighbour's years of experience as the function read them; null when the profile states none, or when an older version of the function answered. */
   years_experience: number | null;
 }
-
-export interface MatchResult {
-  candidateId: string;
-  /** 0..100 over the criteria that could be evaluated (the deterministic pass). */
-  score: number;
-  /** 0..1: the share of criteria the profile says something about. */
-  coverage: number;
-  /** A required criterion is missing. */
-  blocked: boolean;
-  verdicts: CriterionResult[];
-  /** Two or three factual sentences from the model, null when no model answered. */
-  why: string | null;
-  /** How the candidate was retrieved before scoring. */
-  retrieval: { textRank: number | null; vectorRank: number | null };
-  /** The model's expert assessment; absent when no model answered (text-only mode). */
-  assessment?: Assessment;
-  /**
-   * The criteria the verdicts and the assessment refer to, as they were
-   * when the search ran: carried by the snapshot a shortlist item keeps
-   * (shortlist_items.match) so the board and the dossier read it against
-   * the right brief. Absent in a search's own results (the row holds
-   * them) and in items stored before.
-   */
-  criteria?: BriefCriterion[];
-  /**
-   * The triage's verdict on the profile's métier and its short reason,
-   * set when a whole-pool search promoted the entry for the full
-   * reading; absent on results of older searches and of the text or
-   * hybrid paths.
-   */
-  triage?: { verdict: TriageVerdict; reason: string | null };
-}
-
-/** "triage": the whole active pool sorted by métier first, then only the kept profiles read in full. */
-export type SearchMethod = "hybrid" | "text" | "triage";
-
-/**
- * The triage's answer on one profile: the job itself or the same job
- * under another name (yes), an adjacent background or the job held
- * earlier (close), another job (no), a card too thin to judge (unknown,
- * read in full rather than dropped).
- */
-export type TriageVerdict = "yes" | "close" | "no" | "unknown";
 
 /** One profile of a whole-pool search's snapshot (search_triage); verdict null until the triage read it. Written by the service role only. */
 export interface SearchTriageRow {
@@ -424,6 +261,16 @@ export interface SearchTriageRow {
   reason: string | null;
   model: string | null;
   read_at: string | null;
+  /** The screening's score 0..100 against the brief's reading; null until screened, and for a card the model could not score. */
+  score: number | null;
+  /** The screening's reason, twelve words at most (300 characters in the database). */
+  score_reason: string | null;
+  /** When the screening read the card; null until then (the first write wins). */
+  scored_at: string | null;
+  /** True when a person brought the profile back to be read in full: the promotion always takes it. */
+  forced: boolean;
+  /** How many times a batch holding the card failed; the runner settles a card past the limit. */
+  attempts: number;
 }
 
 export interface SearchRow {
@@ -441,6 +288,25 @@ export interface SearchRow {
   assessed_count: number;
   match_count: number;
   near_count: number;
+  /** The run as a job of the processor: queued by runSearch, running once claimed, then stopped, done or failed; rows stored before the job existed read done. */
+  status: AnalysisStatus;
+  /** The stage the run is at while running, the last one reached otherwise; null before the first. */
+  stage: AnalysisStage | null;
+  /** The stage's own progress: items settled and items of the stage (progressOf() makes the bar's percent of them). */
+  progress_done: number;
+  progress_total: number;
+  /** Set by a person through a server function; the runner stops at its next step. */
+  stop_requested: boolean;
+  /** One sentence for the team when the run failed; null otherwise. */
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  /** Written by the runner as it works; a running row whose heartbeat is stale is claimed again. */
+  heartbeat_at: string | null;
+  /** The processor instance that holds the run. */
+  runner: string | null;
+  /** The chat model the run's calls went to. */
+  analysis_model: string | null;
   ran_by: string | null;
   created_at: string;
 }
@@ -617,7 +483,8 @@ export type AiUsageKind =
   | "explain"
   | "summary"
   | "assess"
-  | "triage";
+  | "triage"
+  | "screen";
 
 export interface AiUsageRow {
   id: number;

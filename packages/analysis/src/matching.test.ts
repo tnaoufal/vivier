@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { BriefCriterion, MatchResult } from "@/lib/db/types";
+import type { BriefCriterion, MatchResult } from "./types.js";
 
 import {
   compareResults,
@@ -17,7 +17,7 @@ import {
   scoreCandidate,
   snippet,
   type MatchProfile,
-} from "./matching";
+} from "./matching.js";
 
 function criterion(partial: Partial<BriefCriterion> & Pick<BriefCriterion, "kind" | "value">): BriefCriterion {
   return {

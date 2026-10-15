@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { BriefCriterion, MatchResult, RoleProfile } from "@/lib/db/types";
+import type { BriefCriterion, MatchResult, RoleProfile } from "./types.js";
 
 import {
   carriesRoleName,
@@ -23,7 +23,7 @@ import {
   triageSystemPrompt,
   type TriageEntry,
   type TriageProfile,
-} from "./triage";
+} from "./triage.js";
 
 function profile(id: string, extra: Partial<TriageProfile> = {}): TriageProfile {
   return {
