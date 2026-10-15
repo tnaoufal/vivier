@@ -1,13 +1,13 @@
 /**
- * The model's detailed reading of a shortlist item's match, shown in the
- * decision tab under the fit: the five dimensions as meters coloured
- * like the ring, each with the model's one-line note under its bar; the
- * comparative pass's line on the rank; then the strengths, the
- * reservations (the second opinion's doubt marked as the counter-reading,
- * apart from the first pass's) and the points for the interview, each
- * only when the assessment carries it. Everything here is what the model
- * read and proposes; nothing in it decides, and an assessment made
- * before the reading shows nothing.
+ * The model's detailed reading of a shortlist item's match, in the
+ * drawer's reading tab: the five dimensions as ink meters, each with
+ * the model's one-line note under its bar; the comparative pass's line
+ * on the rank; then the strengths, the reservations (the second
+ * opinion's doubt marked as the counter-reading, apart from the first
+ * pass's) and the points for the interview, each only when the
+ * assessment carries it. Everything here is what the model read and
+ * proposes; nothing in it decides, and an assessment made before the
+ * reading shows nothing.
  */
 import { Meter } from "@/components/app-shell/meter";
 import { Pill } from "@/components/app-shell/pill";
@@ -44,7 +44,15 @@ function Points({ title, points }: { title: string; points: readonly string[] })
  * two passes read apart; the pill is a word without a dot, the bullet
  * being the line's one mark.
  */
-function Concerns({ title, mark, points }: { title: string; mark: string; points: readonly ConcernPoint[] }) {
+function Concerns({
+  title,
+  mark,
+  points,
+}: {
+  title: string;
+  mark: string;
+  points: readonly ConcernPoint[];
+}) {
   if (!points.length) return null;
   return (
     <div>
@@ -53,7 +61,7 @@ function Concerns({ title, mark, points }: { title: string; mark: string; points
         {points.map((point, index) => (
           <li key={`${index}-${point.text}`} className="break-words">
             {point.challenge ? (
-              <Pill tone="caution" size="sm" className="mr-1.5 align-text-bottom">
+              <Pill tone="caution" dot={false} size="sm" className="mr-1.5 align-text-bottom">
                 {mark}
               </Pill>
             ) : null}
@@ -71,7 +79,6 @@ export function RecruiterReading({ match }: { match: MatchResult | null }) {
   if (!hasReading(reading)) return null;
   return (
     <section className="space-y-5">
-      <h3 className="text-base font-semibold text-ink">{t("shortlists.reading.title")}</h3>
       {reading.dimensions.length ? (
         <div>
           <h4 className="label-caps">{t("shortlists.reading.dimensions")}</h4>
@@ -81,7 +88,6 @@ export function RecruiterReading({ match }: { match: MatchResult | null }) {
                 <Meter
                   label={t(DIMENSION_KEYS[row.dimension])}
                   value={row.score}
-                  tone="score"
                   hint={row.note ?? undefined}
                 />
               </li>

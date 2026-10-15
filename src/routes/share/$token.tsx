@@ -1,45 +1,39 @@
 /**
  * /share/:token: the dossier a link opens, outside the app shell and
- * without a sign-in, at the level of a senior consultant's presentation.
- * A cover (the organisation, the title, the facts of the dossier, the
- * introduction, what was looked for), an overview of the profiles, then
- * one sheet per candidate (the synthesis, the requirement table with
- * its evidence, strengths and points of attention, the points to verify
- * in an interview when the analysis named some, the facts, the skills
- * and languages, the CV) and an honest footer. No photo is reproduced:
- * a profile is identified by its name. A white sheet with dark ink on
- * any theme (`share-sheet` in styles.css), printable on A4 with the
- * cover, the overview and each sheet on their own page: the PDF a
- * reader keeps is the browser's print of this page. The sentences speak
- * the sharing organisation's language, not the reader's browser's. A
- * link that no longer opens says why in one sentence.
+ * without a sign-in. A cover (the organisation, the title, the date,
+ * the counts, when the link stops working, the brief's text), then one
+ * sheet per candidate: the initials, the name, the position, the years,
+ * the reading, the requirements with their marks, the strengths, the
+ * points of attention, the points to verify in an interview, the CV
+ * when the share carries it. No photo, no colour, no ring: the figures
+ * are text. A white sheet with dark ink on any theme (`share-sheet` in
+ * styles.css), printable on A4 with the cover and each sheet on their
+ * own page, the controls hidden in print: the PDF a reader keeps is the
+ * browser's print of this page. The sentences speak the sharing
+ * organisation's language. A link that no longer opens says why in one
+ * sentence.
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { FileText, Printer } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { RequirementList } from "@/components/app-shell/requirement-list";
-import { ScoreRing } from "@/components/app-shell/score-ring";
 import { BrandIcon } from "@/components/brand-mark";
-import { Chip } from "@/components/candidates/chip-editor";
 import {
   DecisionPill,
   factsLine,
   metLabel,
   metSentence,
   requirementRowsOf,
-  scoreLabel,
   ScoreText,
   type Translate,
 } from "@/components/share/assessment-bits";
 import { Button } from "@/components/ui/button";
 import { BRAND } from "@/lib/brand";
-import type { Locale, ShareBrief, ShareItem } from "@/lib/db/types";
+import type { Locale, ShareItem } from "@/lib/db/types";
 import { formatDate, translate, useI18n, type TranslationKey } from "@/lib/i18n";
-import { metCount, SKILLS_SHOWN } from "@/lib/shares/draft";
 import { shareCvPath } from "@/lib/shares/links";
 import { getShare, type PublicShare } from "@/lib/shares/public.functions";
-import { cn, ratioPercent } from "@/lib/utils";
 
 export const Route = createFileRoute("/share/$token")({
   loader: ({ params }) => getShare({ data: { token: params.token } }),
@@ -61,10 +55,9 @@ type OpenShare = Extract<PublicShare, { state: "ok" }>;
 
 /**
  * A4 with a 16mm margin, and everything at rest: a print (or a headless
- * PDF) must never catch a ring, a bar or a row rising in half way, so
- * every animation and transition of the sheet is off on paper.
- * Everything else is Tailwind's `print:` variants, so nothing here
- * depends on styles.css.
+ * PDF) must never catch a row rising in half way, so every animation
+ * and transition of the sheet is off on paper. Everything else is
+ * Tailwind's `print:` variants, so nothing here depends on styles.css.
  */
 const PRINT_CSS =
   "@page { size: A4; margin: 16mm } @media print { .share-sheet, .share-sheet *, .share-sheet *::before, .share-sheet *::after { transition: none !important; animation: none !important } }";
@@ -89,7 +82,7 @@ function Closed({ state, locale }: { state: "missing" | "revoked" | "expired"; l
     <div className="share-sheet flex min-h-screen items-center justify-center bg-background px-4 text-foreground">
       <div className="fade-in max-w-md text-center">
         <p className="mb-6 flex items-center justify-center gap-2 text-ink">
-          <BrandIcon className="text-primary" />
+          <BrandIcon className="text-ink" />
           <span className="font-display text-lg">{BRAND.name}</span>
         </p>
         <p className="text-body text-muted-foreground">{translate(locale, key)}</p>
@@ -138,76 +131,15 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BriefCard({
-  brief,
-  shareTitle,
-  t,
-}: {
-  brief: ShareBrief | null;
-  shareTitle: string;
-  t: Translate;
-}) {
-  return (
-    <section
-      className="sheet p-6 sm:p-8 print:border-0 print:p-0 print:shadow-none"
-      aria-labelledby="dossier-brief"
-    >
-      <h2 id="dossier-brief" className="font-display text-xl text-ink">
-        {t("shares.page.brief")}
-      </h2>
-      {brief ? (
-        <>
-          {brief.title && brief.title !== shareTitle ? (
-            <p className="mt-1 text-sm text-muted-foreground">{brief.title}</p>
-          ) : null}
-          {brief.summary ? (
-            <Paragraphs text={brief.summary} className="mt-4 space-y-3 text-body text-foreground" />
-          ) : null}
-          <h3 className="label-caps mt-6">{t("shares.page.brief.requirements")}</h3>
-          {brief.requirements.length ? (
-            <ul className="mt-2 grid gap-x-8 sm:grid-cols-2">
-              {brief.requirements.map((row, index) => (
-                <li
-                  key={`${index}-${row.label}`}
-                  className="flex items-baseline gap-2.5 border-b border-border py-2 text-body text-ink"
-                >
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "size-1.5 shrink-0 rounded-full",
-                      row.required ? "bg-primary" : "bg-border",
-                    )}
-                  />
-                  <span className="min-w-0 flex-1">{row.label}</span>
-                  {row.required ? (
-                    <span className="shrink-0 text-meta text-muted-foreground">
-                      {t("shares.required")}
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t("shares.page.brief.noRequirements")}
-            </p>
-          )}
-        </>
-      ) : (
-        <p className="mt-2 text-sm text-muted-foreground">{t("shares.page.brief.none")}</p>
-      )}
-    </section>
-  );
-}
-
 function Cover({ share, t }: { share: OpenShare; t: Translate }) {
   const count = share.items.length;
   const requirements = share.brief?.requirements.length ?? 0;
+  const briefText = share.brief?.summary.trim() ?? "";
   return (
     <header className="space-y-8 print:break-after-page">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
         <p className="flex min-w-0 items-center gap-2 text-ink">
-          <BrandIcon className="size-5 shrink-0 text-primary" />
+          <BrandIcon className="size-5 shrink-0 text-ink" />
           <span className="font-display text-base">{BRAND.name}</span>
           {share.orgName ? (
             <span className="min-w-0 truncate text-sm text-muted-foreground">
@@ -239,106 +171,19 @@ function Cover({ share, t }: { share: OpenShare; t: Translate }) {
           />
         </dl>
       </div>
+      {/* A share made before the one-step dialog may carry a note for the reader: it stays. */}
       {share.intro.trim() ? (
         <Paragraphs text={share.intro} className="max-w-3xl space-y-3 text-body text-foreground" />
       ) : null}
-      <BriefCard brief={share.brief} shareTitle={share.title} t={t} />
+      {briefText ? (
+        <section className="max-w-3xl" aria-labelledby="dossier-brief">
+          <h2 id="dossier-brief" className="font-display text-xl text-ink">
+            {t("shares.page.brief")}
+          </h2>
+          <Paragraphs text={briefText} className="mt-3 space-y-3 text-body text-foreground" />
+        </section>
+      ) : null}
     </header>
-  );
-}
-
-// ---------------------------------------------------------------------
-// the overview
-// ---------------------------------------------------------------------
-
-/** "6 / 8" with a thin bar: how many requirements the CV meets, at a glance; a dash when no analysis ran. */
-function MetCell({ item, t }: { item: ShareItem; t: Translate }) {
-  const total = item.requirements.length;
-  if (!total) return <span className="text-muted-foreground">{t("shares.requirements.none")}</span>;
-  const met = metCount(item.requirements);
-  return (
-    <div className="min-w-28" title={metSentence(t, item)}>
-      <span className="tabular-nums text-ink">
-        {met} / {total}
-      </span>
-      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
-        <div
-          className="h-full rounded-full bg-primary"
-          style={{ width: `${ratioPercent(met, total)}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function Overview({ items, t }: { items: ShareItem[]; t: Translate }) {
-  return (
-    <section className="space-y-4 print:break-after-page" aria-labelledby="dossier-overview">
-      <h2 id="dossier-overview" className="font-display text-xl text-ink">
-        {t("shares.page.overview")}
-      </h2>
-      <div className="sheet overflow-hidden print:border-0 print:shadow-none">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left">
-                <th scope="col" className="label-caps px-4 py-3 sm:px-6">
-                  {t("shares.page.col.rank")}
-                </th>
-                <th scope="col" className="label-caps px-4 py-3 sm:px-6">
-                  {t("shares.page.col.candidate")}
-                </th>
-                <th scope="col" className="label-caps px-4 py-3 text-right sm:px-6">
-                  {t("shares.page.col.score")}
-                </th>
-                <th scope="col" className="label-caps px-4 py-3 sm:px-6">
-                  {t("shares.page.col.decision")}
-                </th>
-                <th scope="col" className="label-caps px-4 py-3 sm:px-6">
-                  {t("shares.page.col.requirements")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, index) => (
-                <tr
-                  key={`${item.candidateId}-${index}`}
-                  className="border-t border-border align-middle"
-                >
-                  <td className="px-4 py-3 text-muted-foreground tabular-nums sm:px-6">
-                    {index + 1}
-                  </td>
-                  <td className="px-4 py-3 sm:px-6">
-                    <span className="flex min-w-0 items-center gap-3">
-                      <Avatar name={item.name} size="sm" className="print:hidden" decorative />
-                      <span className="min-w-0">
-                        <span className="block max-w-xs truncate font-medium text-ink">
-                          {item.name}
-                        </span>
-                        {item.headline ? (
-                          <span className="block max-w-xs truncate text-meta text-muted-foreground">
-                            {item.headline}
-                          </span>
-                        ) : null}
-                      </span>
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right sm:px-6">
-                    <ScoreText score={item.score} t={t} />
-                  </td>
-                  <td className="px-4 py-3 sm:px-6">
-                    <DecisionPill decision={item.decision} t={t} />
-                  </td>
-                  <td className="px-4 py-3 sm:px-6">
-                    <MetCell item={item} t={t} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -387,30 +232,23 @@ function Sheet({
   t: Translate;
 }) {
   const rows = requirementRowsOf(item);
-  // At most eight chips, the rest counted: print has no expander, and a sheet is never a wall of chips.
-  const skills = item.skills.slice(0, SKILLS_SHOWN);
-  const moreSkills = item.skills.length - skills.length;
   return (
     <article className="sheet space-y-8 p-6 sm:p-8 print:border-0 print:p-0 print:shadow-none">
       <header className="flex flex-wrap items-start justify-between gap-6">
         <div className="flex min-w-0 flex-1 items-start gap-4">
-          <Avatar
-            name={item.name}
-            size="lg"
-            variant="profile"
-            className="mt-1 print:hidden"
-            decorative
-          />
+          {/* The initials alone: the dossier reproduces no photo. */}
+          <Avatar name={item.name} size="lg" variant="profile" className="mt-1" decorative />
           <div className="min-w-0 flex-1">
             <p className="label-caps">{t("shares.page.sheet", { index: index + 1, count })}</p>
             <h2 className="mt-1 font-display text-2xl text-ink break-words">{item.name}</h2>
             {item.headline ? (
               <p className="mt-1 text-body text-muted-foreground">{item.headline}</p>
             ) : null}
+            <p className="mt-1 text-sm text-muted-foreground">{factsLine(t, item)}</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <ScoreRing score={item.score} label={scoreLabel(t, item.score)} size="lg" static />
+        <div className="flex flex-wrap items-center gap-4">
+          <ScoreText score={item.score} t={t} />
           <DecisionPill decision={item.decision} t={t} />
         </div>
       </header>
@@ -459,43 +297,6 @@ function Sheet({
       {/* Only when the analysis named some: a sheet without questions says nothing rather than "none". */}
       <Points title={t("shares.page.questions")} points={item.questions} />
 
-      <section>
-        <Caption>{t("shares.page.facts")}</Caption>
-        <p className="text-body text-ink">{factsLine(t, item)}</p>
-      </section>
-
-      <div className="grid gap-8 sm:grid-cols-2">
-        <section>
-          <Caption>{t("shares.page.skills")}</Caption>
-          {skills.length ? (
-            <ul className="flex flex-wrap items-center gap-1.5">
-              {skills.map((skill, skillIndex) => (
-                <li key={`${skillIndex}-${skill}`} className="min-w-0 max-w-full">
-                  <Chip>{skill}</Chip>
-                </li>
-              ))}
-              {moreSkills > 0 ? (
-                <li className="text-meta text-muted-foreground tabular-nums">
-                  {moreSkills === 1
-                    ? t("shares.page.skills.more.one")
-                    : t("shares.page.skills.more.many", { count: moreSkills })}
-                </li>
-              ) : null}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t("shares.page.skills.none")}</p>
-          )}
-        </section>
-        <section>
-          <Caption>{t("shares.page.languages")}</Caption>
-          {item.languages.length ? (
-            <p className="text-body text-ink">{item.languages.join(" · ")}</p>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t("shares.page.languages.none")}</p>
-          )}
-        </section>
-      </div>
-
       {item.documentId ? (
         <div>
           <Button asChild variant="outline" icon={<FileText />} className="print:hidden">
@@ -527,23 +328,20 @@ function Dossier({ share, token }: { share: OpenShare; token: string }) {
         <Cover share={share} t={t} />
 
         {count ? (
-          <>
-            <Overview items={share.items} t={t} />
-            <ol className="space-y-12 print:space-y-0">
-              {share.items.map((item, index) => (
-                <li key={`${item.candidateId}-${index}`} className="print:break-before-page">
-                  <Sheet item={item} index={index} count={count} token={token} t={t} />
-                </li>
-              ))}
-            </ol>
-          </>
+          <ol className="space-y-12 print:space-y-0">
+            {share.items.map((item, index) => (
+              <li key={`${item.candidateId}-${index}`} className="print:break-before-page">
+                <Sheet item={item} index={index} count={count} token={token} t={t} />
+              </li>
+            ))}
+          </ol>
         ) : (
           <p className="text-sm text-muted-foreground">{t("shares.page.noItems")}</p>
         )}
 
         <footer className="border-t border-border pt-6 text-meta text-muted-foreground">
           <p className="flex items-start gap-2">
-            <BrandIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+            <BrandIcon className="mt-0.5 size-4 shrink-0 text-ink" />
             <span>{t("shares.page.footer")}</span>
           </p>
         </footer>
