@@ -22,6 +22,15 @@
  * first wrong-width answer stops the pass: every other call would fail
  * the same way, and one log line with the fix sentence says more than a
  * hundred.
+ *
+ * Photos (photo-backfill.ts), last: the candidates without a photo the
+ * pass never checked get the portrait of their newest CV with a text
+ * layer, in batches of PHOTO_BACKFILL_BATCH, up to PHOTO_BACKFILL_PASSES
+ * batches a run while rows remain; every candidate listed is marked
+ * checked, photo or not, so no CV is read twice. It runs after the purge
+ * (a person who leaves is never read) and after the re-embed (its
+ * downloads must not delay the vectors), and nothing of it reaches a
+ * model.
  */
 import { CV_BUCKET, PHOTO_BUCKET, type Db, type ExpiredCandidate } from "./db.js";
 import {
@@ -33,6 +42,12 @@ import {
 import { logError, logInfo } from "./log.js";
 import { countModelCall, countPurged } from "./metrics.js";
 import { vectorLiteral, type Embedder, type Embedding } from "./model.js";
+import { extractPageImages } from "./pdf.js";
+import {
+  photoBackfillPass,
+  type PageImagesReader,
+  type PhotoBackfillReport,
+} from "./photo-backfill.js";
 import { photoPathOf } from "./photo.js";
 import { embeddingTextOf, profileOfRow } from "./structure.js";
 import type { CandidateRow } from "./types.js";
@@ -56,6 +71,12 @@ export interface MaintenanceReport {
   reembedFailed: number;
   /** Candidates listed with nothing to embed; they stay without a vector and are found by text. */
   reembedSkipped: number;
+  /** Candidates the photo pass settled this run: checked once, with a photo or without. */
+  photosChecked: number;
+  /** Photos the pass wrote. */
+  photosFound: number;
+  /** Candidates a step of the photo pass failed for (logged); settled too, unless the write itself failed. */
+  photosFailed: number;
   ms: number;
 }
 
@@ -68,6 +89,8 @@ export interface MaintenanceDeps {
   recordUsage: UsageRecorder;
   /** The embedding model's name, for the fix sentence. */
   embeddingModel?: string;
+  /** Reads page 1's images of a CV for the photo pass; pdf.ts's extractor unless given (the tests give a fake). */
+  pageImages?: PageImagesReader;
 }
 
 interface ReembedReport {
@@ -79,7 +102,11 @@ interface ReembedReport {
 /** One candidate: embedded, failed (kept for the next pass), skipped (nothing to embed), or the pass must stop. */
 type ReembedOutcome = "embedded" | "failed" | "skipped" | "mismatch";
 
-async function reembedOne(deps: MaintenanceDeps, embed: Embedder, row: CandidateRow): Promise<ReembedOutcome> {
+async function reembedOne(
+  deps: MaintenanceDeps,
+  embed: Embedder,
+  row: CandidateRow,
+): Promise<ReembedOutcome> {
   // A profile with nothing to embed (no headline, summary, skills or
   // positions) stays without a vector: it is found by its text.
   const text = embeddingTextOf(profileOfRow(row));
@@ -200,7 +227,8 @@ export async function runMaintenance(deps: MaintenanceDeps): Promise<Maintenance
       // have go with it (nothing to remove is not an error): two CVs read
       // at once, or an upload whose row write failed, can leave one that
       // no row names.
-      const photoPath = (await db.getCandidateById(item.org_id, item.candidate_id))?.photo_path ?? null;
+      const photoPath =
+        (await db.getCandidateById(item.org_id, item.candidate_id))?.photo_path ?? null;
       const photoPaths = new Set([
         ...(photoPath ? [photoPath] : []),
         photoPathOf(item.org_id, item.candidate_id, "image/png"),
@@ -228,6 +256,19 @@ export async function runMaintenance(deps: MaintenanceDeps): Promise<Maintenance
     ? await reembedPass(deps, deps.embed)
     : { reembedded: 0, reembedFailed: 0, reembedSkipped: 0 };
 
+  // The photos last: the purge has taken the rows that leave, the vectors
+  // did not wait for the downloads. The pass settles its own failures; a
+  // thrown one is logged so the report is answered all the same.
+  let photos: PhotoBackfillReport = { photosChecked: 0, photosFound: 0, photosFailed: 0 };
+  try {
+    photos = await photoBackfillPass({
+      db,
+      pageImages: deps.pageImages ?? ((buffer, context) => extractPageImages(buffer, 1, context)),
+    });
+  } catch (error) {
+    logError("photo_backfill_failed", error);
+  }
+
   const report: MaintenanceReport = {
     ranAt,
     purged,
@@ -238,6 +279,9 @@ export async function runMaintenance(deps: MaintenanceDeps): Promise<Maintenance
     reembedded: reembed.reembedded,
     reembedFailed: reembed.reembedFailed,
     reembedSkipped: reembed.reembedSkipped,
+    photosChecked: photos.photosChecked,
+    photosFound: photos.photosFound,
+    photosFailed: photos.photosFailed,
     ms: Date.now() - started,
   };
   logInfo("maintenance", { ...report });
