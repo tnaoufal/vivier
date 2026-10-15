@@ -132,7 +132,6 @@ export const fr = {
   "onboarding.orgName.placeholder": "Ex. Groupe Lumière RH",
   "onboarding.create": "Créer l'organisation",
   "onboarding.locale": "Langue de travail",
-  "onboarding.pending": "Invité ? Ouvrez le lien reçu par email.",
   "onboarding.slugTaken": "Ce nom est déjà pris. Précisez-le.",
 
   // invitations
@@ -274,7 +273,6 @@ export const en = {
   "onboarding.orgName.placeholder": "e.g. Lumière Group HR",
   "onboarding.create": "Create the organisation",
   "onboarding.locale": "Working language",
-  "onboarding.pending": "Invited? Open the link in your email.",
   "onboarding.slugTaken": "This name is already taken. Make it more specific.",
 
   "invite.title": "Join {org}",

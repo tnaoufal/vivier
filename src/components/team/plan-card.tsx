@@ -96,9 +96,7 @@ export function PlanCard({
         <h2 id="plan-card-title" className="text-base font-semibold text-ink">
           {t("settings.plan")}
         </h2>
-        <Pill tone="primary" dot>
-          {planName}
-        </Pill>
+        <Pill>{planName}</Pill>
       </div>
       <dl className="mt-6 space-y-6">
         <Usage

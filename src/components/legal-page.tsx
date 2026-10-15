@@ -17,7 +17,7 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
   return (
     <PublicFrame width="md">
       <article className="rise-in">
-        <PageHeader eyebrow={BRAND.name} title={page.title} description={page.lead} />
+        <PageHeader eyebrow={BRAND.name} title={page.title} />
         <nav className="sheet p-6" aria-label={t("legal.contents")}>
           <p className="label-caps">{t("legal.contents")}</p>
           <ol className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">

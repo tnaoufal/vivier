@@ -1,21 +1,14 @@
 /**
  * The thread's composer: one line that grows with the text (six at
  * most, then it scrolls) and completes "@" with the team: typing "@An"
- * lists the members whose name starts that way, Enter or Tab inserts
- * "@Ana Lopez ", Escape closes the list. Enter sends, Shift+Enter
+ * lists the members whose name starts that way (the highlighted one
+ * read out by a status line), Enter or Tab inserts "@Ana Lopez ",
+ * Escape closes the list. Enter sends, Shift+Enter
  * breaks a line, and a quiet icon button sends too. Built on the
  * shortlist's mentions helper; the mentions themselves are read from
  * the final text when the message is sent.
  */
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { Send } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
@@ -66,7 +59,7 @@ export function ThreadComposer({
     [members, query],
   );
   const open = query !== null && suggestions.length > 0;
-  const listId = `${useId()}-mentions`;
+  const highlighted = open ? suggestions[active] : undefined;
   const canSend = !disabled && value.trim().length > 0;
 
   useEffect(() => {
@@ -161,8 +154,6 @@ export function ThreadComposer({
         placeholder={placeholder}
         aria-label={ariaLabel}
         aria-autocomplete="list"
-        aria-expanded={open}
-        aria-controls={open ? listId : undefined}
         rows={1}
         maxLength={MESSAGE_MAX}
         disabled={disabled}
@@ -183,7 +174,6 @@ export function ThreadComposer({
       />
       {open ? (
         <ul
-          id={listId}
           role="listbox"
           aria-label={t("thread.suggestions")}
           className="surface-float fade-in absolute bottom-full left-0 z-10 mb-1 max-h-56 w-64 max-w-full overflow-y-auto p-1"
@@ -207,6 +197,16 @@ export function ThreadComposer({
           ))}
         </ul>
       ) : null}
+      {/* A textarea cannot say which suggestion is highlighted: a status line reads it out. */}
+      <p role="status" className="sr-only">
+        {highlighted
+          ? t("thread.suggestions.highlighted", {
+              name: highlighted.name,
+              index: active + 1,
+              count: suggestions.length,
+            })
+          : null}
+      </p>
     </div>
   );
 }

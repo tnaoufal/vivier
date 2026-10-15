@@ -6,9 +6,11 @@
  * bubbles: the caller's messages sit with the others), and a composer
  * kept at the bottom for members. What is sent shows at once and the
  * next read confirms it; every change of the object's column re-reads;
- * a failure is one line in a toast. `compact` caps the height and
- * scrolls inside (a drawer's tab, a card); by default the thread fills
- * its column. `hideHeader` is for a drawer whose title is the thread's.
+ * what arrives is announced (a polite live region on the list, the
+ * skeleton outside it); a failure is one line in a toast. `compact` caps
+ * the height and scrolls inside (a drawer's tab, a card); by default the
+ * thread fills its column. `hideHeader` is for a drawer whose title is
+ * the thread's.
  */
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
@@ -67,7 +69,10 @@ export function TeamThread({
 }) {
   const { t, locale } = useI18n();
   const { can } = useOrg();
-  const { messages, count, loading, error, post, remove } = useThread(target, currentUserId);
+  const { messages, count, loading, error, post, remove, rowKey } = useThread(
+    target,
+    currentUserId,
+  );
   const [draft, setDraft] = useState("");
   const [deleting, setDeleting] = useState<ThreadMessage | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -161,35 +166,41 @@ export function TeamThread({
             <p className="sr-only">{t("common.loading")}</p>
             <SkeletonRows rows={3} avatarSize="sm" className="[&>li]:px-0" />
           </>
-        ) : messages.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">{t("thread.empty")}</p>
         ) : (
-          days.map((day) => (
-            <section
-              key={day.key}
-              aria-labelledby={`${headingId}-${day.key}`}
-              className="pt-3 first:pt-0"
-            >
-              <h3
-                id={`${headingId}-${day.key}`}
-                className="py-1 text-center text-meta text-muted-foreground"
-              >
-                {dayText(day.label, t)}
-              </h3>
-              <ol className="space-y-4 py-3">
-                {day.messages.map((message) => (
-                  <li key={message.id}>
-                    <MessageItem
-                      message={message}
-                      members={members}
-                      canDelete={canPost && (admin || isMine(message, currentUserId))}
-                      onDelete={() => setDeleting(message)}
-                    />
-                  </li>
-                ))}
-              </ol>
-            </section>
-          ))
+          // Mounted with what was read, so the history is not read out; a message that lands
+          // after is an addition and is announced. The skeleton stays outside the live region.
+          <div aria-live="polite" aria-relevant="additions">
+            {messages.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">{t("thread.empty")}</p>
+            ) : (
+              days.map((day) => (
+                <section
+                  key={day.key}
+                  aria-labelledby={`${headingId}-${day.key}`}
+                  className="pt-3 first:pt-0"
+                >
+                  <h3
+                    id={`${headingId}-${day.key}`}
+                    className="py-1 text-center text-meta text-muted-foreground"
+                  >
+                    {dayText(day.label, t)}
+                  </h3>
+                  <ol className="space-y-4 py-3">
+                    {day.messages.map((message) => (
+                      <li key={rowKey(message)}>
+                        <MessageItem
+                          message={message}
+                          members={members}
+                          canDelete={canPost && (admin || isMine(message, currentUserId))}
+                          onDelete={() => setDeleting(message)}
+                        />
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              ))
+            )}
+          </div>
         )}
       </div>
       {canPost ? (

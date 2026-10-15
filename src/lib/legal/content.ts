@@ -11,8 +11,6 @@ export type LegalKind = "privacy" | "terms";
 
 export interface LegalText {
   title: string;
-  /** The one sentence under the title. */
-  lead: string;
   sections: { h: string; p: string[] }[];
 }
 
@@ -20,7 +18,6 @@ export const LEGAL_CONTENT: Record<LegalKind, Record<Locale, LegalText>> = {
   privacy: {
     fr: {
       title: "Politique de confidentialité",
-      lead: "Ce que Vivier traite, pour qui, combien de temps, et ce qu'un modèle de langage voit.",
       sections: [
         {
           h: "Qui traite quoi",
@@ -65,7 +62,6 @@ export const LEGAL_CONTENT: Record<LegalKind, Record<Locale, LegalText>> = {
     },
     en: {
       title: "Privacy policy",
-      lead: "What Vivier processes, for whom, for how long, and what a language model sees.",
       sections: [
         {
           h: "Who processes what",
@@ -112,7 +108,6 @@ export const LEGAL_CONTENT: Record<LegalKind, Record<Locale, LegalText>> = {
   terms: {
     fr: {
       title: "Conditions d'utilisation",
-      lead: "Ce que le service permet, qui répond de quoi, et ce qu'il ne fait jamais.",
       sections: [
         {
           h: "Le service",
@@ -154,7 +149,6 @@ export const LEGAL_CONTENT: Record<LegalKind, Record<Locale, LegalText>> = {
     },
     en: {
       title: "Terms of use",
-      lead: "What the service allows, who answers for what, and what it never does.",
       sections: [
         {
           h: "The service",

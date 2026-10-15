@@ -234,8 +234,8 @@ Every primitive keeps its props from v2; the look is monochrome.
 - **Tooltip** the inverse surface (the ink, paper text; paper on ink in
   dark), 13px, one line; the provider is mounted at the root. A tooltip
   never replaces an `aria-label`.
-- **DropdownMenu, Popover, Command** the float surface (paper, a 1px
-  border); items 36px with one leading icon at most; `destructive` on an
+- **DropdownMenu, Popover** the float surface (paper, a 1px border);
+  items 36px with one leading icon at most; `destructive` on an
   item for erase reads at medium weight with its icon in the ink. Menus
   open above drawers (`z-popover`).
 - **Skeleton, SkeletonRows** grey 100 placeholders with a shimmer of the
@@ -275,11 +275,6 @@ Every primitive keeps its props from v2; the look is monochrome.
   `decorative` (beside the visible name: hidden from assistive
   technologies, so the name is not read twice). The photo identifies a
   person in the interface only and never reaches a model.
-- **StatTile** `label` (wraps to two lines, never truncated), `value`
-  (null draws a dash with the reason on hover and as its text for
-  assistive technologies, never a zero), `icon` (in a grey 100 disc from
-  `sm`), `to`, `loading`, `progress` (a 4px bar with a sheen while it
-  runs), `hint`. **StatGrid** staggers its tiles.
 - **ProgressBar** `value` (null = indeterminate), `max`, `size` sm 4px ·
   md 6px, `active` (a grey sheen), `tone` (accepted, changes nothing: the
   fill is the ink on a grey 200 track), `label` (required, for assistive
@@ -293,11 +288,6 @@ Every primitive keeps its props from v2; the look is monochrome.
   children: a vertical rail with ink dots (outlined; the current one
   filled), dates on the left from `sm`, items rising in one after the
   other. For the experiences.
-- **ScoreRing** `score` 0–100 or null (a dash), `label`, `size` sm 40 ·
-  md 56 · lg 72, `static` (the public dossier: drawn at rest for print).
-  An ink arc on a grey 200 track, the number in the ink: the figure is
-  the signal, no colour grades it; `ringTone` names the band (80, 60) for
-  the words a page may say. The arc draws itself once.
 - **RequirementList, RequirementMark** one row per requirement: the mark
   (✓ met: an ink disc with a paper check; – partial: an ink outline; ✗
   missing: a grey outline; ? not stated: a grey 100 disc; each with a

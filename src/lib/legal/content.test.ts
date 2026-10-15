@@ -9,12 +9,17 @@ describe("LEGAL_CONTENT", () => {
     const { fr, en } = LEGAL_CONTENT[kind];
 
     it(`gives ${kind} the same sections and paragraphs in French and in English`, () => {
-      expect(en.sections.map((section) => section.p.length)).toEqual(fr.sections.map((section) => section.p.length));
+      expect(en.sections.map((section) => section.p.length)).toEqual(
+        fr.sections.map((section) => section.p.length),
+      );
     });
 
-    it(`leaves no ${kind} title, lead, heading or paragraph empty`, () => {
+    it(`leaves no ${kind} title, heading or paragraph empty`, () => {
       for (const page of [fr, en]) {
-        const texts = [page.title, page.lead, ...page.sections.flatMap((section) => [section.h, ...section.p])];
+        const texts = [
+          page.title,
+          ...page.sections.flatMap((section) => [section.h, ...section.p]),
+        ];
         expect(texts.every((text) => text.trim().length > 0)).toBe(true);
       }
     });

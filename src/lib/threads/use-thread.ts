@@ -4,6 +4,9 @@
  * was just sent shown at once and confirmed by the next read, what was
  * just deleted gone at once and brought back only if the delete was
  * refused; and the count alone, for a button that opens the thread.
+ * A message sent from here keeps the key it was first drawn with once
+ * the server names it, so its row is not drawn anew (a live region
+ * would read it out twice).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -42,6 +45,8 @@ export interface ThreadState {
   post: (body: string, mentions: string[]) => Promise<boolean>;
   /** Hides the message at once and deletes it; false when the delete was refused (the message comes back). */
   remove: (messageId: string) => Promise<boolean>;
+  /** A stable React key for a message's row: the id, or the local one a message sent from here was first drawn with. */
+  rowKey: (message: Pick<ThreadMessage, "id">) => string;
 }
 
 const EMPTY_PAGE: ThreadPage = { messages: [], total: 0 };
@@ -65,11 +70,14 @@ export function useThread(target: ThreadTarget, currentUserId: string | null): T
   const [pending, setPending] = useState<ThreadMessage[]>([]);
   const [removed, setRemoved] = useState<ReadonlySet<string>>(() => new Set<string>());
   const sequence = useRef(0);
+  /** The local id each message sent from here was drawn with, by the id the server gave it. */
+  const keys = useRef(new Map<string, string>());
 
   // Another object: nothing sent or removed carries over.
   useEffect(() => {
     setPending([]);
     setRemoved(new Set<string>());
+    keys.current = new Map<string, string>();
   }, [key]);
 
   const refresh = query.refresh;
@@ -121,6 +129,7 @@ export function useThread(target: ThreadTarget, currentUserId: string | null): T
           body: text,
           mentions,
         });
+        keys.current.set(row.id, localId);
         setPending((prev) =>
           prev.map((message) =>
             message.id === localId ? { ...row, author: draft.author } : message,
@@ -159,6 +168,11 @@ export function useThread(target: ThreadTarget, currentUserId: string | null): T
     [orgId, refresh],
   );
 
+  const rowKey = useCallback(
+    (message: Pick<ThreadMessage, "id">) => keys.current.get(message.id) ?? message.id,
+    [],
+  );
+
   const messages = useMemo(
     () => mergeMessages(loaded?.messages ?? [], pending, removed),
     [loaded, pending, removed],
@@ -173,6 +187,7 @@ export function useThread(target: ThreadTarget, currentUserId: string | null): T
     refresh,
     post,
     remove,
+    rowKey,
   };
 }
 

@@ -9,15 +9,7 @@
  */
 import { useEffect, type MouseEvent } from "react";
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
-import {
-  Briefcase,
-  MessageSquare,
-  Plus,
-  RefreshCw,
-  TriangleAlert,
-  Upload,
-  Users,
-} from "lucide-react";
+import { Briefcase, MessageSquare, Plus, RefreshCw, TriangleAlert, Upload } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
@@ -172,12 +164,6 @@ function PoolLine({
       className="sheet flex flex-wrap items-center gap-x-4 gap-y-3 p-4 sm:px-6"
       aria-label={t("nav.candidates")}
     >
-      <span
-        aria-hidden="true"
-        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-ink [&_svg]:size-4"
-      >
-        <Users />
-      </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm text-ink tabular-nums">
           {profiles === null ? (

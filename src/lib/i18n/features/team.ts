@@ -122,7 +122,6 @@ const fr = {
   // invite dialog
   "team.invite": "Inviter",
   "team.invite.title": "Inviter un collègue",
-  "team.askAdmin": "Demandez à un administrateur.",
   "team.invite.text": "Valable 7 jours, pour cette adresse seulement.",
   "team.invite.send": "Envoyer l'invitation",
   "team.invite.sent": "Invitation envoyée à {email}.",
@@ -316,7 +315,6 @@ const en = {
 
   "team.invite": "Invite",
   "team.invite.title": "Invite a colleague",
-  "team.askAdmin": "Ask an administrator.",
   "team.invite.text": "Valid for 7 days, for this address only.",
   "team.invite.send": "Send the invitation",
   "team.invite.sent": "Invitation sent to {email}.",

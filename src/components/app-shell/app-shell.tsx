@@ -50,7 +50,6 @@ import { cn } from "@/lib/utils";
 
 import { Avatar } from "./avatar";
 import { PageTransition } from "./page-transition";
-import { Pill } from "./pill";
 
 interface NavItem {
   to: string;
@@ -181,10 +180,9 @@ function OrgSwitcher() {
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-ink">{org.name}</span>
-            <span className="mt-1 block">
-              <Pill tone="primary" size="sm">
-                {t(`shell.org.plan.${org.plan}`)}
-              </Pill>
+            {/* Grey 700, not grey 500: the line keeps AA on the hover tint over the sidebar. */}
+            <span className="block truncate text-meta text-ink-soft">
+              {t(`shell.org.plan.${org.plan}`)}
             </span>
           </span>
           <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -224,7 +222,7 @@ function UserMenu() {
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium text-ink">{name}</span>
             {roleLabel ? (
-              <span className="block truncate text-meta text-muted-foreground">{roleLabel}</span>
+              <span className="block truncate text-meta text-ink-soft">{roleLabel}</span>
             ) : null}
           </span>
           <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

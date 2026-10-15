@@ -1,10 +1,10 @@
 /**
  * The first screen of a person with no organisation: create one (they
- * become its owner) or follow an invitation link. One centred card under
- * the brand, the name first, the working language, the one button, and
- * one line for a person who was invited instead.
+ * become its owner). One centred card under the brand, the name first,
+ * the working language, the one button; a person who was invited follows
+ * the link in their email instead.
  * `standalone` is /app/organizations/new, inside the app shell: the same
- * centred card, without the brand or the invitation line.
+ * centred card, without the brand.
  */
 import { useId, useState, type FormEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -131,9 +131,6 @@ export function Onboarding({ standalone = false }: { standalone?: boolean }) {
       <div className="rise-in w-full max-w-md">
         <BrandMark size="md" className="mb-8 justify-center" to="/" />
         {form}
-        <p className="mt-6 text-center text-meta text-muted-foreground">
-          {t("onboarding.pending")}
-        </p>
       </div>
     </div>
   );
