@@ -31,6 +31,21 @@ export function isTerminalStatus(status: AnalysisStatus): boolean {
   return status === "stopped" || status === "done" || status === "failed";
 }
 
+/** The error a done run carries when promoted profiles could not be read twice: "assess_failed:N". */
+export const ASSESS_FAILED_PREFIX = "assess_failed:";
+
+/** The error of a done run with `count` failed full readings; null when every reading answered. */
+export function assessFailedError(count: number): string | null {
+  return Number.isInteger(count) && count > 0 ? `${ASSESS_FAILED_PREFIX}${count}` : null;
+}
+
+/** How many full readings a done run's error says failed (its profiles stay unassessed until the run is queued again); 0 for any other error or none. */
+export function unreadOf(error: string | null | undefined): number {
+  if (typeof error !== "string" || !error.startsWith(ASSESS_FAILED_PREFIX)) return 0;
+  const count = Number(error.slice(ASSESS_FAILED_PREFIX.length));
+  return Number.isInteger(count) && count > 0 ? count : 0;
+}
+
 export type AnalysisStage =
   | "reading"
   | "snapshot"

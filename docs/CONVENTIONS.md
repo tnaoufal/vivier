@@ -30,7 +30,9 @@ state machine) lives in `packages/analysis` (`@vivier/analysis`), used
 by the web app through a path alias (straight from `packages/analysis/src`,
 in `tsconfig.json`, `vite.config.ts` and `vitest.config.ts`) and by the
 processor through a `file:` dependency (its `npm run build:analysis`
-compiles the package into `packages/analysis/dist`, which is gitignored).
+compiles the package into `packages/analysis/dist`, which is gitignored;
+`build`, `test` and `typecheck` run it first, `npm run dev` needs it run
+once, and the Dockerfile builds it in the image).
 The package has zero dependencies: no zod, no React, no i18n, no `@/`
 import, and no DOM or Node global (it carries no typings for them);
 relative imports inside it end in `.js`. Each app keeps its own zod
@@ -66,9 +68,12 @@ live updates through `subscribeToTable(table, filter, onChange)` with
 RLS checks it. An RPC the browser calls (`similar_candidates`) is SECURITY
 INVOKER, so RLS decides what it answers; its rows are guarded at the
 boundary like any query result (`src/lib/candidates/similar.ts`). A loop
-the browser drives (an import, an analysis) sends bounded batches
-(`LOT_SIZE`, `ASSESS_BATCH_MAX`), renders progress, and can be stopped and
-resumed from what is stored. The team's thread on an object is
+the browser drives (an import) sends bounded batches (`LOT_SIZE`),
+renders progress, and can be stopped and resumed from what is stored. An
+analysis is not one: the processor runs it as a job
+(`services/processor/src/analysis`), the page follows its row
+(`useAnalysis`, realtime on `searches`), and the browser never calls a
+model for it. The team's thread on an object is
 `TeamThread` / `ThreadPanel` (`src/components/thread`) on a
 `ThreadTarget` (`{ briefId } | { candidateId } | { shortlistItemId }`);
 its reads and writes live in `src/lib/threads`, never in a page.
@@ -118,12 +123,13 @@ gateway refuses a URL past 16 KB.
 The model: `completeJson({ system, user, schema, model? })` and
 `embed(texts)` (`src/lib/model/model.server.ts`), both throwing
 `SETUP:model` when no key is set; `model` names another chat model of the
-same endpoint for one call (the assessment reads
-`settings().llm.assessmentModel`). Check `modelConfigured()` first when a
-feature has a no-model path (it always should: the analysis runs on text
-alone, a dossier is written from the verdicts). Record every call with
-`recordUsage(orgId, kind, usage)`, `kind` one of `structure`, `embed`,
-`ocr`, `brief`, `assess`, `triage`, `summary`, a failed one too: a call
+same endpoint for one call (no Worker call sets it since evolution 7: the
+analysis's calls run on the processor, on `LLM_ANALYSIS_MODEL`). Check
+`modelConfigured()` first when a feature has a no-model path (it always
+should: the analysis runs on text alone, a dossier is written from the
+verdicts). Record every call with `recordUsage(orgId, kind, usage)`,
+`kind` one of `structure`, `embed`, `ocr`, `brief`, `triage`, `screen`,
+`assess`, `summary`, a failed one too: a call
 that fails after billed attempts throws `ModelAnswerError`, whose
 `usage` (`usageOf(error)`) is recorded before the error goes on. A
 payload that carries a candidate's text goes through `redactIdentity()`
@@ -132,7 +138,7 @@ name, an e-mail or a phone number; and an answer that a page will show
 is bound by pure rules before it is stored (`enforceAssessment()` is the
 pattern). Rate-limit scopes are `model`, `email`, `share`, `processor`,
 `search`, `triage` and `assess` (the last two count per user alone once
-the user is known).
+the user is known; nothing uses them since the analysis left the Worker).
 
 ## Sentences
 

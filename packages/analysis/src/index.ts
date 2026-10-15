@@ -275,6 +275,7 @@ export {
   BATCH_FAILURES_MAX,
   BATCH_MIN,
   isThinCard,
+  LEFT_POOL_REASON,
   lotsOf,
   settlesUnknown,
   splitBatch,
@@ -284,6 +285,8 @@ export {
 
 export {
   ANALYSIS_STATUSES,
+  ASSESS_FAILED_PREFIX,
+  assessFailedError,
   isAnalysisStage,
   isAnalysisStatus,
   isTerminalStatus,
@@ -292,6 +295,7 @@ export {
   STAGE_ORDER,
   STAGE_SPANS,
   stageIndex,
+  unreadOf,
   type AnalysisStage,
   type AnalysisStatus,
   type RemainingWork,

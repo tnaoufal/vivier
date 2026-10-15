@@ -469,9 +469,9 @@ describe("passesTriage and isTriageVerdict", () => {
   it("reads in full everything but another job", () => {
     expect(passesTriage("yes")).toBe(true);
     expect(passesTriage("close")).toBe(true);
-    expect(passesTriage("unknown")).toBe(true);
+    expect(passesTriage("unknown")).toBe(false);
     expect(passesTriage("no")).toBe(false);
-    expect(TRIAGE_PASSING).toEqual(["yes", "close", "unknown"]);
+    expect(TRIAGE_PASSING).toEqual(["yes", "close"]);
     expect(isTriageVerdict("close")).toBe(true);
     expect(isTriageVerdict("maybe")).toBe(false);
     expect(isTriageVerdict(null)).toBe(false);

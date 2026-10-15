@@ -60,9 +60,9 @@ export function isTriageVerdict(value: unknown): value is TriageVerdict {
   return typeof value === "string" && (TRIAGE_VERDICTS as readonly string[]).includes(value);
 }
 
-/** True for a verdict whose profile is read in full: everything but another job. */
+/** True for a verdict the funnel keeps for the screening: the job itself or a close one; "unknown" is never kept (a person may bring it back). */
 export function passesTriage(verdict: TriageVerdict): boolean {
-  return verdict !== "no";
+  return verdict === "yes" || verdict === "close";
 }
 
 /** The verdicts whose profiles the promotion takes into the results. */

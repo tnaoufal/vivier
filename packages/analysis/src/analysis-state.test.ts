@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ANALYSIS_STATUSES,
+  assessFailedError,
   isAnalysisStage,
   isAnalysisStatus,
   isTerminalStatus,
@@ -10,6 +11,7 @@ import {
   STAGE_ORDER,
   STAGE_SPANS,
   stageIndex,
+  unreadOf,
   type RemainingWork,
 } from "./analysis-state.js";
 
@@ -95,5 +97,19 @@ describe("progressOf", () => {
     expect(progressOf("assessing", 1, Number.NaN)).toBe(66);
     expect(progressOf("final", 1, 1)).toBe(100);
     expect(progressOf(null, 0, 0)).toBe(100);
+  });
+});
+
+describe("assessFailedError and unreadOf", () => {
+  it("writes and reads the count of failed full readings, nothing else", () => {
+    expect(assessFailedError(0)).toBeNull();
+    expect(assessFailedError(3)).toBe("assess_failed:3");
+    expect(unreadOf("assess_failed:3")).toBe(3);
+    expect(unreadOf(assessFailedError(12))).toBe(12);
+    expect(unreadOf("assess_failed:0")).toBe(0);
+    expect(unreadOf("assess_failed:x")).toBe(0);
+    expect(unreadOf("model_unavailable")).toBe(0);
+    expect(unreadOf(null)).toBe(0);
+    expect(unreadOf(undefined)).toBe(0);
   });
 });

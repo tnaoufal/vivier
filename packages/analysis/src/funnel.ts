@@ -19,6 +19,8 @@ export const BATCH_FAILURES_MAX = 2;
 export const UNREADABLE_REASON = "Fiche illisible par le modèle";
 /** The reason stored on a card with nothing to judge, settled without a call. */
 export const THIN_CARD_REASON = "Fiche sans poste ni intitulé";
+/** The reason stored on a snapshot row whose candidate left the active pool before the triage read it (settled "unknown" without a call). */
+export const LEFT_POOL_REASON = "Profil sorti du vivier";
 
 function titled(value: string | null | undefined): boolean {
   return typeof value === "string" && value.trim().length > 0;
