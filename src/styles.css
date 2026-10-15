@@ -76,21 +76,25 @@
 }
 
 /*
- * Blackweaver monochrome, v3 (docs/DESIGN.md is the contract, this file its
- * source).
+ * Blackweaver monochrome, v4 (docs/DESIGN.md is the contract, this file its
+ * source, src/lib/design/contrast.test.ts its proof).
  *
  * The @theme inline block maps CSS custom properties to Tailwind utility
  * classes (--color-primary -> bg-primary, text-primary; --text-body ->
  * text-body; --shadow-raised -> shadow-raised). :root holds the light
- * palette, .dark the dark one; every token exists in both. Light is the
- * product default (HR teams work in daylight, on documents).
+ * palette, .dark the dark one; every token exists in both (tested). Light
+ * is the product default (HR teams work in daylight, on documents); the
+ * rail's switch and the pre-hydration script keep the saved choice.
  *
  * One ink on paper. There is no accent colour: the primary action is the
  * ink, surfaces and secondary text are greys from one scale, and a state
  * is told by shape, weight, an icon and a word, never by a hue. The
  * three tones keep their names for the call sites (positive, caution,
- * negative) but are ink, grey 700 and grey 500. The dark theme is the
- * mirror: paper on ink.
+ * negative) but are the ink, grey 700 and grey 500. The dark theme is the
+ * mirror: paper on ink. v4 is the stronger scale of the one-plane
+ * workspace: lines instead of cards (a pane's edge, a row's divider),
+ * greys a reader sees, a row under the pointer (`hover`) and the thread
+ * pane (`thread`) as tokens, every pair AA at least.
  */
 
 @theme inline {
@@ -133,7 +137,7 @@
   --radius-2xl: 1rem;
   --radius-3xl: 1rem;
 
-  /* Elevation: a hairline on cards, a soft shadow under what floats, a deeper one under a dialog. */
+  /* Elevation: a hairline (kept for the few who ask for it), a soft shadow under what floats, a deeper one under a dialog. */
   --shadow-hairline: var(--elev-hairline);
   --shadow-raised: var(--elev-raised);
   --shadow-float: var(--elev-float);
@@ -223,20 +227,14 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-hover: var(--hover);
+  --color-thread: var(--thread);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 :root,
@@ -257,35 +255,44 @@
   --z-toast: 70;
 
   /*
-   * The greys, one scale: 50 #fafafa, 100 #f4f4f4, 200 #e6e6e6, 300
-   * #d4d4d4, 400 #a3a3a3, 500 #6f6f6f (AA on white and on grey 50/100),
-   * 700 #3d3d3d, 900 #0a0a0a. Paper is #ffffff, the ink #0a0a0a.
+   * The greys, one scale, read on the page: paper #ffffff; 50 #f7f7f7 (the
+   * thread pane); 100 #f5f5f5 (a row under the pointer); 150 #efefef (the
+   * selected row, a chip, a disc, the segmented track); 200 #dedede (a
+   * pane's edge, a row's divider, a track); 300 #c8c8c8 (a field's border,
+   * the quiet outline of a dismissed mark, tier C); 500 #5f5f5f (meta
+   * lines and labels: 6.4:1 on paper, 5.6:1 on the selected row); 700
+   * #333333 (a second-rank text that stays dark); the ink #0a0a0a. A tint
+   * (`bg-ink/10`) is allowed only under the pointer, never under text.
    */
   --background: #ffffff;
   --foreground: #0a0a0a;
   --ink: #0a0a0a;
-  --ink-soft: #3d3d3d;
+  --ink-soft: #333333;
   --surface: #ffffff;
-  --line: #e6e6e6;
+  --line: #dedede;
   /* The grey a bar or a ring draws its ink on. */
-  --track: #e6e6e6;
+  --track: #dedede;
   --card: #ffffff;
   --card-foreground: #0a0a0a;
   --popover: #ffffff;
   --popover-foreground: #0a0a0a;
   --primary: #0a0a0a;
   --primary-foreground: #ffffff;
-  --secondary: #f4f4f4;
+  --secondary: #efefef;
   --secondary-foreground: #0a0a0a;
-  --muted: #f4f4f4;
-  --muted-foreground: #6f6f6f;
-  --accent: #f4f4f4;
+  --muted: #efefef;
+  --muted-foreground: #5f5f5f;
+  --accent: #efefef;
   --accent-foreground: #0a0a0a;
+  /* A row under the pointer: one step lighter than the selected row. */
+  --hover: #f5f5f5;
+  /* The thread pane's background. */
+  --thread: #f7f7f7;
   /* Erase is the ink like any action: the confirm dialog and its words carry the safety. */
   --destructive: #0a0a0a;
   --destructive-foreground: #ffffff;
-  --border: #e6e6e6;
-  --input: #d4d4d4;
+  --border: #dedede;
+  --input: #c8c8c8;
   --ring: #0a0a0a;
   /*
    * The three tones, monochrome: positive is the ink (filled, paper
@@ -296,25 +303,17 @@
    */
   --positive: #0a0a0a;
   --positive-foreground: #ffffff;
-  --caution: #3d3d3d;
+  --caution: #333333;
   --caution-foreground: #0a0a0a;
-  --negative: #6f6f6f;
+  --negative: #5f5f5f;
   --negative-foreground: #ffffff;
-  --neutral: #a3a3a3;
-  /* The inverse surface (a toast, a tooltip): ink with paper text, grey 400 for its second line. */
+  --neutral: #c8c8c8;
+  /* The inverse surface (a toast, a tooltip): the ink with paper text, grey 400 for its second line. */
   --inverse: #0a0a0a;
   --inverse-foreground: #ffffff;
-  --inverse-muted-foreground: #a3a3a3;
+  --inverse-muted-foreground: #a8a8a8;
   /* The veil under a dialog or a drawer: the ink at 40 percent. */
   --scrim: rgba(10, 10, 10, 0.4);
-  --sidebar: #fafafa;
-  --sidebar-foreground: #0a0a0a;
-  --sidebar-primary: #0a0a0a;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e6e6e6;
-  --sidebar-accent-foreground: #0a0a0a;
-  --sidebar-border: #e6e6e6;
-  --sidebar-ring: #0a0a0a;
   --elev-hairline: 0 1px 0 rgba(0, 0, 0, 0.06);
   --elev-raised: 0 2px 8px rgba(0, 0, 0, 0.08);
   --elev-float: 0 8px 24px rgba(0, 0, 0, 0.1);
@@ -324,49 +323,44 @@
 .dark {
   /* The mirror: paper on ink, the same scale read from the other end. */
   --background: #0a0a0a;
-  --foreground: #fafafa;
-  --ink: #fafafa;
+  --foreground: #f5f5f5;
+  --ink: #f5f5f5;
   --ink-soft: #d4d4d4;
   --surface: #0a0a0a;
-  --line: #262626;
-  --track: #262626;
-  --card: #0a0a0a;
-  --card-foreground: #fafafa;
+  --line: #2a2a2a;
+  --track: #2a2a2a;
+  /* Dialogs, drawers and menus sit one step above the page, with their border. */
+  --card: #0f0f0f;
+  --card-foreground: #f5f5f5;
   --popover: #0f0f0f;
-  --popover-foreground: #fafafa;
-  --primary: #fafafa;
+  --popover-foreground: #f5f5f5;
+  --primary: #f5f5f5;
   --primary-foreground: #0a0a0a;
-  --secondary: #171717;
-  --secondary-foreground: #fafafa;
-  --muted: #171717;
-  --muted-foreground: #a3a3a3;
-  --accent: #171717;
-  --accent-foreground: #fafafa;
-  --destructive: #fafafa;
+  --secondary: #1c1c1c;
+  --secondary-foreground: #f5f5f5;
+  --muted: #1c1c1c;
+  --muted-foreground: #a8a8a8;
+  --accent: #1c1c1c;
+  --accent-foreground: #f5f5f5;
+  --hover: #141414;
+  --thread: #0f0f0f;
+  --destructive: #f5f5f5;
   --destructive-foreground: #0a0a0a;
-  --border: #262626;
-  --input: #333333;
-  --ring: #fafafa;
-  --positive: #fafafa;
+  --border: #2a2a2a;
+  --input: #3a3a3a;
+  --ring: #f5f5f5;
+  --positive: #f5f5f5;
   --positive-foreground: #0a0a0a;
   --caution: #d4d4d4;
-  --caution-foreground: #fafafa;
-  --negative: #a3a3a3;
+  --caution-foreground: #f5f5f5;
+  --negative: #a8a8a8;
   --negative-foreground: #0a0a0a;
-  --neutral: #6f6f6f;
-  --inverse: #fafafa;
+  --neutral: #5a5a5a;
+  --inverse: #f5f5f5;
   --inverse-foreground: #0a0a0a;
-  --inverse-muted-foreground: #6f6f6f;
+  --inverse-muted-foreground: #5f5f5f;
   /* A veil darkens in both themes: a paper veil would wash the page out. */
   --scrim: rgba(0, 0, 0, 0.7);
-  --sidebar: #0f0f0f;
-  --sidebar-foreground: #fafafa;
-  --sidebar-primary: #fafafa;
-  --sidebar-primary-foreground: #0a0a0a;
-  --sidebar-accent: #262626;
-  --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #262626;
-  --sidebar-ring: #fafafa;
   --elev-hairline: 0 1px 0 rgba(0, 0, 0, 0.4);
   --elev-raised: 0 2px 8px rgba(0, 0, 0, 0.5);
   --elev-float: 0 8px 24px rgba(0, 0, 0, 0.6);
@@ -659,13 +653,17 @@
   box-shadow: var(--elev-dialog);
 }
 
-/* Cards of the app: a paper sheet with a 1px border and a hairline shadow, the same everywhere. */
+/*
+ * A card: the card colour with a 1px border and no shadow (a shadow on
+ * paper read as paper on paper). It survives in dialogs, drawers, the
+ * sign-in and the public pages; inside the plane a block is a label-caps
+ * title and a 24px gap, a list is rows divided by lines, never a sheet.
+ */
 @utility sheet {
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   background-color: var(--color-card);
   color: var(--color-card-foreground);
-  box-shadow: var(--elev-hairline);
 }
 
 /*
