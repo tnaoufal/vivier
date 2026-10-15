@@ -59,7 +59,6 @@ const fr = {
   "briefs.reading.none": "Aucun profil",
   "briefs.thread.label": "Discussion sur",
   "briefs.thread.brief": "Brief",
-  "briefs.profile.at": "chez",
   "briefs.profile.near": "Proche",
   "briefs.profile.cv": "Voir le CV",
 
@@ -92,8 +91,10 @@ const fr = {
   // the state block: figures first
   "briefs.analysis.empty": "Aucune analyse",
   "briefs.analysis.loadFailed": "Analyse impossible à ouvrir",
+  "briefs.state.matches.none": "correspondance",
   "briefs.state.matches.one": "correspondance",
   "briefs.state.matches.many": "correspondances",
+  "briefs.state.ranked.none": "classé",
   "briefs.state.ranked.one": "classé",
   "briefs.state.ranked.many": "classés",
   "briefs.state.rankedOf": "{read} classés sur {total}",
@@ -155,6 +156,7 @@ const fr = {
   "briefs.triage.close": "Métier voisin",
   "briefs.triage.unknown": "Fiche trop mince pour trancher",
   "briefs.triage.no": "Autre métier",
+  "briefs.screen.score": "Notation {score} / 100",
 
   // the profiles set aside
   "briefs.setAside.unread": "Non lus",
@@ -253,7 +255,6 @@ const en = {
   "briefs.reading.none": "No profile",
   "briefs.thread.label": "Discussion about",
   "briefs.thread.brief": "Brief",
-  "briefs.profile.at": "at",
   "briefs.profile.near": "Near",
   "briefs.profile.cv": "Open the CV",
 
@@ -282,8 +283,10 @@ const en = {
 
   "briefs.analysis.empty": "No analysis yet",
   "briefs.analysis.loadFailed": "This analysis could not be opened",
+  "briefs.state.matches.none": "matches",
   "briefs.state.matches.one": "match",
   "briefs.state.matches.many": "matches",
+  "briefs.state.ranked.none": "ranked",
   "briefs.state.ranked.one": "ranked",
   "briefs.state.ranked.many": "ranked",
   "briefs.state.rankedOf": "{read} ranked out of {total}",
@@ -342,6 +345,7 @@ const en = {
   "briefs.triage.close": "Neighbouring job",
   "briefs.triage.unknown": "Profile too thin to tell",
   "briefs.triage.no": "Another job",
+  "briefs.screen.score": "Screening {score} / 100",
 
   "briefs.setAside.unread": "Not read",
   "briefs.setAside.gone": "Left the pool",

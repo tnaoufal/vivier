@@ -14,7 +14,7 @@ import { Briefcase, Plus, RefreshCw, TriangleAlert, Upload } from "lucide-react"
 
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { ProgressBar } from "@/components/app-shell/progress-bar";
-import { Row, RowText } from "@/components/app-shell/row";
+import { ROW_SKELETON, Row, RowText } from "@/components/app-shell/row";
 import { Section } from "@/components/app-shell/section";
 import { PHONE_ICON, Pane, PaneTitle, Workspace } from "@/components/app-shell/workspace";
 import { MyMentions } from "@/components/thread/my-mentions";
@@ -290,7 +290,7 @@ function DashboardPage() {
         }
       >
         {loading && !data ? (
-          <SkeletonRows rows={3} avatar={false} />
+          <SkeletonRows rows={3} avatar={false} className={ROW_SKELETON.lg} />
         ) : briefs === null ? (
           <EmptyState
             quiet

@@ -6,7 +6,8 @@
 -- change: members already read every column of their organisation, and
 -- the column-level update grants (name, locale, retention_months in the
 -- init migration; show_photos in the photos migration) stay as they are,
--- kind not among them.
+-- kind not among them. The organisation's row joins the realtime
+-- publication, so the open pages of its members follow that change.
 
 ALTER TABLE public.organizations
   ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'team' CHECK (kind IN ('team', 'personal'));
@@ -75,3 +76,20 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.accept_invitation(TEXT) TO authenticated;
+
+-- The organisation's row, live: the open pages of its members follow a
+-- change of kind (the acceptance above), of name or of photos without a
+-- reload. RLS still decides who receives a change (members read their
+-- own organisation only). Added once, so the file can be run again.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime' AND NOT puballtables)
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'organizations'
+    )
+  THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.organizations;
+  END IF;
+END;
+$$;

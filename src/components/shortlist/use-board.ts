@@ -2,23 +2,36 @@
  * The shortlist of the brief page as its rows read it: the items with
  * their candidate and the thread's count per item, read for the
  * shortlist the analysis controller knows, live on the shortlist's
- * items and the organisation's comments, and only while the shortlist
- * group is on screen (`enabled`; what was read stays). A decision made
- * from a row or the reading pane shows at once and the next read
- * confirms it (a refused write puts the row back and says so in a
- * toast of two words); one write at a time per item.
+ * items and on the messages of their threads, and only while the page
+ * needs it (`enabled`: the shortlist group on screen, or a profile of
+ * the shortlist read from another group; what was read stays). A
+ * decision made from a row or the reading pane shows at once, as the
+ * person's own (who, now), until a read shows it or a read started once
+ * it was stored says what stands (a refused write puts the row back and
+ * says so in a toast of two words); one write at a time.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
-import { debounce, subscribeToTable } from "@/lib/data/realtime";
+import { debounce, subscribeToTable, type RealtimeChange } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
 import type { ShortlistItemStatus } from "@/lib/db/types";
 import { useT, type TranslationKey } from "@/lib/i18n";
 import { readBoard, setItemStatus, type Board, type BoardItem } from "@/lib/shortlists/queries";
+import {
+  unsettledDecisions,
+  withShownDecisions,
+  type ShownDecision,
+} from "@/lib/shortlists/shown-decisions";
 import { toast } from "@/lib/toast";
 
 const EMPTY_BOARD: Board = { items: [], threadCounts: new Map() };
+
+/** A board as one read answered it, with how many decisions this page had stored when the read started. */
+interface BoardRead extends Board {
+  after: number;
+}
 
 /** The toast of a decision: two words. */
 export const DECISION_TOASTS: Record<ShortlistItemStatus, TranslationKey> = {
@@ -51,39 +64,63 @@ export function useBoard({
   orgId: string;
   /** Null until the brief has a shortlist. */
   shortlistId: string | null;
-  /** True while the shortlist group is on screen: the reads and the subscriptions run then. */
+  /** True while the page needs the board (the shortlist group, or a shortlisted profile read from another group): the reads and the subscriptions run then. */
   enabled: boolean;
 }): BoardState {
   const t = useT();
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const active = enabled && shortlistId !== null;
+  // How many decisions this page stored: a read notes it as it starts, so a read that started after a write is the truth for it.
+  const written = useRef(0);
   const board = useQuery(
     `board:${orgId}:${shortlistId ?? ""}`,
-    async () =>
-      shortlistId ? readBoard(await requireSupabase(), orgId, shortlistId) : EMPTY_BOARD,
+    async (): Promise<BoardRead> => {
+      const after = written.current;
+      const read = shortlistId
+        ? await readBoard(await requireSupabase(), orgId, shortlistId)
+        : EMPTY_BOARD;
+      return { ...read, after };
+    },
     active,
   );
   const refresh = board.refresh;
+  // The items read, for the messages: one on another thread (a brief, a profile, another shortlist) changes nothing here.
+  const readIds = useMemo(
+    () => new Set((board.data?.items ?? []).map((item) => item.id)),
+    [board.data],
+  );
+  const itemIds = useRef<ReadonlySet<string>>(readIds);
+  itemIds.current = readIds;
 
   useEffect(() => {
     if (!active || !shortlistId) return undefined;
     const soon = debounce(() => {
       void refresh();
     }, 300);
+    const onMessage = (change: RealtimeChange) => {
+      // An edit changes no count.
+      if (change.eventType === "UPDATE") return;
+      const row = change.eventType === "DELETE" ? change.old : change.new;
+      const itemId = row["shortlist_item_id"];
+      // A removal may not name its thread (row-level security keeps the old row to its id): read again.
+      if (typeof itemId === "string" ? itemIds.current.has(itemId) : change.eventType === "DELETE")
+        soon();
+    };
     const stops = [
       subscribeToTable("shortlist_items", `shortlist_id=eq.${shortlistId}`, soon),
-      subscribeToTable("comments", `org_id=eq.${orgId}`, soon),
+      subscribeToTable("comments", `org_id=eq.${orgId}`, onMessage),
     ];
     return () => {
       for (const stop of stops) stop();
     };
   }, [active, orgId, refresh, shortlistId]);
 
-  // A decision shows at once; the read that follows the write is the truth and clears it.
-  const [overrides, setOverrides] = useState<ReadonlyMap<string, ShortlistItemStatus>>(
-    () => new Map(),
-  );
+  // A decision shows at once; it gives way to a read that shows it, or to one started once it was stored (the truth, whatever it says).
+  const [overrides, setOverrides] = useState<ReadonlyMap<string, ShownDecision>>(() => new Map());
   useEffect(() => {
-    setOverrides(new Map());
+    const read = board.data;
+    if (read) setOverrides((current) => unsettledDecisions(current, read));
   }, [board.data]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const busyRef = useRef<string | null>(null);
@@ -93,9 +130,22 @@ export function useBoard({
       if (busyRef.current !== null) return false;
       busyRef.current = itemId;
       setBusyId(itemId);
-      setOverrides((current) => new Map(current).set(itemId, status));
+      // The database stamps the person and the moment; the row says the same until the read does.
+      const shown: ShownDecision = {
+        status,
+        by: userId,
+        at: new Date().toISOString(),
+        write: null,
+      };
+      setOverrides((current) => new Map(current).set(itemId, shown));
       try {
         await setItemStatus(await requireSupabase(), orgId, itemId, status);
+        const write = ++written.current;
+        setOverrides((current) =>
+          current.get(itemId) === shown
+            ? new Map(current).set(itemId, { ...shown, write })
+            : current,
+        );
         toast.success(t(DECISION_TOASTS[status]));
         await refresh();
         return true;
@@ -113,17 +163,13 @@ export function useBoard({
         setBusyId(null);
       }
     },
-    [orgId, refresh, t],
+    [orgId, refresh, t, userId],
   );
 
-  const items = useMemo<readonly BoardItem[]>(() => {
-    const read = board.data?.items ?? [];
-    if (overrides.size === 0) return read;
-    return read.map((item) => {
-      const status = overrides.get(item.id);
-      return status && status !== item.status ? { ...item, status } : item;
-    });
-  }, [board.data, overrides]);
+  const items = useMemo<readonly BoardItem[]>(
+    () => withShownDecisions(board.data?.items ?? [], overrides),
+    [board.data, overrides],
+  );
 
   return {
     items,

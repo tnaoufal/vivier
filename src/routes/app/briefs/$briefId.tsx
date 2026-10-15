@@ -19,11 +19,15 @@
  * when the person may run one and none exists, and the param leaves
  * the URL. Retaining or dismissing takes one click from any row or the
  * reading: a match enters the shortlist straight with its decision (the
- * database stamps who and when) and counts there at once. Live through
- * realtime on this brief, its searches, its shortlist, its items and
- * the team's comments; a refresh that fails keeps the page and says so.
+ * database stamps who and when) and counts there at once; a match the
+ * shortlist already holds reads with its item (the decision taken, who
+ * and when, and the item's own decisions), in any group. While a run
+ * goes, a group with nothing landed yet says the analysis runs, never
+ * "none". Live through realtime on this brief, its searches, its
+ * shortlist, its items and the team's comments; a refresh that fails
+ * keeps the page and says so.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Archive,
@@ -347,11 +351,15 @@ function BriefView({
     });
   }, [analysis.latestLoading, brief.id, c, group, navigate, run]);
 
+  // The URL's profile is on the shortlist (as last read, or added a moment ago): its item is read in any group, so the reading shows the decision taken and never offers a first one.
+  const urlOnShortlist = c !== undefined && (analysis.addedIds.has(c) || pending.has(c));
   const board = useBoard({
     orgId: brief.org_id,
     shortlistId: analysis.shortlistId,
-    enabled: group === "shortlist",
+    enabled: group === "shortlist" || urlOnShortlist,
   });
+  const refreshBoard = useRef(board.refresh);
+  refreshBoard.current = board.refresh;
 
   const { view, band, screened } = analysis;
   const wholePool = view?.method === "triage";
@@ -435,15 +443,15 @@ function BriefView({
         : group === "shortlist"
           ? shortlistSubjects
           : setAside.subjects;
-  const boardPeople = useMemo(
-    () => new Map(board.items.map((item) => [item.candidate_id, item.candidates] as const)),
+  const boardItemOf = useMemo(
+    () => new Map(board.items.map((item) => [item.candidate_id, item] as const)),
     [board.items],
   );
   const candidateOf =
     group === "aside"
       ? setAside.candidateOf
       : group === "shortlist"
-        ? (candidateId: string) => boardPeople.get(candidateId) ?? null
+        ? (candidateId: string) => boardItemOf.get(candidateId)?.candidates ?? null
         : analysis.candidateOf;
 
   const ids = useMemo(() => subjectIds(subjects), [subjects]);
@@ -516,12 +524,16 @@ function BriefView({
       setBusyResultId(result.candidateId);
       setPending((current) => new Map(current).set(result.candidateId, status));
       const stored = await analysis.add(result, status);
-      if (!stored)
+      if (stored) {
+        // The board follows the profile read here: its item is read at once, with the decision.
+        void refreshBoard.current();
+      } else {
         setPending((current) => {
           const next = new Map(current);
           next.delete(result.candidateId);
           return next;
         });
+      }
       setBusyResultId(null);
       return stored;
     },
@@ -626,8 +638,8 @@ function BriefView({
   );
 
   const groupLabel = t(GROUP_KEYS[group]);
-  const provisional =
-    band === "queued" || band === "running" || band === "stopped" || band === "failed";
+  const working = band === "queued" || band === "running";
+  const provisional = working || band === "stopped" || band === "failed";
   const opening = analysis.opening || (view === null && analysis.latestLoading);
   // While a new search is stored the previous analysis's rows step aside: the state block says what runs.
   const rowsShown = view !== null && !analysis.starting;
@@ -661,6 +673,8 @@ function BriefView({
         {t("common.retry")}
       </Button>
     );
+    // The job is queued or running and nothing has landed in the group yet: the state block says what runs; no "none" before the end.
+    const running = <EmptyState quiet icon={<Sparkles />} title={t("briefs.search.running")} />;
     if (group === "shortlist") {
       if (board.failed)
         return (
@@ -678,6 +692,7 @@ function BriefView({
     }
     if (group === "aside") {
       if (setAside.loading) return <SkeletonRows rows={6} avatarSize="md" className={SKELETON} />;
+      if (subjects.length === 0 && working && !setAside.failed) return running;
       if (subjects.length === 0)
         return setAside.failed ? (
           <EmptyState
@@ -694,6 +709,7 @@ function BriefView({
     // The near profiles the screening scored arrive with their first page: placeholders until it lands.
     if (opening || (group === "near" && screened.loading && subjects.length === 0))
       return <SkeletonRows rows={6} avatarSize="md" className={SKELETON} />;
+    if (working && (!rowsShown || subjects.length === 0)) return running;
     if (!rowsShown || subjects.length === 0)
       return (
         <EmptyState
@@ -750,31 +766,47 @@ function BriefView({
     );
   }
 
+  // A result the shortlist already holds reads with its item: the decision taken (who, when) and the item's own decisions, never a first one; until the item is read, that it is there.
+  const resultItem =
+    selected?.kind === "result" ? (boardItemOf.get(selected.candidateId) ?? null) : null;
+  const resultAdded =
+    selected?.kind === "result" &&
+    resultItem === null &&
+    (addedIds.has(selected.candidateId) || pending.has(selected.candidateId));
+
+  // Keyed by the profile: each one starts afresh, so nothing read for the one before (its CV) answers for it.
   const reading = (onBack?: () => void) => (
-    <ProfileReading
-      subject={selected}
-      candidate={selectedCandidate}
-      criteria={view?.criteria ?? []}
-      orgId={brief.org_id}
-      canEdit={canEdit}
-      provisional={provisional}
-      canReadAnyway={canReadAnyway}
-      busy={
-        selected
-          ? selected.kind === "item"
-            ? board.busyId === selected.item.id
-            : busyResultId === selected.candidateId
-          : false
-      }
-      onDecide={(status) => {
-        if (!selected) return Promise.resolve(false);
-        if (selected.kind === "item") return board.decide(selected.item.id, status);
-        if (selected.kind === "result") return decideResult(selected.result, status);
-        return Promise.resolve(false);
-      }}
-      onReadAnyway={readAnyway}
-      onBack={onBack}
-    />
+    <Fragment key={selected?.candidateId ?? "none"}>
+      <ProfileReading
+        subject={selected}
+        candidate={selectedCandidate}
+        criteria={view?.criteria ?? []}
+        orgId={brief.org_id}
+        canEdit={canEdit}
+        provisional={provisional}
+        canReadAnyway={canReadAnyway}
+        busy={
+          selected
+            ? selected.kind === "item"
+              ? board.busyId === selected.item.id
+              : resultItem
+                ? board.busyId === resultItem.id
+                : busyResultId === selected.candidateId
+            : false
+        }
+        shortlistItem={resultItem}
+        added={resultAdded}
+        onDecide={(status) => {
+          if (!selected) return Promise.resolve(false);
+          if (selected.kind === "item") return board.decide(selected.item.id, status);
+          if (resultItem) return board.decide(resultItem.id, status);
+          if (selected.kind === "result") return decideResult(selected.result, status);
+          return Promise.resolve(false);
+        }}
+        onReadAnyway={readAnyway}
+        onBack={onBack}
+      />
+    </Fragment>
   );
 
   return (
@@ -807,7 +839,7 @@ function BriefView({
             <DropdownMenuTrigger asChild>
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 size="icon"
                 icon={<Ellipsis />}
                 aria-label={t("common.actions")}
@@ -907,7 +939,8 @@ function BriefView({
                       aria-pressed={active}
                       onClick={() => setFilter(value)}
                       className={cn(
-                        "press inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        // The ring stands 2px off the chip: on the ink of the active one, an ink ring alone would not show.
+                        "press inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                         active
                           ? "border-ink bg-ink text-background"
                           : "border-input text-muted-foreground hover:text-ink",
@@ -937,7 +970,8 @@ function BriefView({
         className="max-lg:hidden"
         bodyClassName="flex flex-col"
       >
-        {reading()}
+        {/* Below `lg` the reading opens in its sheet alone: mounted once, read once. */}
+        {desktop ? reading() : null}
       </Pane>
 
       <ThreadPane

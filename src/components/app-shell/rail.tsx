@@ -7,12 +7,15 @@
  * what it switches to) and the person's disc, whose menu holds the
  * spaces (a check on the current one, the personal space first, named
  * "Espace personnel"), a new team, the settings, the language and the
- * sign-out. `RailItems` is the same content as rows with their words,
- * for the sheet the Workspace header opens below `lg`; `BrandSquare` is
- * the brand alone, for that header.
+ * sign-out. Switching spaces leaves a page of the other space's object:
+ * the person lands on the same section of the new space (its briefs, its
+ * pool, its team), or on its dashboard from any other page. `RailItems`
+ * is the same content as rows with their words, for the sheet the
+ * Workspace header opens below `lg`; `BrandSquare` is the brand alone,
+ * for that header.
  */
 import type { ReactNode } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import {
   Briefcase,
   Check,
@@ -94,6 +97,26 @@ function useRailItems(): { items: RailItem[]; activeIndex: number } {
   return { items, activeIndex: items.findIndex((item) => isActive(item, pathname)) };
 }
 
+/**
+ * Moves to another space: a brief, a profile (a pool's `?c=`) or a page
+ * of the space left behind would read as missing there, so the person
+ * lands on the same section's bare list or, from any other page, on the
+ * dashboard (a free path pushed through the history, as the dashboard's
+ * import does); already there, the page simply reads the new space.
+ */
+function useSwitchSpace(): (orgId: string) => void {
+  const { org, switchOrg } = useOrg();
+  const router = useRouter();
+  const { items, activeIndex } = useRailItems();
+  const section = items[activeIndex]?.to ?? "/app";
+  return (orgId: string) => {
+    if (orgId === org?.id) return;
+    switchOrg(orgId);
+    // Read at the moment of the switch, so a search change (a pool's `?c=`) re-renders nothing here.
+    if (router.state.location.href !== section) router.history.push(section);
+  };
+}
+
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
@@ -118,7 +141,8 @@ export function BrandSquare({ className }: { className?: string | undefined }) {
 function PersonMenu() {
   const { t, locale, setLocale } = useI18n();
   const { user, signOut } = useAuth();
-  const { members, memberships, org, switchOrg } = useOrg();
+  const { members, memberships, org } = useOrg();
+  const switchSpace = useSwitchSpace();
   const profile = user ? members.get(user.id) : undefined;
   const name = memberName(profile, user?.email ?? "");
   const nextLocale: Locale = locale === "fr" ? "en" : "fr";
@@ -142,7 +166,7 @@ function PersonMenu() {
           <DropdownMenuCheckboxItem
             key={membership.org.id}
             checked={membership.org.id === org?.id}
-            onSelect={() => switchOrg(membership.org.id)}
+            onSelect={() => switchSpace(membership.org.id)}
           >
             <span className="min-w-0 flex-1 truncate">{spaceName(membership.org, t)}</span>
             {isPersonalSpace(membership.org) ? null : (
@@ -241,8 +265,10 @@ function MenuRow({
   lang?: Locale | undefined;
   children: ReactNode;
 }) {
+  // The ring stands 2px off the row, so it shows on the current row's ink fill too.
   const className = cn(
-    "press flex h-11 w-full cursor-pointer items-center gap-3 rounded-[10px] px-3 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-5 [&_svg]:shrink-0",
+    "press flex h-11 w-full cursor-pointer items-center gap-3 rounded-[10px] px-3 text-left text-sm font-medium [&_svg]:size-5 [&_svg]:shrink-0",
+    FOCUS,
     current ? "bg-ink text-background" : "text-ink hover:bg-muted",
   );
   const content = (
@@ -289,7 +315,8 @@ export function RailItems({ onNavigate }: { onNavigate?: (() => void) | undefine
   const { t, locale, setLocale } = useI18n();
   const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
-  const { members, memberships, org, switchOrg } = useOrg();
+  const { members, memberships, org } = useOrg();
+  const switchSpace = useSwitchSpace();
   const { items, activeIndex } = useRailItems();
   const profile = user ? members.get(user.id) : undefined;
   const name = memberName(profile, user?.email ?? "");
@@ -325,7 +352,7 @@ export function RailItems({ onNavigate }: { onNavigate?: (() => void) | undefine
                 <MenuRow
                   icon={current ? <Check /> : null}
                   onSelect={() => {
-                    switchOrg(membership.org.id);
+                    switchSpace(membership.org.id);
                     onNavigate?.();
                   }}
                 >

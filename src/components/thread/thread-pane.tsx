@@ -2,17 +2,21 @@
  * The thread as the right pane of the plane. From `lg`, `ThreadPane` is
  * the 320px column (the thread's own background, a line on its left)
  * holding `TeamThread` with its header and the composer at the bottom,
- * rendered only while `open`; below `lg` it is a sheet from the right
- * on the same flag. `useThreadPane` is the flag: remembered per device
- * (localStorage, `vivier-thread`), open by default from `xl` and closed
- * between `lg` and `xl`, read through `useSyncExternalStore` so the
- * server and the first client render agree on "closed"; below `lg` the
- * flag is the sheet's and is not remembered. `ThreadToggle` is the
- * header's button that flips it (the comment icon, the count beside it
- * from `sm`), pressed from `lg`, a dialog opener below. `children`, when
- * given, render above the thread (a `Segmented` that switches the
- * target, see brief.md). One thread is mounted at a time, so the object
- * is read once.
+ * rendered only while `open`: from `xl` beside the detail, between `lg`
+ * and `xl` laid over the detail's right side with a float shadow, so
+ * the detail keeps its width. Below `lg` it is a sheet from the right
+ * on the same flag. The thread is mounted anew for each target, so
+ * another object's messages, draft or pending delete never show under
+ * the new title while the new read runs. `useThreadPane` is the flag:
+ * remembered per device (localStorage, `vivier-thread`), open by default
+ * from `xl` and closed between `lg` and `xl`, read through
+ * `useSyncExternalStore` so the server and the first client render agree
+ * on "closed"; below `lg` the flag is the sheet's and is not remembered.
+ * `ThreadToggle` is the header's button that flips it (the comment icon,
+ * the count beside it from `sm`), pressed from `lg`, a dialog opener
+ * below. `children`, when given, render above the thread (a `Segmented`
+ * that switches the target, see brief.md). One thread is mounted at a
+ * time, so the object is read once.
  */
 import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
 import { MessageSquare } from "lucide-react";
@@ -22,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useT, type TranslationKey } from "@/lib/i18n";
 import type { MentionMember } from "@/lib/shortlists/mentions";
-import type { ThreadTarget } from "@/lib/threads/thread";
+import { threadKey, type ThreadTarget } from "@/lib/threads/thread";
 import { useThreadCount } from "@/lib/threads/use-thread";
 import { cn } from "@/lib/utils";
 
@@ -141,27 +145,31 @@ export function ThreadPane({
   const t = useT();
   const desktop = useDesktop();
   const heading = title ?? t("thread.title");
+  const key = threadKey(target);
   if (desktop) {
     if (!open) return null;
     return (
       <aside
         aria-label={heading}
         className={cn(
-          // The previous pane's right line and this left line sit on the same pixel.
-          "-ml-px flex w-80 min-h-0 shrink-0 flex-col border-l border-line bg-thread",
+          // The previous pane's right line and this left line sit on the same pixel. Below `xl`
+          // (the aside exists from `lg` only) it lies over the detail instead of squeezing it.
+          "-ml-px flex w-80 min-h-0 shrink-0 flex-col border-l border-line bg-thread max-xl:absolute max-xl:inset-y-0 max-xl:right-0 max-xl:z-sticky max-xl:shadow-float",
           className,
         )}
       >
         {children ? (
           <div className="shrink-0 border-b border-line px-4 py-3">{children}</div>
         ) : null}
-        <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
+        {/* Keyed by the target: another object's thread is mounted anew. */}
+        <div key={key} className="flex min-h-0 flex-1 flex-col">
           <TeamThread
             target={target}
             canPost={canPost}
             members={members}
             currentUserId={currentUserId}
             title={title}
+            pane
           />
         </div>
       </aside>
@@ -178,7 +186,7 @@ export function ThreadPane({
           <SheetTitle>{heading}</SheetTitle>
         </SheetHeader>
         {children}
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div key={key} className="flex min-h-0 flex-1 flex-col">
           <TeamThread
             target={target}
             canPost={canPost}

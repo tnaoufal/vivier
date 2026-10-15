@@ -259,10 +259,11 @@
    * thread pane); 100 #f5f5f5 (a row under the pointer); 150 #efefef (the
    * selected row, a chip, a disc, the segmented track); 200 #dedede (a
    * pane's edge, a row's divider, a track); 300 #c8c8c8 (a field's border,
-   * the quiet outline of a dismissed mark, tier C); 500 #5f5f5f (meta
-   * lines and labels: 6.4:1 on paper, 5.6:1 on the selected row); 700
-   * #333333 (a second-rank text that stays dark); the ink #0a0a0a. A tint
-   * (`bg-ink/10`) is allowed only under the pointer, never under text.
+   * the disc behind initials, the quiet outline of a dismissed mark, tier
+   * C); 500 #5f5f5f (meta lines and labels: 6.4:1 on paper, 5.6:1 on the
+   * selected row); 700 #333333 (a second-rank text that stays dark); the
+   * ink #0a0a0a. A tint (`bg-ink/10`) is allowed only under the pointer,
+   * never under text.
    */
   --background: #ffffff;
   --foreground: #0a0a0a;

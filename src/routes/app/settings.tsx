@@ -157,11 +157,17 @@ function SettingsPage() {
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
 
+  // One field per effect: the row is live, so a value changed elsewhere replaces that field
+  // alone, never another one being edited here; another space replaces them all.
   useEffect(() => {
     setName(org.name);
+  }, [org.id, org.name]);
+  useEffect(() => {
     setOrgLocale(org.locale);
+  }, [org.id, org.locale]);
+  useEffect(() => {
     setRetention(String(org.retention_months));
-  }, [org.id, org.locale, org.name, org.retention_months]);
+  }, [org.id, org.retention_months]);
 
   useEffect(() => {
     if (profile.data) setDisplayName(profile.data.display_name ?? "");

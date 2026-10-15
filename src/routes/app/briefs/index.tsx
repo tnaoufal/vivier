@@ -22,7 +22,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Briefcase, Plus, RefreshCw, TriangleAlert, X } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
-import { Row, RowText } from "@/components/app-shell/row";
+import { ROW_SKELETON, Row, RowText } from "@/components/app-shell/row";
 import { PHONE_ICON, Pane, Workspace } from "@/components/app-shell/workspace";
 import { BriefStatusPill } from "@/components/briefs/brief-status-pill";
 import { Button } from "@/components/ui/button";
@@ -285,7 +285,7 @@ function BriefsPage() {
             }
           />
         ) : loading ? (
-          <SkeletonRows rows={SKELETON_ROWS} avatar={false} />
+          <SkeletonRows rows={SKELETON_ROWS} avatar={false} className={ROW_SKELETON.lg} />
         ) : shown.length === 0 ? (
           filterable ? (
             <EmptyState

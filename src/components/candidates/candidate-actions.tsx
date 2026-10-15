@@ -4,13 +4,14 @@
  * document the service read), then whatever the caller puts between
  * (the `ThreadToggle` on the candidate's page), then the `Ellipsis`
  * menu: Modifier (the ProfileForm in a drawer), Profils proches (the
- * SimilarDrawer), Exporter, Archiver / Réactiver, Effacer (admins,
- * confirmed by typing the name). The writes are for members. The
- * dialogs live here, so the pool's sheet header and the page's
- * Workspace header carry the same control with the same state; the
- * caller reads the profile again through `onChanged` and leaves the
- * page or the selection through `onErased`. Under `sm` the filled
- * button is its 40px icon, its name kept for assistive technologies.
+ * SimilarDrawer), Exporter, Archiver / Réactiver (one click: each undoes
+ * the other), Effacer (admins, confirmed by typing the name). The writes
+ * are for members. The dialogs live here, so the pool's sheet header and
+ * the page's Workspace header carry the same control with the same
+ * state; the caller reads the profile again through `onChanged` and
+ * leaves the page or the selection through `onErased`. Under `sm` the
+ * filled button is its 40px icon, its name kept for assistive
+ * technologies.
  */
 import { useState, type ReactNode } from "react";
 import {
@@ -24,7 +25,6 @@ import {
   Users,
 } from "lucide-react";
 
-import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { PHONE_ICON } from "@/components/app-shell/workspace";
 import { Button } from "@/components/ui/button";
 import {
@@ -85,7 +85,6 @@ export function CandidateActions({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<CandidateDraft | null>(null);
   const [busy, setBusy] = useState(false);
-  const [archiveOpen, setArchiveOpen] = useState(false);
   const [eraseOpen, setEraseOpen] = useState(false);
   const [similarOpen, setSimilarOpen] = useState(false);
   const [viewer, setViewer] = useState<ViewerState>({ open: false, document: null });
@@ -116,7 +115,7 @@ export function CandidateActions({
     if (busy) return;
     setBusy(true);
     try {
-      if (await update({ status: next }, t("common.saved"))) setArchiveOpen(false);
+      await update({ status: next }, t("common.saved"));
     } finally {
       setBusy(false);
     }
@@ -211,7 +210,7 @@ export function CandidateActions({
           </DropdownMenuItem>
           {canEdit ? (
             candidate.status === "active" ? (
-              <DropdownMenuItem onSelect={() => setArchiveOpen(true)}>
+              <DropdownMenuItem onSelect={() => void archive("archived")}>
                 <Archive />
                 {t("candidates.archive")}
               </DropdownMenuItem>
@@ -255,17 +254,6 @@ export function CandidateActions({
         candidateId={candidate.id}
         name={name}
         showPhotos={showPhotos}
-      />
-      <ConfirmDialog
-        open={archiveOpen}
-        onOpenChange={(open) => {
-          if (!busy) setArchiveOpen(open);
-        }}
-        title={t("candidates.archiveTitle")}
-        text={t("candidates.archiveText")}
-        confirmLabel={t("candidates.archive")}
-        busy={busy}
-        onConfirm={() => archive("archived")}
       />
       <EraseCandidateDialog
         open={eraseOpen}

@@ -37,6 +37,13 @@ export type RowHeight = "sm" | "md" | "lg";
 
 const HEIGHTS: Record<RowHeight, string> = { sm: "min-h-14", md: "min-h-15", lg: "min-h-16" };
 
+/** On a `SkeletonRows`: its rows drawn like `Row`s of that height (the gutter, the gap), so nothing jumps when they land. */
+export const ROW_SKELETON: Record<RowHeight, string> = {
+  sm: "[&>li]:min-h-14 [&>li]:gap-3 [&>li]:px-3 [&>li]:py-2",
+  md: "[&>li]:min-h-15 [&>li]:gap-3 [&>li]:px-3 [&>li]:py-2",
+  lg: "[&>li]:min-h-16 [&>li]:gap-3 [&>li]:px-3 [&>li]:py-2",
+};
+
 const INNER =
   "flex min-w-0 flex-1 items-center gap-3 self-stretch px-3 py-2 text-left text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
@@ -89,7 +96,8 @@ export function Row({
         selected && "bg-muted",
         interactive && !selected && "hover:bg-hover",
         // The shape fades, not the words: the initials keep 5.3:1 on their faded disc, the name 5.5:1 selected.
-        muted && "[&_[data-slot=avatar]]:opacity-70 [&_[data-slot=row-title]]:text-muted-foreground",
+        muted &&
+          "[&_[data-slot=avatar]]:opacity-70 [&_[data-slot=row-title]]:text-muted-foreground",
         className,
       )}
     >

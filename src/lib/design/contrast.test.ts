@@ -16,11 +16,13 @@
  * ratio fixes and the plane removes (lines, not cards). v4, light:
  * foreground 19.80, muted-foreground on page 6.39, on muted 5.55, on
  * hover 5.86, on thread 5.96, ink-soft on muted 10.99, negative 6.39,
- * inverse-muted 8.33, line 1.35, input 1.67, muted 1.15, neutral 1.67.
- * v4, dark: foreground 18.16, muted-foreground on page 8.33, on muted
- * 7.17, on hover 7.75, on thread 8.06, ink-soft on muted 11.50,
- * negative 8.33, inverse-muted 5.86, line 1.38, input 1.74, muted 1.16,
- * neutral 2.87.
+ * inverse-muted 8.33, line 1.35, input 1.67, muted 1.15, neutral 1.67,
+ * the initials on their disc (ink on input) 11.83, the disc on the
+ * selected row (input on muted) 1.46. v4, dark: foreground 18.16,
+ * muted-foreground on page 8.33, on muted 7.17, on hover 7.75, on thread
+ * 8.06, ink-soft on muted 11.50, negative 8.33, inverse-muted 5.86, line
+ * 1.38, input 1.74, muted 1.16, neutral 2.87, ink on input 10.43, input
+ * on muted 1.50 (a `muted` disc, as v3 drew it, is 1.00 on that row).
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -51,6 +53,9 @@ const PAIRS: readonly [text: string, surface: string, min: number][] = [
   ["input", "background", 1.4],
   ["muted", "background", 1.08],
   ["neutral", "background", 1.5],
+  // The Avatar: its initials on the disc, and the disc still a disc on the selected row.
+  ["ink", "input", 4.5],
+  ["input", "muted", 1.4],
 ];
 
 describe("contrast", () => {

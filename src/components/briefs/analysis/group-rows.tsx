@@ -12,10 +12,11 @@
  * and its reason (or why the reading set them aside), with "Lire quand
  * même" for a member; a near profile the screening scored but nobody
  * read offers the same. The selected row carries aria-current;
- * ArrowUp and ArrowDown move the selection when the list has focus;
- * the rows rise in once when the list first lands.
+ * ArrowUp and ArrowDown move the selection when the list has focus and
+ * bring the row into view; the rows rise in once when the list first
+ * lands.
  */
-import { Fragment, useMemo } from "react";
+import { Fragment, useId, useMemo } from "react";
 import { Check, FileSearch, ListPlus, MessageSquare, RotateCcw, X } from "lucide-react";
 
 import { Pill, type PillTone } from "@/components/app-shell/pill";
@@ -134,9 +135,14 @@ export function GroupRows({
   const threadLabel = useThreadLabel();
   const ids = useMemo(() => subjectIds(subjects), [subjects]);
   const index = selectedId ? ids.indexOf(selectedId) : -1;
+  const listId = useId();
+  const rowId = (candidateId: string) => `${listId}-row-${candidateId}`;
   const onKeyDown = useListKeys(ids.length, index, (next) => {
     const id = ids[next];
-    if (id) onSelect(id);
+    if (!id) return;
+    onSelect(id);
+    // The row is already in the list: it comes into view at once, with the selection.
+    document.getElementById(rowId(id))?.scrollIntoView({ block: "nearest" });
   });
   const ranked = group === "matches" || group === "near";
 
@@ -202,6 +208,7 @@ export function GroupRows({
           return (
             <Fragment key={subject.candidateId}>
               <ProfileRow
+                id={rowId(subject.candidateId)}
                 candidate={candidate}
                 line={line}
                 rank={rank}
@@ -244,6 +251,7 @@ export function GroupRows({
           return (
             <Fragment key={subject.candidateId}>
               <ProfileRow
+                id={rowId(subject.candidateId)}
                 candidate={candidate}
                 line={personLine(candidate)}
                 rank={rank}
@@ -267,6 +275,7 @@ export function GroupRows({
           return (
             <Fragment key={subject.candidateId}>
               <ProfileRow
+                id={rowId(subject.candidateId)}
                 candidate={candidate}
                 line={reason && reason !== verdict ? `${verdict} · ${reason}` : verdict}
                 selected={selected}
@@ -282,18 +291,17 @@ export function GroupRows({
         const person = item.candidates;
         const score = assessedScore(item.match);
         const decision = decisionLineOf(item);
-        const words =
-          decision.kind === "toReview"
-            ? t("shortlists.line.to_review")
-            : t(`shortlists.line.${decision.kind}`, { name: nameOf(decision.by) });
-        const line = [
+        const facts = [
           person ? currentPosition(person)?.title : null,
           person ? yearsLabel(locale, person.years_experience) : null,
           score === null ? null : t("shortlists.item.score", { score }),
-          words,
-        ]
-          .filter((part): part is string => typeof part === "string" && part.length > 0)
-          .join(" · ");
+        ].filter((part): part is string => typeof part === "string" && part.length > 0);
+        // "à examiner" ends a line; alone it starts one, capitalised.
+        const words =
+          decision.kind === "toReview"
+            ? t(facts.length ? "shortlists.line.to_review" : "shortlists.pill.to_review")
+            : t(`shortlists.line.${decision.kind}`, { name: nameOf(decision.by) });
+        const line = [...facts, words].join(" · ");
         const tier = tierOf(item.match);
         const pill = STATUS_PILL[item.status];
         const PillIcon = pill.icon;
@@ -303,6 +311,7 @@ export function GroupRows({
         return (
           <Fragment key={subject.candidateId}>
             <ProfileRow
+              id={rowId(subject.candidateId)}
               candidate={candidate}
               line={line}
               selected={selected}

@@ -6,9 +6,12 @@
  * src/styles.css and the root route's theme-color meta, no `sidebar-`
  * token (the rail replaced it), no `max-w-6xl` centring on a signed-in
  * page (the plane fills the viewport), no `text-caution-foreground` on a
- * full-strength `bg-caution` (the tone is never filled), and
+ * full-strength `bg-caution` (the tone is never filled),
  * `text-background` only beside `bg-ink` on the same line (paper text
- * means an ink fill, nothing else).
+ * means an ink fill, nothing else), no `sheet` card in a class string of
+ * a signed-in page or of the thread and activity blocks that live in its
+ * panes (lines, not cards), and no `PageHeader` on a signed-in page (it
+ * is a `Workspace`).
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -30,6 +33,17 @@ function walk(dir: string, out: string[] = []): string[] {
 function nameOf(path: string): string {
   return `src/${relative(SRC, path).split(sep).join("/")}`;
 }
+
+/** The words of the double-quoted and template strings of a line that is not a comment. */
+function classTokens(line: string): string[] {
+  if (/^\s*(?:\*|\/\/|\/\*|\{\/\*)/.test(line)) return [];
+  return [...line.matchAll(/"([^"]*)"|`([^`]*)`/g)].flatMap((match) =>
+    (match[1] ?? match[2] ?? "").split(/\s+/),
+  );
+}
+
+/** What lives inside the plane only: the signed-in pages and the blocks of their panes. */
+const PLANE = ["src/routes/app/", "src/components/thread/", "src/components/activity/"];
 
 interface Rule {
   name: string;
@@ -61,6 +75,15 @@ const RULES: readonly Rule[] = [
     name: "text-background without bg-ink on the same line",
     breaks: (line) => /\btext-background\b/.test(line) && !/\bbg-ink\b/.test(line),
   },
+  {
+    name: "a sheet inside the plane",
+    breaks: (line, file) =>
+      PLANE.some((dir) => file.startsWith(dir)) && classTokens(line).includes("sheet"),
+  },
+  {
+    name: "a PageHeader on a signed-in page",
+    breaks: (line, file) => file.startsWith("src/routes/app/") && /<PageHeader\b/.test(line),
+  },
 ];
 
 describe("classes", () => {
@@ -70,6 +93,14 @@ describe("classes", () => {
 
   it("finds the components", () => {
     expect(files.length).toBeGreaterThan(20);
+  });
+
+  it("reads the class strings of a line, never a comment", () => {
+    expect(classTokens(`<div className={cn("sheet p-6", x)}>`)).toEqual(["sheet", "p-6"]);
+    expect(classTokens('<li className="sheet-row rise-in">')).toContain("sheet-row");
+    expect(classTokens('<li className="sheet-row rise-in">')).not.toContain("sheet");
+    expect(classTokens(" * a `sheet p-6`: the pool's sheet header")).toEqual([]);
+    expect(classTokens(`label={t("candidates.pane.sheet")}`)).toEqual(["candidates.pane.sheet"]);
   });
 
   it("never breaks the charter", () => {

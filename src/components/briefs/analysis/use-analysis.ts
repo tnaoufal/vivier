@@ -18,7 +18,8 @@
  * "Interrompre" asks the runner to stop at its next step; closing the
  * tab changes nothing. `add` puts a match on the shortlist in one
  * click, to examine or straight as retained or dismissed (the database
- * stamps who and when, as for any decision). Earlier analyses stay in the database and
+ * stamps who and when, as for any decision; a candidate already there
+ * keeps its decision and the toast says so). Earlier analyses stay in the database and
  * are not opened here: the newest is the one on screen, and a newer one
  * a colleague starts takes its place.
  */
@@ -170,7 +171,7 @@ export interface AnalysisController {
   run: () => Promise<void>;
   /** Asks the runner to stop at its next step; what was stored stays. */
   stop: () => Promise<void>;
-  /** Puts a match on the shortlist, to examine by default, or straight as retained or dismissed (one click, the database stamps who and when); true once stored. */
+  /** Puts a match on the shortlist, to examine by default, or straight as retained or dismissed (one click, the database stamps who and when); a candidate already there keeps its decision; true once it is on the shortlist. */
   add: (result: MatchResult, status?: ShortlistItemStatus) => Promise<boolean>;
   /** Brings a profile the triage or the screening left out back to be read in full (a person overrules the model); true once stored. */
   readAnyway: (candidateId: string) => Promise<boolean>;
@@ -643,12 +644,9 @@ export function useAnalysis({
           status,
         });
         await refreshShortlist();
+        // Already there: nothing was decided, whatever was asked.
         toast.success(
-          t(
-            outcome === "already" && status === "to_review"
-              ? "briefs.results.alreadyAdded"
-              : ADDED_TOASTS[status],
-          ),
+          t(outcome === "already" ? "briefs.results.alreadyAdded" : ADDED_TOASTS[status]),
         );
         return true;
       } catch (error) {

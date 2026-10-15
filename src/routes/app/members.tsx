@@ -64,7 +64,10 @@ function MembersPage() {
   const personal = isPersonal(org);
   const userId = user?.id ?? "";
 
-  const { data, loading, error, refresh } = useQuery(`members:${org.id}:${admin}`, async () => {
+  // The kind is in the key: the colleague whose acceptance turns a personal space into a team
+  // (the org context follows the row live) is read into the roster, their invitation out.
+  const rosterKey = `members:${org.id}:${admin}:${org.kind}`;
+  const { data, loading, error, refresh } = useQuery(rosterKey, async () => {
     const supabase = await requireSupabase();
     const unread = (caught: unknown) => {
       console.error(caught);
@@ -153,11 +156,12 @@ function MembersPage() {
   const ready = !(loading && !data);
   // A failed read is said as such: an empty team, or no invitation, would be a false fact.
   const failed = error !== null && data === null;
-  const countText = !ready
-    ? null
-    : members.length === 1
-      ? t("members.count.one")
-      : t("members.count.many", { count: formatCount(locale, members.length) });
+  const countText =
+    !ready || failed
+      ? null
+      : members.length === 1
+        ? t("members.count.one")
+        : t("members.count.many", { count: formatCount(locale, members.length) });
   const consequence = t("members.personal.invite");
 
   return (
@@ -168,8 +172,14 @@ function MembersPage() {
           <span>{consequence}</span>
         ) : (
           <>
-            {countText ? <span className="font-medium tabular-nums">{countText}</span> : null}
-            <span>{t(`shell.org.plan.${org.plan}`)}</span>
+            {countText ? (
+              <>
+                <span className="font-medium tabular-nums">{countText}</span>
+                <span aria-hidden="true">·</span>
+              </>
+            ) : null}
+            {/* "Forfait Équipe": the plan named as such, never mistaken for the page's title. */}
+            <span>{t("members.plan", { plan: t(`shell.org.plan.${org.plan}`) })}</span>
           </>
         )
       }
@@ -208,7 +218,7 @@ function MembersPage() {
       <Pane
         label={t("members.list")}
         width={admin && !failed ? "wide" : "fill"}
-        header={<PaneTitle title={t("members.list")} count={ready ? members.length : undefined} />}
+        header={<PaneTitle title={t("members.list")} />}
       >
         {/* The meta is hidden on a phone: the consequence is said once there, in the pane. */}
         {personal ? (

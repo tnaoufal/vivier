@@ -2,12 +2,15 @@
  * The selected profile in the reading pane (in a sheet on a phone): the
  * photo or the initials, the name, one line of what the CV states (the
  * position held today, the years, the place, the availability), then
- * the tier, the score as a figure and "Lecture du modèle" (on the
- * shortlist, the decision with who took it and when; "Proche" for a
- * near profile; the triage's verdict for a profile it set aside); the
- * actions for a member (Retenir, Écarter, or Réexaminer the decision
- * taken; "Lire quand même" for a profile the model did not read in
- * full), the CV read in place and the way to the candidate's page.
+ * the tier, the score as a figure and "Lecture du modèle" ("Proche" for
+ * a near profile; the triage's verdict for a profile it set aside; on
+ * the shortlist, or for a match already on it, the decision with who
+ * took it and when, and "Lecture du modèle" moves to the model's
+ * sentence: said once per sheet); the actions for a member (Retenir,
+ * Écarter, or Réexaminer the decision taken, never a first decision on
+ * a profile the shortlist already holds; "Lire quand même" for a
+ * profile the model did not read in full), the CV read in place and the
+ * way to the candidate's page.
  * Then, in two columns from `md`, each under its label: why this
  * profile (the ranking's note, else the reading's summary), the
  * requirements of the brief with their evidence (what the CV does not
@@ -34,7 +37,7 @@ import { kindKey } from "@/lib/briefs/criteria";
 import { candidatePath } from "@/lib/briefs/paths";
 import { requirementTally, screenLine } from "@/lib/briefs/presentation";
 import { primaryDocument } from "@/lib/candidates/cv-viewer";
-import { currentPosition, displayName, yearsLabel } from "@/lib/candidates/format";
+import { displayName, sheetLine } from "@/lib/candidates/format";
 import { listCandidateDocuments } from "@/lib/candidates/queries";
 import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
 import { useQuery } from "@/lib/data/use-query";
@@ -49,6 +52,7 @@ import { formatDateTime, useI18n, type TranslationKey } from "@/lib/i18n";
 import { useOrg } from "@/lib/org/org-context";
 import { decisionTraceOf, type DecisionTrace } from "@/lib/shortlists/decision-line";
 import type { ReadingSubject } from "@/lib/shortlists/groups";
+import type { BoardItem } from "@/lib/shortlists/queries";
 import {
   assessedScore,
   criteriaOf,
@@ -97,14 +101,17 @@ function itemDecisions(
   ];
 }
 
-/** A block of the reading: its label, an optional aside on the right, the content; `wide` spans both columns. */
+/** A block of the reading: its label (with whose reading it is, when said there), an optional aside on the right, the content; `wide` spans both columns. */
 function Block({
   title,
+  mark,
   aside,
   wide = false,
   children,
 }: {
   title: string;
+  /** Said after the title, on its line: "Lecture du modèle". */
+  mark?: string | undefined;
   aside?: ReactNode;
   wide?: boolean | undefined;
   children: ReactNode;
@@ -112,7 +119,10 @@ function Block({
   return (
     <section className={cn("min-w-0 space-y-2", wide && "md:col-span-2")}>
       <div className="flex min-w-0 items-center justify-between gap-3">
-        <h3 className="label-caps min-w-0">{title}</h3>
+        <h3 className="label-caps min-w-0">
+          {title}
+          {mark ? <span className="font-normal"> · {mark}</span> : null}
+        </h3>
         {aside}
       </div>
       {children}
@@ -142,6 +152,8 @@ export function ProfileReading({
   provisional,
   canReadAnyway,
   busy,
+  shortlistItem,
+  added = false,
   onDecide,
   onReadAnyway,
   onBack,
@@ -159,6 +171,10 @@ export function ProfileReading({
   canReadAnyway: boolean;
   /** True while a write on this profile is under way. */
   busy: boolean;
+  /** A result the shortlist already holds: its item, whose decision (who, when) and own decisions stand in place of a first one. */
+  shortlistItem?: BoardItem | null | undefined;
+  /** A result on the shortlist whose item is not read yet: said, and no decision offered until it is. */
+  added?: boolean | undefined;
   /** A decision on the profile: on the shortlist straight away for a result, on its item otherwise. */
   onDecide: (status: ShortlistItemStatus) => Promise<unknown>;
   onReadAnyway: (candidateId: string) => Promise<unknown>;
@@ -177,7 +193,8 @@ export function ProfileReading({
       candidateId ? listCandidateDocuments(await requireSupabase(), orgId, candidateId) : [],
     candidateId !== null,
   );
-  const cv = documents.data ? primaryDocument(documents.data) : null;
+  // A read under way names no CV: rows another profile left behind never answer for this one.
+  const cv = documents.data && !documents.loading ? primaryDocument(documents.data) : null;
   // The viewer keeps its document while it slides out, so the frame does not blank mid-motion.
   const [viewer, setViewer] = useState<{ open: boolean; document: DocumentRow | null }>({
     open: false,
@@ -208,7 +225,11 @@ export function ProfileReading({
   const decision = match ? decisionOf(match) : null;
   const unconfirmed =
     subject.kind === "result" && provisional && decision === "fit" && !match?.assessment?.challenge;
-  const screen = match ? screenLine(match.screen) : null;
+  /** "62 / 100": a score with its scale, as every score on the sheet. */
+  const outOf100 = (value: number) => t("shortlists.item.score", { score: value });
+  const screen = match
+    ? screenLine(match.screen, (value) => t("briefs.screen.score", { score: value }))
+    : null;
   const tally = match && !assessment ? requirementTally(match) : null;
 
   const name = candidate
@@ -216,18 +237,11 @@ export function ProfileReading({
     : candidate === null
       ? t("briefs.results.gone")
       : t("common.loading");
-  const position = candidate ? currentPosition(candidate) : null;
-  // Only what the CV states, the seniority first; nothing invented for the rest.
+  // Only what the CV states: the position held today and where, the years, the place, the availability.
   const facts = candidate
     ? [
-        position
-          ? position.company
-            ? `${position.title} ${t("briefs.profile.at")} ${position.company}`
-            : position.title
-          : null,
-        yearsLabel(locale, candidate.years_experience) || null,
-        candidate.location?.trim() || null,
-        candidate.availability?.trim() || null,
+        sheetLine(locale, candidate, (company) => t("candidates.atCompany", { company })),
+        candidate.availability?.trim(),
       ]
         .filter((part): part is string => typeof part === "string" && part.length > 0)
         .join(" · ")
@@ -250,10 +264,12 @@ export function ProfileReading({
       )
     : [];
 
+  // The shortlist's item: the subject's own, or the one of a result the shortlist already holds.
+  const item = subject.kind === "item" ? subject.item : (shortlistItem ?? null);
   /** What stands beside the score: the decision on the shortlist (who, when), else what the model said of the profile. */
   let status: ReactNode = null;
-  if (subject.kind === "item") {
-    const trace = decisionTraceOf(subject.item);
+  if (item) {
+    const trace = decisionTraceOf(item);
     const look = TRACE_PILLS[trace.kind];
     const Icon = look.icon;
     status = (
@@ -275,8 +291,14 @@ export function ProfileReading({
   } else if (subject.kind === "screened") {
     status = (
       <span className="text-meta text-muted-foreground tabular-nums">
-        {screenLine({ score: subject.score, reason: subject.reason })}
+        {screenLine({ score: subject.score, reason: subject.reason }, outOf100)}
       </span>
+    );
+  } else if (added) {
+    status = (
+      <Pill dot={false} icon={<Check />}>
+        {t("briefs.match.addedLabel")}
+      </Pill>
     );
   } else if (unconfirmed) {
     status = (
@@ -287,13 +309,15 @@ export function ProfileReading({
   } else if (decision === "no_fit" || decision === "unassessed") {
     status = <DecisionPill decision={decision} />;
   }
-  // The reading is the model's: said once beside the figure, unless a decision already stands there.
-  const byModel = subject.kind !== "item" && (assessment !== null || subject.kind === "screened");
+  // The reading is the model's, said once per sheet: beside the figure, or on the model's sentence when a decision stands beside the figure.
+  const modelSpoke = assessment !== null || Boolean(why) || subject.kind === "screened";
+  const markOnWhy = item !== null && Boolean(why);
+  const byModel = modelSpoke && !markOnWhy;
 
   const decisions =
-    subject.kind === "item"
-      ? itemDecisions(subject.item.status)
-      : subject.kind === "result"
+    item !== null
+      ? itemDecisions(item.status)
+      : subject.kind === "result" && !added
         ? [
             {
               status: "retained" as const,
@@ -392,7 +416,7 @@ export function ProfileReading({
                   );
                 })
               : null}
-            {documents.data === null || cv !== null ? (
+            {documents.data === null || documents.loading || cv !== null ? (
               <Button
                 type="button"
                 variant="outline"
@@ -415,7 +439,11 @@ export function ProfileReading({
         className="fade-in grid gap-6 gap-x-8 p-4 sm:p-6 md:grid-cols-2"
       >
         {why ? (
-          <Block wide title={t("briefs.drawer.why")}>
+          <Block
+            wide
+            title={t("briefs.drawer.why")}
+            mark={markOnWhy ? t("briefs.results.why") : undefined}
+          >
             <p className="text-sm leading-[1.3125rem] text-ink break-words">{why}</p>
             {withheld > 0 ? (
               <p className="text-meta text-muted-foreground">
@@ -507,9 +535,7 @@ export function ProfileReading({
             ) : null}
             {match?.triage && screen ? " · " : ""}
             {screen && subject.kind !== "screened" ? (
-              <span className="tabular-nums">
-                {t("briefs.analysis.stage.screening")} {screen}
-              </span>
+              <span className="tabular-nums">{screen}</span>
             ) : null}
           </p>
         ) : null}

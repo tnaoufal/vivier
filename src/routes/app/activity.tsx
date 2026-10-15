@@ -1,8 +1,8 @@
 /**
  * The whole activity log of the organisation on the plane: one pane,
  * the families as chips in its header (each with its icon), the rows
- * grouped by day in one timeline, fifty at a time, newest first,
- * refreshed live.
+ * grouped by day in one timeline that runs edge to edge (lines, no
+ * card), fifty at a time, newest first, refreshed live.
  */
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
@@ -45,11 +45,13 @@ function ActivityPage() {
             <FamilyFilter value={family} onChange={setFamily} />
           </div>
         }
-        bodyClassName="p-4 sm:p-6"
       >
         {/* With rows on screen, a failed refresh or "show more" keeps them and says so in one line. */}
         {feed.error && feed.rows.length > 0 ? (
-          <p className="mb-4 flex items-start gap-1.5 text-sm text-ink" role="alert">
+          <p
+            className="flex items-start gap-1.5 border-b border-line px-4 py-3 text-sm text-ink sm:px-6"
+            role="alert"
+          >
             <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             {t("common.error")}
           </p>
@@ -89,7 +91,7 @@ function ActivityPage() {
           }
         />
         {feed.hasMore ? (
-          <div className="mt-6 flex justify-center">
+          <div className="flex justify-center border-t border-line px-4 py-6 sm:px-6">
             <Button
               variant="outline"
               icon={<ChevronDown />}

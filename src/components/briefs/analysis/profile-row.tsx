@@ -29,6 +29,7 @@ export function ProfileRow({
   mark,
   trailing,
   className,
+  id,
 }: {
   /** Undefined while it is read, null when the candidate was erased. */
   candidate: RowCandidate;
@@ -44,6 +45,8 @@ export function ProfileRow({
   /** The row's controls, beside the button. */
   trailing?: ReactNode;
   className?: string | undefined;
+  /** The row's id, which the list scrolls into view when the keys move the selection. */
+  id?: string | undefined;
 }) {
   const t = useT();
   const { showPhotos } = useOrg();
@@ -57,6 +60,7 @@ export function ProfileRow({
 
   return (
     <Row
+      id={id}
       as="button"
       height="sm"
       selected={selected}

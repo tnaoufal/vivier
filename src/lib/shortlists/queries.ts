@@ -8,8 +8,9 @@
  * still in the pool), and the writes the grants allow: a decision on an
  * item, and a match entering the shortlist straight as retained or
  * dismissed (an insert, then the status the database stamps with who
- * and when, as every decision). Every call filters by the organisation
- * and casts rows at the boundary.
+ * and when, as every decision; a candidate already there keeps the
+ * decision it has). Every call filters by the organisation and casts
+ * rows at the boundary.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { lotsOf } from "@vivier/analysis";
@@ -193,7 +194,8 @@ export type AddOutcome = "added" | "already";
  * the database stamps decided_by and decided_at exactly as it does for
  * a decision on the board (the trigger stamps an update, never an
  * insert, and the grants never let the browser write them). "already"
- * when the pair existed: the status asked for is then written on it.
+ * when the pair existed: nothing is written on it, so a decision a
+ * colleague took stays; the item's own decisions change it, knowingly.
  */
 export async function addWithStatus(
   supabase: SupabaseClient,
@@ -213,8 +215,10 @@ export async function addWithStatus(
     match: input.match,
     added_by: input.userId,
   });
-  const outcome: AddOutcome = error ? "already" : "added";
-  if (error && error.code !== UNIQUE_VIOLATION) throw error;
+  if (error) {
+    if (error.code !== UNIQUE_VIOLATION) throw error;
+    return "already";
+  }
   if (input.status !== "to_review") {
     const decided = await supabase
       .from("shortlist_items")
@@ -224,5 +228,5 @@ export async function addWithStatus(
       .eq("candidate_id", input.candidateId);
     if (decided.error) throw decided.error;
   }
-  return outcome;
+  return "added";
 }

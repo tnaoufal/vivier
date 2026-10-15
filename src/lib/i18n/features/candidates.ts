@@ -207,7 +207,7 @@ const fr = {
 
   // consent and retention
   "candidates.consent.title": "Consentement",
-  "candidates.consent.status": "Consentement",
+  "candidates.consent.status": "Statut",
   "candidates.consent.option.unknown": "Non renseigné",
   "candidates.consent.option.given": "Donné",
   "candidates.consent.option.withdrawn": "Retiré",
@@ -225,8 +225,6 @@ const fr = {
   // actions
   "candidates.archive": "Archiver",
   "candidates.unarchive": "Réactiver",
-  "candidates.archiveTitle": "Archiver ce candidat ?",
-  "candidates.archiveText": "Il quitte la liste et reste visible avec les archivés.",
   "candidates.export": "Exporter (JSON)",
   "candidates.export.done": "Fichier exporté.",
   "candidates.export.photoFailed": "Exporté sans la photo.",
@@ -441,7 +439,7 @@ const en = {
   "candidates.viewer.frameTitle": "CV: {name}",
 
   "candidates.consent.title": "Consent",
-  "candidates.consent.status": "Consent",
+  "candidates.consent.status": "Status",
   "candidates.consent.option.unknown": "Not recorded",
   "candidates.consent.option.given": "Given",
   "candidates.consent.option.withdrawn": "Withdrawn",
@@ -457,8 +455,6 @@ const en = {
 
   "candidates.archive": "Archive",
   "candidates.unarchive": "Reactivate",
-  "candidates.archiveTitle": "Archive this candidate?",
-  "candidates.archiveText": "It leaves the list and stays visible with the archived ones.",
   "candidates.export": "Export (JSON)",
   "candidates.export.done": "File exported.",
   "candidates.export.photoFailed": "Exported without the photo.",

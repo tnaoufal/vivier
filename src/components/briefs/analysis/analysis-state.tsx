@@ -38,6 +38,21 @@ import { durationParts, runDurationMs } from "@/lib/shortlists/groups";
 
 import type { AnalysisController } from "./use-analysis";
 
+/** The word after a figure, by its count. */
+type FigureWords = Record<"none" | "one" | "many", TranslationKey>;
+
+/** The words after the figure of the matches and of a text-only ranking. */
+const MATCH_WORDS: FigureWords = {
+  none: "briefs.state.matches.none",
+  one: "briefs.state.matches.one",
+  many: "briefs.state.matches.many",
+};
+const RANKED_WORDS: FigureWords = {
+  none: "briefs.state.ranked.none",
+  one: "briefs.state.ranked.one",
+  many: "briefs.state.ranked.many",
+};
+
 /** The one line a failed run says. */
 const FAILURE_KEYS: Record<FailureLine, TranslationKey> = {
   brief: "briefs.analysis.jobChanged",
@@ -215,9 +230,7 @@ export function AnalysisState({
       <>
         <p className="text-ink">
           <span className="stat-number">{count(shown)}</span>{" "}
-          <span className="text-sm font-medium">
-            {t(shown === 1 ? "briefs.state.ranked.one" : "briefs.state.ranked.many")}
-          </span>
+          <span className="text-sm font-medium">{t(figureWord(shown, RANKED_WORDS))}</span>
         </p>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-muted-foreground tabular-nums">
           {/* Past FULL_POOL_MAX the text path ranks only the profiles the retrieval returns: out of how many is said. */}
@@ -289,9 +302,7 @@ export function AnalysisState({
       <div className="flex items-center justify-between gap-3">
         <p className="min-w-0 text-ink">
           <span className="stat-number">{count(matches)}</span>{" "}
-          <span className="text-sm font-medium">
-            {t(matches === 1 ? "briefs.state.matches.one" : "briefs.state.matches.many")}
-          </span>
+          <span className="text-sm font-medium">{t(figureWord(matches, MATCH_WORDS))}</span>
         </p>
         {unread > 0 ? resume(t("briefs.analysis.resume"), <Play />) : null}
       </div>
@@ -317,6 +328,12 @@ export function AnalysisState({
       ) : null}
     </>,
   );
+}
+
+/** The word after a figure: the zero and the one singular ("0 correspondance"), the rest plural. */
+function figureWord(value: number, words: FigureWords): TranslationKey {
+  if (value === 0) return words.none;
+  return value === 1 ? words.one : words.many;
 }
 
 /** "1 093 analysés", with its singular and its zero. */

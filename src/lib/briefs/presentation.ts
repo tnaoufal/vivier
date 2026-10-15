@@ -396,14 +396,17 @@ export function reservationLine(result: Pick<MatchResult, "assessment">): string
  * the score first, then the reason the model gave ("72 · Senior, huit
  * ans en contrôle de gestion"); the score alone without a reason, the
  * reason alone without a score; null when the screening wrote neither.
+ * `scoreText` words the rounded score with its scale ("72 / 100"); the
+ * figure alone by default.
  */
 export function screenLine(
   screen: { score: number | null; reason: string | null } | null | undefined,
+  scoreText: (score: number) => string = (score) => String(score),
 ): string | null {
   if (!screen) return null;
   const score =
     typeof screen.score === "number" && Number.isFinite(screen.score)
-      ? String(Math.round(screen.score))
+      ? scoreText(Math.round(screen.score))
       : null;
   const reason = sentence(screen.reason);
   if (score !== null && reason !== null) return `${score} · ${reason}`;

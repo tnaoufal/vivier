@@ -10,7 +10,9 @@
  * skeleton outside it); a failure is one line in a toast. `compact` caps
  * the height and scrolls inside (a drawer's tab, a card); by default the
  * thread fills its column. `hideHeader` is for a drawer whose title is
- * the thread's.
+ * the thread's. `pane` draws it as the plane's thread pane: the header
+ * (48px, a line under it), the list and the composer (on the paper, a
+ * line above it) each carry the pane's 16px gutter, edge to edge.
  */
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
@@ -51,6 +53,7 @@ export function TeamThread({
   title,
   compact = false,
   hideHeader = false,
+  pane = false,
   className,
 }: {
   target: ThreadTarget;
@@ -65,6 +68,8 @@ export function TeamThread({
   compact?: boolean | undefined;
   /** No header of its own: the drawer's title is the thread's. */
   hideHeader?: boolean | undefined;
+  /** The thread pane of the plane: the gutter inside each part, the lines edge to edge. */
+  pane?: boolean | undefined;
   className?: string | undefined;
 }) {
   const { t, locale } = useI18n();
@@ -135,8 +140,16 @@ export function TeamThread({
       )}
     >
       {hideHeader ? null : (
-        <header className="shrink-0 pb-3">
-          <h2 id={headingId} className="text-base font-semibold text-ink">
+        <header
+          className={cn(
+            "shrink-0",
+            pane ? "flex min-h-12 items-center border-b border-line px-4" : "pb-3",
+          )}
+        >
+          <h2
+            id={headingId}
+            className={cn("font-semibold text-ink", pane ? "text-sm" : "text-base")}
+          >
             {heading}
             {count ? (
               <>
@@ -159,7 +172,7 @@ export function TeamThread({
           stickRef.current =
             element.scrollHeight - element.scrollTop - element.clientHeight < STICK_PX;
         }}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", pane && "p-4")}
       >
         {loading && messages.length === 0 ? (
           <>
@@ -204,7 +217,9 @@ export function TeamThread({
         )}
       </div>
       {canPost ? (
-        <div className="sticky bottom-0 shrink-0 border-t border-border bg-background pt-3">
+        <div
+          className={cn("shrink-0 border-t border-line bg-background", pane ? "px-4 py-3" : "pt-3")}
+        >
           <ThreadComposer
             value={draft}
             onChange={setDraft}

@@ -16,11 +16,13 @@
  * held today, the seniority, the place and three skills, the date from
  * `sm`), the page's figure and "Suivants" at the bottom. `?c=<id>` is
  * the selected profile, shown in the detail pane as a CandidateSheet;
- * from `lg` the first row is selected when `c` is absent and the arrow
- * keys move the selection; below `lg` a row leads to the candidate's
- * page and the detail pane does not show. The thread pane follows the
- * selected profile. `?import=1` (the dashboard's "Importer des CV")
- * opens the import dialog once for a member and the param is dropped.
+ * from `lg` it names a row of the page (the first is written in once
+ * the rows are read, when it names none: absent, on another page,
+ * filtered out, erased) and the arrow keys move the selection; below
+ * `lg` a row leads to the candidate's page and the detail pane does not
+ * show. The thread pane follows the selected profile. `?import=1` (the
+ * dashboard's "Importer des CV") opens the import dialog once for a
+ * member and the param is dropped.
  */
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -89,6 +91,7 @@ import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
 import { formatDate, useI18n } from "@/lib/i18n";
 import { useCurrentOrg, useOrg } from "@/lib/org/org-context";
+import { selectionOf } from "@/lib/shortlists/groups";
 import { useTeamMembers } from "@/lib/shortlists/use-members";
 import { cn } from "@/lib/utils";
 
@@ -260,11 +263,19 @@ function CandidatesPage() {
   // header keeps it the rest of the time, so a view never shows the filled one twice.
   const poolEmpty = !list.error && !loading && rows.length === 0 && !filtered;
 
-  // The selection lives in the URL; from `lg` the first row stands in when it names none. Below
-  // `lg` nothing is selected: a row is a link to the candidate's page.
-  const selectedId = desktop ? (c ?? rows[0]?.id ?? null) : null;
-  const index = rows.findIndex((row) => row.id === selectedId);
+  // The selection lives in the URL. From `lg` it names a row of the page: when it names none, the
+  // first row is written in once, so a refresh that reorders the rows keeps the profile being read.
+  // Below `lg` nothing is selected: a row is a link to the candidate's page.
+  const rowIds = useMemo(() => rows.map((row) => row.id), [rows]);
+  const selection = selectionOf(rowIds, c);
+  const selectedId = desktop ? selection.id : null;
+  const index = desktop ? selection.index : -1;
   const target = useMemo(() => (selectedId ? { candidateId: selectedId } : null), [selectedId]);
+
+  useEffect(() => {
+    if (!desktop || !selection.stale || selection.id === null) return;
+    void navigate({ to: "/app/candidates", search: { c: selection.id }, replace: true });
+  }, [desktop, navigate, selection.id, selection.stale]);
 
   function select(candidateId: string | null) {
     void navigate({
@@ -595,6 +606,7 @@ function CandidatesPage() {
             <SelectedProfile
               candidateId={selectedId}
               onChanged={() => void refreshList()}
+              onGone={refreshList}
               onErased={erased}
             />
           </Fragment>
@@ -703,17 +715,28 @@ function PoolRow({
   );
 }
 
-/** The selected profile, read for its id (and read again when its documents change). */
+/**
+ * The selected profile, read for its id (and read again when its documents change). Found
+ * erased elsewhere (another tab, another member, the purge), it has the list read again: the
+ * profile leaves the page and the selection moves on to the first row.
+ */
 function SelectedProfile({
   candidateId,
   onChanged,
+  onGone,
   onErased,
 }: {
   candidateId: string;
   onChanged: () => void;
+  /** Reads the list again; stable, so it runs once when the profile turns out gone. */
+  onGone: () => Promise<void>;
   onErased: () => void;
 }) {
   const { org } = useCurrentOrg();
   const state = useCandidate(org.id, candidateId);
+  const gone = !state.loading && !state.candidate && !state.error;
+  useEffect(() => {
+    if (gone) void onGone();
+  }, [gone, onGone]);
   return <CandidateSheet state={state} onChanged={onChanged} onErased={onErased} />;
 }

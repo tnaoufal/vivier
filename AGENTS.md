@@ -46,6 +46,11 @@ stack and nothing else.
   service role key, the processor secret, the model key and the Resend key
   live only in the Cloudflare dashboard (or Railway for the processor) and
   are never echoed by `/status`.
+- A person works in a space, personal when they work alone and a team
+  otherwise (`organizations.kind`, written by `create_organization()` and
+  `accept_invitation()` only, never by the browser), and every signed-in
+  page is one plane, a `Workspace` of panes with the team's thread as the
+  right pane (`docs/DESIGN.md`).
 - Every server function that calls a model, sends an email, creates a
   share or pokes the processor runs behind `enforceRateLimit()`
   (`src/lib/platform/rate-limit.server.ts`, `VIVIER_RATE_LIMITER` binding).
@@ -62,7 +67,7 @@ stack and nothing else.
 - The pages never pretend: a document that failed says why in one
   sentence, a search without a model says it ran on text only, a share
   says when it expires.
-- Every screen follows the design charter, v3 (`docs/DESIGN.md`, Blackweaver monochrome): the
+- Every screen follows the design charter, v4 (`docs/DESIGN.md`, Blackweaver monochrome): the
   tokens of `src/styles.css` (never a hard-coded colour, radius or
   duration), the primitives of `src/components/ui` and
   `src/components/app-shell`, one icon per control, motion that explains

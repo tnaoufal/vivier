@@ -24,8 +24,6 @@ export function PageHeader({
   eyebrow?: ReactNode;
   /** A row under the title: pills, a date, a count. */
   meta?: ReactNode;
-  /** The slim variant left with the plane; accepted and ignored until the brief page is a Workspace. */
-  sticky?: boolean;
   className?: string;
 }) {
   return (
