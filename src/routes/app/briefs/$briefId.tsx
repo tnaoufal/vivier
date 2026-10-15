@@ -1,23 +1,26 @@
 /**
  * /app/briefs/:briefId: the brief page, one page and no left module. A
- * slim sticky header carries the title, the status, when it changed,
- * the one filled action ("Lancer l'analyse", then "Relancer"; held
- * while one runs) and a menu (edit the brief, close or reopen it,
- * delete it for administrators), with the way to the team's thread on
- * a phone. Under it, the brief folded to three lines, then two tabs
- * kept in the URL (`?tab=matches|shortlist`): "Correspondances" with
- * the count of the matches, and "Shortlist" with the count of the
- * candidates retained (the board loads itself); from `lg` the team's
- * thread on the brief is the right column, sticky, and a drawer on a
- * phone. A brief just created (`?run=1`) starts its analysis once on
- * mount when the person may run one and none exists, and the param
- * leaves the URL. A brief edited since the analysis on screen ran says
- * so in the band, the header's button runs it again. Live through
- * realtime on this brief.
+ * slim sticky header carries the title, the status when it is not
+ * simply open, when it changed, the one filled action ("Lancer
+ * l'analyse", then "Relancer"; held while one runs, and outline while
+ * the band or the board carries the primary: Reprendre, Analyser,
+ * Partager) and a menu (close or reopen the brief, delete it for
+ * administrators), with the way to the team's thread on a phone. Under
+ * it, the brief folded to three lines with the way to edit it, then two
+ * tabs kept in the URL (`?tab=matches|shortlist`): "Correspondances"
+ * and "Shortlist" (the band's headline and the board's columns carry
+ * the counts; the board loads itself); from `lg` the team's thread on
+ * the brief is the right column, sticky, and a drawer on a phone. A
+ * brief just created (`?run=1`) starts its analysis once on mount when
+ * the person may run one and none exists, and the param leaves the
+ * URL. A brief edited since the analysis on screen ran says so in the
+ * band, the header's button runs it again. Live through realtime on
+ * this brief; a refresh that fails keeps the page (and an analysis
+ * under way) and says so.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Archive, ArchiveRestore, Ellipsis, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Ellipsis, Sparkles, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { EmptyState } from "@/components/app-shell/empty-state";
@@ -45,7 +48,6 @@ import { requireSupabase } from "@/lib/auth/supabase-client";
 import { briefCapabilities } from "@/lib/briefs/briefs.functions";
 import { briefChangedSince } from "@/lib/briefs/presentation";
 import { deleteBrief, readBrief, updateBrief } from "@/lib/briefs/queries";
-import { formatCount } from "@/lib/candidates/format";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
 import type { BriefRow, BriefStatus } from "@/lib/db/types";
@@ -104,6 +106,11 @@ function BriefPage() {
       ),
     [briefId, refreshBrief],
   );
+  // A refresh that fails with the brief on screen says so and the page stays: an analysis under way keeps running.
+  const refreshFailed = brief.error !== null && brief.data !== null;
+  useEffect(() => {
+    if (refreshFailed) toast.error(t("common.error"));
+  }, [refreshFailed, t]);
 
   // The way back is the header's eyebrow in every state: the header keeps its place while the brief loads, fails or is missing.
   const eyebrow = (
@@ -115,7 +122,7 @@ function BriefPage() {
     </Link>
   );
 
-  if (brief.error) {
+  if (brief.error && !brief.data) {
     return (
       <div>
         <PageHeader sticky eyebrow={eyebrow} title={t("briefs.title")} />
@@ -250,12 +257,6 @@ function BriefView({
   }, [analysis.latestLoading, brief.id, navigate, run, tabParam]);
 
   const tab: BriefTab = tabParam ?? "matches";
-  const matchCount =
-    analysis.view !== null
-      ? analysis.band === "textOnly"
-        ? null
-        : analysis.matches.length
-      : (analysis.latest?.match_count ?? null);
   // The brief's text changed since the analysis on screen ran: saved here, or read off the row (a colleague's edit too).
   const briefStale =
     analysis.view !== null && (editedAfter === analysis.view.id || briefChangedSince(brief));
@@ -291,19 +292,15 @@ function BriefView({
     }
   }
 
-  // The one filled button of the page, in every state: it reads the brief and runs the analysis, again once one exists.
+  // The header's button, in every state: it reads the brief and runs the analysis, again once one exists.
   const runLabel = analysis.running
     ? t("briefs.search.running")
     : analysis.view || analysis.latest
       ? t("briefs.search.rerun")
       : t("briefs.search.run");
-  const count = (value: number) => (
-    <span className="font-normal text-muted-foreground tabular-nums">
-      {/* Keeps the label and the count two words in the tab's name ("Correspondances, 12"). */}
-      <span className="sr-only">, </span>
-      {formatCount(locale, value)}
-    </span>
-  );
+  // One filled button per view: outline while the band offers Reprendre or Analyser, or the board its Partager.
+  const runVariant =
+    tab === "shortlist" || analysis.canResume || analysis.canAnalyseNew ? "outline" : "primary";
 
   return (
     <div>
@@ -313,7 +310,8 @@ function BriefView({
         title={brief.title}
         meta={
           <>
-            <BriefStatusPill status={brief.status} size="sm" />
+            {/* Open is the rule: only another state is worth a pill. */}
+            {brief.status !== "open" ? <BriefStatusPill status={brief.status} size="sm" /> : null}
             <span className="text-meta text-muted-foreground">
               {t("briefs.list.updated", { date: formatDate(locale, brief.updated_at) })}
             </span>
@@ -324,7 +322,7 @@ function BriefView({
             {canEdit ? (
               <Button
                 type="button"
-                variant="primary"
+                variant={runVariant}
                 icon={<Sparkles />}
                 onClick={() => void analysis.run()}
                 disabled={!analysis.canRun}
@@ -348,10 +346,7 @@ function BriefView({
                   />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => setEditOpen(true)}>
-                    <Pencil />
-                    {t("briefs.brief.edit")}
-                  </DropdownMenuItem>
+                  {/* Editing the brief lives beside its text, once on the screen. */}
                   <DropdownMenuItem
                     disabled={statusBusy}
                     onSelect={() => void setStatus(brief.status === "closed" ? "open" : "closed")}
@@ -393,14 +388,9 @@ function BriefView({
             }}
           >
             <TabsList aria-label={t("briefs.tabs.label")}>
-              <TabsTrigger value="matches">
-                {t("briefs.tab.matches")}
-                {matchCount !== null ? count(matchCount) : null}
-              </TabsTrigger>
-              <TabsTrigger value="shortlist">
-                {t("briefs.tab.shortlist")}
-                {analysis.retained > 0 ? count(analysis.retained) : null}
-              </TabsTrigger>
+              {/* No count in a tab: the band's headline and the board's columns carry the figures. */}
+              <TabsTrigger value="matches">{t("briefs.tab.matches")}</TabsTrigger>
+              <TabsTrigger value="shortlist">{t("briefs.tab.shortlist")}</TabsTrigger>
             </TabsList>
             {/* The matches stay mounted behind the shortlist: an analysis under way keeps its rows. */}
             <TabsContent value="matches" forceMount className="mt-6 data-[state=inactive]:hidden">

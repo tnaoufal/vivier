@@ -1,12 +1,13 @@
 /**
  * One profile of an analysis in a drawer from the right, to decide
  * whether to present it without leaving the list: the header names the
- * person (photo or initials, the position held today, the years and
- * where) with the tier, the decision when it is not "matches" (a near
- * profile; every row of the main list matches) and the score as a plain
- * figure, the buttons (and the left and right arrow keys) that walk the
- * list, and one row of actions (add to the shortlist, open the
- * profile); then, in this order, why this profile (the ranking's note
+ * person (photo or initials, the position held today, the years, "Non
+ * renseigné" when the CV states none, and where) with the tier, the
+ * decision when it is not "matches" (a near profile; every row of the
+ * main list matches) and the score as a plain figure, the buttons (and
+ * the left and right arrow keys) that walk the list, and one row of
+ * actions (add to the shortlist, open the profile); then, in this
+ * order, why this profile (the ranking's note
  * first, why it ranks there, then the reading's summary, marked as the
  * model's), the requirements of the brief with the evidence (the role
  * first; what the CV does not say reads "Non renseigné", never as a
@@ -19,16 +20,7 @@
  */
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import {
-  ChevronLeft,
-  ChevronRight,
-  CircleCheck,
-  ListChecks,
-  ListPlus,
-  MessageSquare,
-  TriangleAlert,
-  UserRound,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, ListChecks, ListPlus, UserRound } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { InfoTip } from "@/components/app-shell/info-tip";
@@ -93,26 +85,13 @@ function DrawerSection({
   );
 }
 
-/** A short list of facts, each led by one icon, so the lists read apart by their mark and their heading. */
-function FactList({
-  items,
-  icon: Icon,
-  muted = false,
-}: {
-  items: readonly string[];
-  icon: typeof CircleCheck;
-  /** The mark in grey: a point to check rather than a fact in the profile's favour. */
-  muted?: boolean | undefined;
-}) {
+/** A short list of facts as plain bullets: the heading names the list, as in the shortlist's drawer. */
+function FactList({ items }: { items: readonly string[] }) {
   return (
-    <ul className="space-y-2">
+    <ul className="list-disc space-y-1.5 pl-5 text-sm text-ink">
       {items.map((item, index) => (
-        <li key={`${index}:${item}`} className="flex items-start gap-2 text-sm text-ink">
-          <Icon
-            aria-hidden="true"
-            className={cn("mt-0.5 size-4 shrink-0", muted ? "text-muted-foreground" : "text-ink")}
-          />
-          <span className="min-w-0">{item}</span>
+        <li key={`${index}:${item}`} className="break-words">
+          {item}
         </li>
       ))}
     </ul>
@@ -200,12 +179,13 @@ export function MatchDrawer({
       ? t("briefs.results.gone")
       : t("common.loading");
   const position = candidate ? currentPosition(candidate) : null;
-  // Seniority first, then where: the read answers for the profile it was made for, so walking the list never shows the previous one's years.
+  // Seniority first, then where. The read answers for the profile it was
+  // made for, so walking the list never shows the previous one's years;
+  // years the CV does not state read "Non renseigné" once it answered,
+  // never while it is in flight.
+  const yearsRead = years.data && years.data.id === shown?.candidateId ? years.data : null;
   const meta = [
-    yearsLabel(
-      locale,
-      years.data && years.data.id === shown?.candidateId ? years.data.years_experience : null,
-    ),
+    yearsRead ? yearsLabel(locale, yearsRead.years_experience) || t("common.unknown") : "",
     candidate?.location?.trim() ?? "",
   ]
     .filter((part) => part.length > 0)
@@ -406,12 +386,12 @@ export function MatchDrawer({
                 <div className="grid gap-8 lg:grid-cols-2">
                   {strengths.length ? (
                     <DrawerSection title={t("briefs.results.strengths")}>
-                      <FactList items={strengths} icon={CircleCheck} />
+                      <FactList items={strengths} />
                     </DrawerSection>
                   ) : null}
                   {concerns.length ? (
                     <DrawerSection title={t("briefs.results.concerns")}>
-                      <FactList items={concerns} icon={TriangleAlert} />
+                      <FactList items={concerns} />
                     </DrawerSection>
                   ) : null}
                 </div>
@@ -435,7 +415,7 @@ export function MatchDrawer({
 
               {questions.length ? (
                 <DrawerSection title={t("briefs.results.questions")}>
-                  <FactList items={questions} icon={MessageSquare} muted />
+                  <FactList items={questions} />
                 </DrawerSection>
               ) : null}
 

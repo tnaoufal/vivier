@@ -52,10 +52,6 @@ export function isSeniority(value: unknown): value is RoleSeniority {
   return typeof value === "string" && (ROLE_SENIORITIES as readonly string[]).includes(value);
 }
 
-export function seniorityKey(seniority: RoleSeniority): `briefs.seniority.${RoleSeniority}` {
-  return `briefs.seniority.${seniority}`;
-}
-
 // ---------------------------------------------------------------------
 // the model's answer
 // ---------------------------------------------------------------------

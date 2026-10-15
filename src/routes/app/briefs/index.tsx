@@ -4,7 +4,7 @@
  * it is not simply open, what its newest analysis found ("12
  * correspondances", "Analyse inachevée", "Aucune analyse"), how many
  * candidates its shortlist retained, the last message of its thread
- * (who, when, the first words) and when it changed; the count in the
+ * (who, when) and when it changed; the count in the
  * header, a filter (open, closed, all) only once a brief is closed, and
  * the way to a new one. A whole-pool analysis not through yet (profiles
  * its triage has not read, or kept profiles not read in full) says it
@@ -328,8 +328,6 @@ function BriefsPage() {
                           <time dateTime={thread.lastAt}>
                             {formatRelative(locale, thread.lastAt)}
                           </time>
-                          <span aria-hidden="true"> · </span>
-                          <span className="text-ink">{thread.lastExcerpt}</span>
                         </>
                       ) : null}
                     </p>

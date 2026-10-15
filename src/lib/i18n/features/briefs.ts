@@ -69,8 +69,6 @@ const fr = {
   "briefs.search.run": "Lancer l'analyse",
   "briefs.search.rerun": "Relancer",
   "briefs.search.running": "Analyse en cours…",
-  "briefs.search.derived": "Exigences lues dans le brief.",
-  "briefs.profile.derived": "Brief lu par le modèle.",
   "briefs.search.line.present.none": "0 correspondance",
   "briefs.search.line.present.one": "1 correspondance",
   "briefs.search.line.present.many": "{count} correspondances",
@@ -172,8 +170,8 @@ const fr = {
   "briefs.results.score": "Score {score} sur 100",
   "briefs.results.requirements": "Exigences du brief",
   "briefs.results.evidence.unverified": "citation non retrouvée dans le CV",
-  "briefs.results.withheld.one": "1 phrase du modèle retirée par le filtre",
-  "briefs.results.withheld.many": "{count} phrases du modèle retirées par le filtre",
+  "briefs.results.withheld.one": "1 phrase retirée par le filtre",
+  "briefs.results.withheld.many": "{count} phrases retirées par le filtre",
   "briefs.results.why": "Lecture du modèle",
   "briefs.results.addToShortlist": "Ajouter à la shortlist",
   "briefs.results.addedToast": "Ajouté à la shortlist.",
@@ -199,13 +197,6 @@ const fr = {
   "briefs.results.strengths": "Points forts",
   "briefs.results.concerns": "Réserves",
   "briefs.results.questions": "Pour l'entretien",
-
-  // the levels seniorityKey() (role-profile.ts) names: no screen reads them since the role card left; they leave with it
-  "briefs.seniority.junior": "Junior",
-  "briefs.seniority.confirmed": "Confirmé",
-  "briefs.seniority.senior": "Senior",
-  "briefs.seniority.manager": "Manager",
-  "briefs.seniority.executive": "Direction",
 } as const;
 
 const en = {
@@ -272,8 +263,6 @@ const en = {
   "briefs.search.run": "Run the analysis",
   "briefs.search.rerun": "Run again",
   "briefs.search.running": "Analysis running…",
-  "briefs.search.derived": "Requirements read from the brief.",
-  "briefs.profile.derived": "Brief read by the model.",
   "briefs.search.line.present.none": "0 matches",
   "briefs.search.line.present.one": "1 match",
   "briefs.search.line.present.many": "{count} matches",
@@ -352,7 +341,7 @@ const en = {
   "briefs.drawer.doubt": "Second reading: {reason}",
   "briefs.triage.yes": "Same job",
   "briefs.triage.close": "Neighbouring job",
-  "briefs.triage.unknown": "Card too thin to tell",
+  "briefs.triage.unknown": "Profile too thin to tell",
   "briefs.triage.no": "Another job",
 
   "briefs.setAside.title": "Profiles set aside",
@@ -370,8 +359,8 @@ const en = {
   "briefs.results.score": "Score {score} out of 100",
   "briefs.results.requirements": "Requirements of the brief",
   "briefs.results.evidence.unverified": "quote not found in the CV",
-  "briefs.results.withheld.one": "1 sentence of the model withheld by the filter",
-  "briefs.results.withheld.many": "{count} sentences of the model withheld by the filter",
+  "briefs.results.withheld.one": "1 sentence withheld by the filter",
+  "briefs.results.withheld.many": "{count} sentences withheld by the filter",
   "briefs.results.why": "The model's reading",
   "briefs.results.addToShortlist": "Add to the shortlist",
   "briefs.results.addedToast": "Added to the shortlist.",
@@ -397,12 +386,6 @@ const en = {
   "briefs.results.strengths": "Strengths",
   "briefs.results.concerns": "Reservations",
   "briefs.results.questions": "For the interview",
-
-  "briefs.seniority.junior": "Junior",
-  "briefs.seniority.confirmed": "Confirmed",
-  "briefs.seniority.senior": "Senior",
-  "briefs.seniority.manager": "Manager",
-  "briefs.seniority.executive": "Executive",
 } as const satisfies Record<keyof typeof fr, string>;
 
 export const briefs = { fr, en };

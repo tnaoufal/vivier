@@ -7,18 +7,20 @@
  * kept, the ones read in full while some are left, the ones set aside:
  * a quiet button that opens their list, each with its reason) and when.
  * Running, the live figure comes first with the way to stop (a heading
- * from the first moment, while the search is prepared), then the step
- * with how far it is, the time left when known, and the bar. An
+ * from the first moment, while the search is prepared; a status region
+ * that exists whatever the state carries it for assistive technologies,
+ * so its first words are announced like the next), then the step with
+ * how far it is, the time left when known, and the bar. An
  * interrupted analysis says how many profiles are left, with
  * "Reprendre", or that another session drives it; one done counts the
  * profiles the pool gained since, with the way to read them; one stored
  * before the whole pool was read says so in one line; one no model
  * could read says how many profiles it ranked on the text, in one line.
- * A brief edited since the analysis ran says so in one line (the
- * header's button runs it again). With no match once everything ran,
- * the requirement most often missing. An empty pool says so, with the
- * way to import CVs; an analysis that could not be opened says so, with
- * the way to read it again.
+ * A brief edited since the analysis ran says so in one line, while one
+ * runs too (the header's button runs it again). With no match once
+ * everything ran, the requirement most often missing. An empty pool says
+ * so, with the way to import CVs; an analysis that could not be opened
+ * says so, with the way to read it again.
  */
 import { useId, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
@@ -105,11 +107,51 @@ export function AnalysisBand({
     return t(keys.many, { count: count(value) });
   }
 
-  const shell = (children: ReactNode, labelled = true) => (
-    <section aria-labelledby={labelled ? headingId : undefined} className="sheet space-y-5 p-6">
-      {children}
-    </section>
+  // The live figure while the analysis runs: nothing to count yet while
+  // the search itself is prepared (the sentence says what runs), the
+  // profiles kept during the triage, then the matches; empty otherwise.
+  const step = progress?.step ?? "triage";
+  const live =
+    band !== "running"
+      ? ""
+      : !progress
+        ? t("briefs.analysis.starting")
+        : step === "triage" || step === "promote"
+          ? plural(step === "triage" ? progress.kept : funnel.kept, {
+              none: "briefs.analysis.live.kept.none",
+              one: "briefs.analysis.live.kept.one",
+              many: "briefs.analysis.live.kept.many",
+            })
+          : plural(analysis.matches.length, {
+              none: "briefs.analysis.live.matches.none",
+              one: "briefs.analysis.live.matches.one",
+              many: "briefs.analysis.live.matches.many",
+            });
+  // The brief's text changed since this analysis ran (or started): the header's button reads it again.
+  const stale = briefStale ? (
+    <p role="status" className="flex items-center gap-2 text-sm text-ink">
+      <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
+      <span className="min-w-0">{t("briefs.brief.stale")}</span>
+    </p>
+  ) : null;
+
+  // The status region exists from the band's first render, whatever the
+  // state shows: the first words of the live sentence are announced too,
+  // which a region created with its sentence never is.
+  const withStatus = (content: ReactNode) => (
+    <>
+      <p role="status" className="sr-only">
+        {live}
+      </p>
+      {content}
+    </>
   );
+  const shell = (children: ReactNode, labelled = true) =>
+    withStatus(
+      <section aria-labelledby={labelled ? headingId : undefined} className="sheet space-y-5 p-6">
+        {children}
+      </section>,
+    );
 
   // The newest analysis is being looked up or opened: placeholders the size of the headline.
   const loading =
@@ -128,7 +170,6 @@ export function AnalysisBand({
   }
 
   if (band === "running") {
-    const step = progress?.step ?? "triage";
     // The size of the work is unknown while the search runs and during the promotion: the bar is indeterminate.
     const measured = progress && step !== "promote" && progress.total > 0 ? progress : null;
     const left = measured ? remainingMs({ ...measured, now: Date.now() }) : null;
@@ -151,28 +192,10 @@ export function AnalysisBand({
         : step === "promote"
           ? t("briefs.analysis.promoting")
           : stepName;
-    // The live figure first: while the search itself runs there is nothing to count yet, and the heading says what runs.
-    const live = !progress
-      ? t("briefs.analysis.starting")
-      : step === "triage" || step === "promote"
-        ? plural(step === "triage" ? progress.kept : funnel.kept, {
-            none: "briefs.analysis.live.kept.none",
-            one: "briefs.analysis.live.kept.one",
-            many: "briefs.analysis.live.kept.many",
-          })
-        : plural(analysis.matches.length, {
-            none: "briefs.analysis.live.matches.none",
-            one: "briefs.analysis.live.matches.one",
-            many: "briefs.analysis.live.matches.many",
-          });
     return shell(
       <>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2
-            id={headingId}
-            className="font-display text-xl text-ink tabular-nums"
-            aria-live="polite"
-          >
+          <h2 id={headingId} className="font-display text-xl text-ink tabular-nums">
             {live}
           </h2>
           <Button
@@ -202,6 +225,7 @@ export function AnalysisBand({
             label={status ?? live}
           />
         </div>
+        {stale}
       </>,
     );
   }
@@ -209,7 +233,7 @@ export function AnalysisBand({
   if (band === "empty" || !view) {
     // The newest analysis could not be read or opened: nothing is known of it, which is not "none".
     if (analysis.loadFailed) {
-      return (
+      return withStatus(
         <EmptyState
           compact
           icon={<TriangleAlert />}
@@ -219,20 +243,15 @@ export function AnalysisBand({
               {t("common.retry")}
             </Button>
           }
-        />
+        />,
       );
     }
-    return <EmptyState compact icon={<Sparkles />} title={t("briefs.analysis.empty")} />;
+    return withStatus(
+      <EmptyState compact icon={<Sparkles />} title={t("briefs.analysis.empty")} />,
+    );
   }
 
   const date = formatDateTime(locale, view.createdAt);
-  // The brief's text changed since this analysis ran: the header's button reads it again.
-  const stale = briefStale ? (
-    <p role="status" className="flex items-center gap-2 text-sm text-ink">
-      <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
-      <span className="min-w-0">{t("briefs.brief.stale")}</span>
-    </p>
-  ) : null;
 
   if (band === "textOnly") {
     const noModel = modelAvailable === false;
@@ -274,7 +293,7 @@ export function AnalysisBand({
   const wholePool = view.method === "triage";
   // A pool with no active profile when the search ran: nothing was analysed, so nothing "does not match".
   if (band === "done" && wholePool && funnel.analysed === 0) {
-    return (
+    return withStatus(
       <EmptyState
         compact
         icon={<Users />}
@@ -282,11 +301,14 @@ export function AnalysisBand({
         action={
           canEdit ? (
             <Button asChild variant="outline" icon={<Upload />}>
-              <Link to="/app/candidates">{t("briefs.analysis.importCvs")}</Link>
+              {/* Straight into the import dialog: the pool's page alone would cost a second click. */}
+              <Link to="/app/candidates" search={{ import: true }}>
+                {t("briefs.analysis.importCvs")}
+              </Link>
             </Button>
           ) : undefined
         }
-      />
+      />,
     );
   }
 
@@ -382,7 +404,7 @@ export function AnalysisBand({
           ) : analysis.canResume ? (
             <Button
               type="button"
-              variant="outline"
+              variant="primary"
               icon={<Play />}
               onClick={analysis.resume}
               className="self-start sm:self-auto"
@@ -404,7 +426,7 @@ export function AnalysisBand({
           {analysis.canAnalyseNew ? (
             <Button
               type="button"
-              variant="outline"
+              variant="primary"
               icon={<Sparkles />}
               onClick={analysis.resume}
               className="self-start sm:self-auto"

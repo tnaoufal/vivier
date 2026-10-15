@@ -11,9 +11,9 @@
  * the full reading, READ_CONCURRENCY batches at once; the second
  * opinion; the tiering, then the final comparison), merging each answer
  * into the view as it lands; the way to stop it and to resume it from
- * what is stored; the candidates the rows show; the brief's shortlist
- * and how many it retained. A batch that fails is sent once more at the
- * end of its stage; an error that no retry fixes (rights, setup, the
+ * what is stored; the candidates the rows show; the brief's shortlist,
+ * kept live. A batch that fails is sent once more at the end of its
+ * stage; an error that no retry fixes (rights, setup, the
  * session) stops the loop and says why; a rate limit waits, longer each
  * time, before the call counts as failed. A candidate gone from the
  * pool since the search is settled: never sent again, never keeping an
@@ -25,8 +25,8 @@
  * and says how many the pool gained since it ended; a profile its
  * triage set aside can be brought back to be read in full. Earlier
  * analyses stay in the database and are not opened here: the newest is
- * the one on screen. Leaving the page stops the loop; nothing stored is
- * lost.
+ * the one on screen, and a newer one a colleague starts takes its
+ * place. Leaving the page stops the loop; nothing stored is lost.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -192,8 +192,6 @@ export interface AnalysisController {
   candidateOf: (candidateId: string) => RowCandidate;
   shortlistId: string | null;
   addedIds: ReadonlySet<string>;
-  /** How many candidates of the shortlist the team retained, kept live. */
-  retained: number;
   canRun: boolean;
   canResume: boolean;
   /** True when the profiles the pool gained can be analysed now (resume() takes them in). */
@@ -280,7 +278,6 @@ export function useAnalysis({
   const refreshShortlist = shortlist.refresh;
   const latest = searches.data?.[0] ?? null;
   const shortlistId = shortlist.data?.shortlistId ?? null;
-  const retained = shortlist.data?.retained ?? 0;
   const addedIds = useMemo<ReadonlySet<string>>(
     () => new Set(shortlist.data?.candidateIds ?? []),
     [shortlist.data],
@@ -465,6 +462,18 @@ export function useAnalysis({
     if (newest) void load(newest.id, false);
   }, [autoOpened, load, searches.data, searches.loading, view]);
 
+  // A newer analysis than the one on screen (a colleague pressed
+  // "Relancer") takes its place, so the band and the rows agree with the
+  // briefs list and the dashboard. The date guard keeps the fresh view of
+  // a run started here from being replaced by the older row read
+  // meanwhile; one that could not be opened is not asked for again.
+  useEffect(() => {
+    if (!latest || !view || latest.id === view.id || running || opening !== null) return;
+    if (openFailed === latest.id) return;
+    if (Date.parse(latest.created_at) <= Date.parse(view.createdAt)) return;
+    void load(latest.id, false);
+  }, [latest, load, openFailed, opening, running, view]);
+
   /** Notes that the analysis given moved without this page: "Reprendre" waits until it stays still. */
   const sawActivity = useCallback((searchId: string) => {
     if (ownLoops.current > 0) return;
@@ -514,6 +523,18 @@ export function useAnalysis({
       }, 400),
     );
   }, [refreshShortlist, shortlistId]);
+
+  // Until the brief has a shortlist, the one a colleague creates is read as it lands: its id then starts the subscription above.
+  useEffect(() => {
+    if (shortlistId) return undefined;
+    return subscribeToTable(
+      "shortlists",
+      `brief_id=eq.${briefId}`,
+      debounce(() => {
+        void refreshShortlist();
+      }, 400),
+    );
+  }, [briefId, refreshShortlist, shortlistId]);
 
   // Leaving the page ends the loop (and keeps a search still being prepared from starting one): what was stored stays.
   const mounted = useRef(true);
@@ -897,8 +918,6 @@ export function useAnalysis({
           : null,
       );
       void refreshSearches();
-      if (answer.roleProfileDerived) toast(t("briefs.profile.derived"));
-      else if (answer.criteriaDerived) toast(t("briefs.search.derived"));
       // Nothing a model can read: the ranking on the text is all there is.
       if (next.method !== "triage" && (modelAvailable === false || !next.criteria.length)) return;
       if (next.method !== "triage" && !next.results.length) return;
@@ -914,7 +933,7 @@ export function useAnalysis({
       setStarting(false);
       setStopping(false);
     }
-  }, [analyse, briefId, canEdit, locale, modelAvailable, onStarted, orgId, refreshSearches, t]);
+  }, [analyse, briefId, canEdit, locale, modelAvailable, onStarted, orgId, refreshSearches]);
 
   // The page opened to analyse at once (a brief just created): the search
   // starts by itself, once, when the brief has no analysis yet and the
@@ -1069,7 +1088,6 @@ export function useAnalysis({
     candidateOf,
     shortlistId,
     addedIds,
-    retained,
     canRun: canEdit && !running,
     canResume: idle && band === "incomplete",
     canAnalyseNew: idle && newProfiles > 0,

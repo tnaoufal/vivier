@@ -25,7 +25,6 @@ import {
   ROLE_SENIORITIES,
   roleDefinitionOf,
   roleProfileAnswer,
-  seniorityKey,
   statesMaximumYears,
 } from "./role-profile";
 
@@ -285,12 +284,11 @@ describe("the answer schema", () => {
     expect(ROLE_MISSIONS_MIN).toBe(3);
   });
 
-  it("names the seniorities and their keys", () => {
+  it("names the seniorities", () => {
     expect(ROLE_SENIORITIES).toEqual(["junior", "confirmed", "senior", "manager", "executive"]);
     expect(isSeniority("manager")).toBe(true);
     expect(isSeniority("boss")).toBe(false);
     expect(isSeniority(null)).toBe(false);
-    expect(seniorityKey("senior")).toBe("briefs.seniority.senior");
   });
 });
 
