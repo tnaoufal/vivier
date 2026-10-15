@@ -144,6 +144,7 @@ const fr = {
   "briefs.match.tally": "{met} / {total} exigences",
   "briefs.match.tally.one": "{met} / 1 exigence",
   "briefs.match.unconfirmed": "À confirmer",
+  "briefs.match.doubt": "Doute",
 
   // the reading of a profile
   "briefs.drawer.openProfile": "Voir la fiche",
@@ -334,6 +335,7 @@ const en = {
   "briefs.match.tally": "{met} / {total} requirements",
   "briefs.match.tally.one": "{met} / 1 requirement",
   "briefs.match.unconfirmed": "To confirm",
+  "briefs.match.doubt": "Doubt",
 
   "briefs.drawer.openProfile": "Open the profile",
   "briefs.drawer.why": "Why this profile",

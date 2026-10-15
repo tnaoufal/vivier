@@ -29,6 +29,7 @@ import {
   matchesOf,
   nearOf,
   requirementTally,
+  doubtLine,
   reservationLine,
   retainedByBrief,
   screenLine,
@@ -756,6 +757,18 @@ describe("synthesisLine and reservationLine", () => {
     expect(reservationLine(tiered("a", "borderline", 60, { summary: "Un profil voisin." }))).toBe(
       "Un profil voisin.",
     );
+  });
+
+  it("reads the second opinion's doubt on a match it kept, nothing on a confirmation", () => {
+    const kept = tiered("a", "fit", 82, {
+      challenge: { verdict: "doubt", kind: "context", reason: "  Pétrochimie plutôt que chimie ", evidence: "e" },
+    });
+    expect(doubtLine(kept)).toBe("Pétrochimie plutôt que chimie");
+    expect(reservationLine(kept)).toBe("Pétrochimie plutôt que chimie");
+    expect(
+      doubtLine(tiered("a", "fit", 82, { challenge: { verdict: "confirmed", reason: "r", evidence: null } })),
+    ).toBeNull();
+    expect(doubtLine(result("x"))).toBeNull();
   });
 });
 

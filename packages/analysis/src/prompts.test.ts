@@ -215,6 +215,8 @@ describe("prompts", () => {
       "(a requirement marked required in brief.requirements)",
     );
     expect(challengeSystemPrompt()).not.toContain("brief.roleProfile.mustHaves");
+    expect(challengeSystemPrompt()).toContain('"kind":"metier|requirement|seniority|contradiction|context"');
+    expect(challengeSystemPrompt()).toContain("the first of these that applies");
   });
 
   it("judge the seniority on the level reached, never on a ceiling of years the brief did not state, and read a junior brief's internships as positions", () => {
@@ -1010,7 +1012,9 @@ describe("challengePayload and challengeSystemPrompt", () => {
 
   it("asks for the strongest reason not to present, a doubt only with evidence, never a protected characteristic or a career break", () => {
     const system = challengeSystemPrompt();
-    expect(system).toContain('{"verdict":"confirmed|doubt","reason":"...","evidence":"..."}');
+    expect(system).toContain(
+      '{"verdict":"confirmed|doubt","kind":"metier|requirement|seniority|contradiction|context","reason":"...","evidence":"..."}',
+    );
     expect(system).toContain("strongest reason NOT to present");
     expect(system).toContain("métier mismatch hidden behind titles");
     expect(system).toContain("seniority mismatch");

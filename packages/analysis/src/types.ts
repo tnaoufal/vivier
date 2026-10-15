@@ -81,7 +81,7 @@ export interface RequirementAssessment {
   met: RequirementMet;
   /** A short quote or fact from the profile; null when nothing in the CV speaks to it. */
   evidence: string | null;
-  /** True when the evidence was not found in what the model was given: a "yes" so marked is read as "partial". */
+  /** True when the evidence was not found in what the model was given: a "yes" so marked is read as "partial" (a "yes" on years alone the profile's years confirm shows those years instead, unmarked). */
   evidenceUnverified?: boolean;
 }
 
@@ -114,9 +114,14 @@ export type AssessmentDimension = "role" | "seniority" | "context" | "trajectory
 /** The shortlist tier the comparative pass gives: A present now, B worth a deeper look, C do not present. */
 export type AssessmentTier = "A" | "B" | "C";
 
+/** What a second opinion's doubt is about: another métier, a required requirement not met, the seniority, facts of the CV that do not add up, the context. */
+export type ChallengeKind = "metier" | "requirement" | "seniority" | "contradiction" | "context";
+
 /** The second opinion on a retained profile: the reason not to present it, if any. */
 export interface AssessmentChallenge {
   verdict: "confirmed" | "doubt";
+  /** What a doubt is about, as the second reading classed it; absent on a confirmation, and on a doubt it did not class or stored before the kinds. */
+  kind?: ChallengeKind;
   reason: string | null;
   evidence: string | null;
 }
