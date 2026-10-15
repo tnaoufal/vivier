@@ -6,16 +6,18 @@
  * out, a hard cap on length.
  *
  * Also the images of one page, for the candidate's photo (photo.ts):
- * unpdf's `extractImages(pdf, pageNumber)` takes the document proxy in
- * every 0.12.x and answers, since 0.12.2 (the floor in package.json),
- * objects of decoded pixels with their width, height and channel count;
- * 0.12.0 and 0.12.1 answered bare pixel arrays. The answer is checked at
- * runtime, so an unpdf of another signature yields no image and one log
- * line, never a failed document. The width each image is drawn at comes
- * from the page's operator list (the one `extractImages` reads, cached
- * by pdf.js), walked with its transformation matrices.
+ * read from the page's operator list and pdf.js's own object store
+ * (`page.objs`) in the shape unpdf's `extractImages` answers (key,
+ * width, height, channels, decoded pixels), but one image at a time: an
+ * object pdf.js never settled (an image over `maxImageSize` it skipped,
+ * the page background of many CVs) is left out instead of ending the
+ * page, as `objs.get` would by throwing. The answer is checked at
+ * runtime (pageImagesOf), so another pdf.js shape yields no image and
+ * one log line, never a failed document. The width each image is drawn
+ * at comes from the same operator list (cached by pdf.js), walked with
+ * its transformation matrices.
  */
-import { extractImages, extractText, getDocumentProxy, getResolvedPDFJS } from "unpdf";
+import { extractText, getDocumentProxy, getResolvedPDFJS } from "unpdf";
 
 import { logWarn, type LogFields } from "./log.js";
 import { PHOTO_MAX_SIDE, type ImagesOfPage, type RawImage } from "./photo.js";
@@ -198,10 +200,71 @@ export function drawnWidthsOf(fnArray: unknown, argsArray: unknown, ops: unknown
   return drawn;
 }
 
-/** The pdf.js page calls the geometry needs, as methods so `this` stays bound. */
+/** pdf.js's `page.objs`: `has` says whether an object is settled (decoded, or skipped), `get` answers a settled one and throws on the rest. */
+interface PageObjectsLike {
+  has?: (key: string) => boolean;
+  get?: (key: string) => unknown;
+}
+
+/** The pdf.js page calls the geometry and the images need, as methods so `this` stays bound. */
 interface PageProxyLike {
   view?: unknown;
   getOperatorList?: () => Promise<unknown>;
+  objs?: PageObjectsLike;
+}
+
+/** pdf.js's ImageKind by value: 1 GRAYSCALE_1BPP (its bits packed), 2 RGB_24BPP, 3 RGBA_32BPP. */
+const CHANNELS_OF_KIND: Readonly<Record<number, 1 | 3 | 4>> = { 1: 1, 2: 3, 3: 4 };
+
+/**
+ * The images an operator list paints (`paintImageXObject`), as pdf.js
+ * decoded them, in unpdf's shape (key, width, height, channels, data),
+ * each key once in the order drawn. An object the store never settled
+ * (an image over maxImageSize pdf.js skipped, or one still decoding) is
+ * left out instead of ending the page (`objs.get` throws on it); so is
+ * one that is not pixels of a known kind (a bitmap). A 1-bit mask keeps
+ * its packed bits and is dropped by pageImageOf as another layout.
+ */
+export function decodedImagesOf(
+  fnArray: unknown,
+  argsArray: unknown,
+  ops: unknown,
+  objs: unknown,
+): unknown[] {
+  const codes = looseOf(ops);
+  const store = looseOf(objs) as PageObjectsLike | null;
+  const paint = codes?.["paintImageXObject"];
+  if (typeof paint !== "number" || !Array.isArray(fnArray) || !Array.isArray(argsArray)) return [];
+  if (!store || typeof store.has !== "function" || typeof store.get !== "function") return [];
+  const seen = new Set<string>();
+  const images: unknown[] = [];
+  for (let i = 0; i < fnArray.length; i++) {
+    if (fnArray[i] !== paint) continue;
+    const entry: unknown = argsArray[i];
+    const key = Array.isArray(entry) ? entry[0] : undefined;
+    if (typeof key !== "string" || seen.has(key)) continue;
+    seen.add(key);
+    let image: unknown;
+    try {
+      if (!store.has(key)) continue;
+      image = store.get(key);
+    } catch {
+      continue;
+    }
+    const decoded = looseOf(image);
+    if (!decoded) continue;
+    const kind = decoded["kind"];
+    const channels = typeof kind === "number" ? CHANNELS_OF_KIND[kind] : undefined;
+    if (channels === undefined) continue;
+    images.push({
+      key,
+      width: decoded["width"],
+      height: decoded["height"],
+      channels,
+      data: decoded["data"],
+    });
+  }
+  return images;
 }
 
 interface DocumentProxyLike {
@@ -242,6 +305,17 @@ async function pageGeometryOf(pdf: unknown, pageNumber: number): Promise<PageGeo
   }
 }
 
+/** The images drawn on the page as pdf.js decoded them (decodedImagesOf); none when the proxy cannot say. */
+async function pageDecodedImagesOf(pdf: unknown, pageNumber: number): Promise<unknown[]> {
+  const proxy = pdf as DocumentProxyLike;
+  if (typeof proxy.getPage !== "function") return [];
+  const page = await proxy.getPage(pageNumber);
+  if (typeof page.getOperatorList !== "function") return [];
+  const list = looseOf(await page.getOperatorList());
+  const pdfjs: unknown = await getResolvedPDFJS();
+  return decodedImagesOf(list?.["fnArray"], list?.["argsArray"], looseOf(pdfjs)?.["OPS"], page.objs);
+}
+
 /**
  * The images of page `pageNumber` (1-based) with the page's width and the
  * width each is drawn at, for the photo. `context` names the document in
@@ -260,8 +334,8 @@ export async function extractPageImages(
   try {
     const { pageWidth, drawn } = await pageGeometryOf(pdf, pageNumber);
     // Typed as unknown on purpose: the shape is checked, not trusted,
-    // whatever this unpdf's signature says.
-    const answer: unknown = await extractImages(pdf, pageNumber);
+    // whatever this pdf.js answers.
+    const answer: unknown = await pageDecodedImagesOf(pdf, pageNumber);
     const images = pageImagesOf(answer, context).map((image) => {
       const drawnWidth = drawn.get(image.key);
       return drawnWidth === undefined ? image : { ...image, drawnWidth };

@@ -312,8 +312,8 @@ describe("enforceAssessment", () => {
     expect(low.score).toBe(50);
   });
 
-  it("caps a fit at borderline when a required requirement is only met in part", () => {
-    const assessment = enforceAssessment(
+  it("keeps a fit with one required requirement the model read as met in part, and caps it with two", () => {
+    const one = enforceAssessment(
       criteria,
       none,
       answer({
@@ -327,8 +327,27 @@ describe("enforceAssessment", () => {
       }),
       "m",
     );
-    expect(assessment.decision).toBe("borderline");
-    expect(assessment.score).toBe(85);
+    expect(one.decision).toBe("fit");
+    expect(one.modelDecision).toBe("fit");
+    expect(one.score).toBe(85);
+    expect(one.requirements[1]?.met).toBe("partial");
+    const two = enforceAssessment(
+      criteria,
+      none,
+      answer({
+        requirements: [
+          { criterionId: "skill", met: "partial", evidence: "Assistant contrôle de gestion" },
+          { criterionId: "lang", met: "partial", evidence: "Anglais (B2)" },
+          { criterionId: "sap", met: "yes", evidence: "SAP" },
+        ],
+        decision: "fit",
+        score: 85,
+      }),
+      "m",
+    );
+    expect(two.decision).toBe("borderline");
+    expect(two.modelDecision).toBe("fit");
+    expect(two.score).toBe(85);
   });
 
   it("needs 75 for a fit and 45 for a borderline, whatever the model said", () => {
@@ -449,6 +468,39 @@ describe("enforceAssessment", () => {
       met: "yes",
       evidence: "SAP FI/CO",
     });
+  });
+
+  it("never disputes a yes on a degree: the deterministic reading of a diploma is too weak to deny it", () => {
+    const diploma: BriefCriterion = {
+      id: "deg",
+      kind: "education",
+      label: "Diplôme d'ingénieur ou équivalent",
+      value: "ingénieur ou équivalent",
+      required: true,
+      weight: 3,
+    };
+    const verdicts: CriterionResult[] = [
+      { criterionId: "deg", verdict: "missing", evidence: "Diploma, Karlsruher Institut für Technologie" },
+    ];
+    const assessment = enforceAssessment(
+      [...criteria, diploma],
+      verdicts,
+      answer({
+        requirements: [
+          { criterionId: "skill", met: "yes", evidence: "Contrôleur de gestion chez X (2018-2024)" },
+          { criterionId: "lang", met: "yes", evidence: "Anglais (C1)" },
+          { criterionId: "sap", met: "yes", evidence: "SAP FI/CO" },
+          { criterionId: "deg", met: "yes", evidence: "Diploma, Karlsruher Institut für Technologie (KIT)" },
+        ],
+      }),
+      "m",
+    );
+    expect(assessment.requirements[3]).toEqual({
+      criterionId: "deg",
+      met: "yes",
+      evidence: "Diploma, Karlsruher Institut für Technologie (KIT)",
+    });
+    expect(assessment.decision).toBe("fit");
   });
 
   it("leaves a yes alone when the deterministic pass found nothing or has no evidence", () => {

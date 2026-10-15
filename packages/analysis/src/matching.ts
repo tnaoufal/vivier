@@ -236,6 +236,38 @@ function evaluateExperience(criterion: BriefCriterion, profile: MatchProfile): C
   return result(criterion, "missing", evidence);
 }
 
+/** The words of a degree requirement that name no degree ("diplôme d'ingénieur ou équivalent" asks for the engineer). */
+const DEGREE_FILLER: ReadonlySet<string> = new Set([
+  "ou", "or", "equivalent", "equivalente", "diplome", "diploma", "degree", "titre", "niveau", "level",
+  "de", "du", "des", "d", "en", "in", "of", "le", "la", "un", "une", "a", "an", "the", "formation",
+]);
+
+/**
+ * The families of degrees, each with the words a CV may name it by in
+ * French or English: a requirement's word is met by any word of its
+ * family ("ingénieur" by "chemical engineering", "master" by "MSc").
+ */
+const DEGREE_FAMILIES: readonly (readonly string[])[] = [
+  ["ingenieur", "ingenieure", "ingenieurs", "engineer", "engineers", "engineering", "ing", "ingeniero", "ingegnere"],
+  ["master", "masters", "mastere", "msc", "m2", "m1", "maitrise", "meng", "magister"],
+  ["licence", "bachelor", "bachelors", "bsc", "beng", "ba", "bs", "l3"],
+  ["doctorat", "doctorate", "phd", "docteur", "doctor", "these"],
+  ["mba", "emba"],
+  ["bts", "dut", "but", "deust"],
+  ["baccalaureat", "bac", "baccalaureate"],
+];
+
+const DEGREE_FAMILY_OF: ReadonlyMap<string, readonly string[]> = new Map(
+  DEGREE_FAMILIES.flatMap((family) => family.map((word) => [word, family] as const)),
+);
+
+/** True when the text names `word` itself or any word of its degree family. */
+function namesDegreeWord(text: string, word: string): boolean {
+  if (containsWord(text, word)) return true;
+  const family = DEGREE_FAMILY_OF.get(word);
+  return family !== undefined && family.some((variant) => containsWord(text, variant));
+}
+
 function evaluateEducation(criterion: BriefCriterion, profile: MatchProfile): CriterionResult {
   const entries = (Array.isArray(profile.education) ? profile.education : []).filter(
     (entry) => entry && (typeof entry.degree === "string" || typeof entry.school === "string"),
@@ -243,7 +275,10 @@ function evaluateEducation(criterion: BriefCriterion, profile: MatchProfile): Cr
   if (!entries.length) return result(criterion, "not_stated", null);
   const value = normalise(criterion.value);
   if (!value) return result(criterion, "not_stated", null);
-  const parts = words(value);
+  // The words that name a degree or a school: the filler ("ou équivalent", "diplôme de") says nothing to match.
+  const all = words(value.replace(/[’']/g, " "));
+  const meaningful = all.filter((word) => !DEGREE_FILLER.has(word));
+  const parts = meaningful.length ? meaningful : all;
   let partial: string | null = null;
   const listed: string[] = [];
   for (const entry of entries) {
@@ -254,8 +289,8 @@ function evaluateEducation(criterion: BriefCriterion, profile: MatchProfile): Cr
     if (!text) continue;
     listed.push(evidence);
     if (text.includes(value)) return result(criterion, "match", evidence);
-    if (parts.length >= 2) {
-      const present = parts.filter((word) => containsWord(text, word));
+    if (parts.length >= 1) {
+      const present = parts.filter((word) => namesDegreeWord(text, word));
       if (present.length === parts.length) return result(criterion, "match", evidence);
       if (partial === null && present.length * 2 >= parts.length) partial = evidence;
     }

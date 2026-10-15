@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
+  decodedImagesOf,
   drawnWidthsOf,
   looksScanned,
   normaliseText,
@@ -176,5 +177,47 @@ describe("drawnWidthsOf", () => {
       [OPS.paintImageXObject, [7]],
     );
     expect(Object.fromEntries(drawn)).toEqual({ img: 1 });
+  });
+});
+
+describe("decodedImagesOf", () => {
+  const ops = { paintImageXObject: 85, save: 10 };
+  const rgb = { kind: 2, width: 2, height: 1, data: new Uint8ClampedArray(6).fill(7) };
+
+  it("reads each painted image once from the settled objects, in unpdf's shape", () => {
+    const store = {
+      has: (key: string) => key !== "img_skipped",
+      get: (key: string) => {
+        if (key === "img_skipped") throw new Error("Requesting object that isn't resolved yet img_skipped.");
+        if (key === "img_bitmap") return { bitmap: {}, width: 4, height: 4 };
+        if (key === "img_rgba") return { kind: 3, width: 1, height: 1, data: new Uint8ClampedArray(4) };
+        return rgb;
+      },
+    };
+    const fnArray = [10, 85, 85, 85, 85, 85];
+    const argsArray = [[], ["img_a"], ["img_skipped"], ["img_a"], ["img_bitmap"], ["img_rgba"]];
+    const images = decodedImagesOf(fnArray, argsArray, ops, store);
+    expect(images).toEqual([
+      { key: "img_a", width: 2, height: 1, channels: 3, data: rgb.data },
+      { key: "img_rgba", width: 1, height: 1, channels: 4, data: expect.any(Uint8ClampedArray) },
+    ]);
+    expect(pageImagesOf(images).map((image) => image.key)).toEqual(["img_a", "img_rgba"]);
+  });
+
+  it("answers nothing without the operator code, the lists or a store", () => {
+    const store = { has: () => true, get: () => rgb };
+    expect(decodedImagesOf([85], [["img_a"]], {}, store)).toEqual([]);
+    expect(decodedImagesOf(undefined, [["img_a"]], ops, store)).toEqual([]);
+    expect(decodedImagesOf([85], [["img_a"]], ops, null)).toEqual([]);
+    expect(decodedImagesOf([85], [["img_a"]], ops, { has: () => true })).toEqual([]);
+    // A get that throws on a key the store said it held is skipped too.
+    expect(
+      decodedImagesOf([85], [["img_a"]], ops, {
+        has: () => true,
+        get: () => {
+          throw new Error("gone");
+        },
+      }),
+    ).toEqual([]);
   });
 });
