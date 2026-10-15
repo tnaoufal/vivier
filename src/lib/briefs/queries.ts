@@ -1,20 +1,23 @@
 /**
  * The typed reads and writes of briefs through supabase-js under RLS:
  * the list, one brief, its searches (summaries, which never carry the
- * results: the counts a list shows are columns of the row; then one
- * search with its stored results; the newest of each brief for the
- * list's rows, with where a whole-pool one's triage stands), the state
- * of a whole-pool search's triage (counts per verdict, the profiles
- * still to read, the profiles it set aside page by page), the active
- * candidates its snapshot lacks, the candidates a result list shows
- * (and the years of the one a drawer opens), and the shortlist of a
- * brief (created on first use, items added one by one, how many it
- * retained for the brief's tab and the list's rows).
- * Each call filters by the organisation and casts rows at the boundary.
+ * results: the counts a list shows and where the job stands are
+ * columns of the row; then one search with its stored results; the
+ * newest of each brief for the list's rows), what a whole-pool search's
+ * triage stands at (counts per verdict), the profiles its screening
+ * scored but nobody read (page by page, best first), the profiles it
+ * set aside page by page, the candidates a result list shows (and the
+ * years of the one a drawer opens), and the shortlist of a brief
+ * (created on first use, items added one by one, how many it retained
+ * for the brief's tab and the list's rows). The processor runs the
+ * analysis and writes its row; nothing here drives it. Each call
+ * filters by the organisation and casts rows at the boundary.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isAnalysisStage, isAnalysisStatus, lotsOf } from "@vivier/analysis";
 
 import type {
+  AnalysisStatus,
   BriefRow,
   BriefStatus,
   CandidateRow,
@@ -29,8 +32,6 @@ import type {
 import { parseCriteria } from "./criteria";
 import { retainedByBrief } from "./presentation";
 import { parseRoleProfile } from "./role-profile";
-import { batchesOf, runPool } from "./stages";
-import { TRIAGE_PASSING } from "./triage";
 
 /** Every column of BriefRow, named so the embedding vector never travels to the browser. */
 export const BRIEF_COLUMNS =
@@ -105,7 +106,7 @@ export async function createBrief(supabase: SupabaseClient, input: NewBrief): Pr
   return (data as { id: string }).id;
 }
 
-/** What a person edits of a brief: its title, its text and its status. The criteria and the role profile are the model's reading of the text, written by the search alone. */
+/** What a person edits of a brief: its title, its text and its status. The criteria and the role profile are the model's reading of the text, written by the analysis alone. */
 export type BriefPatch = Partial<Pick<BriefRow, "title" | "description" | "status">>;
 
 export async function updateBrief(
@@ -135,7 +136,7 @@ export async function deleteBrief(
 // searches
 // ---------------------------------------------------------------------
 
-/** What a list of analyses shows of each one: never its results (read one search at a time with readSearch). */
+/** What a list of analyses shows of each one, and where its job stands: never its results (read one search at a time with readSearch). */
 export type SearchSummary = Pick<
   SearchRow,
   | "id"
@@ -148,10 +149,18 @@ export type SearchSummary = Pick<
   | "match_count"
   | "near_count"
   | "ran_by"
+  | "status"
+  | "stage"
+  | "progress_done"
+  | "progress_total"
+  | "stop_requested"
+  | "error"
+  | "started_at"
+  | "finished_at"
 >;
 
 export const SEARCH_SUMMARY_COLUMNS =
-  "id, brief_id, created_at, method, pool_size, result_count, assessed_count, match_count, near_count, ran_by";
+  "id, brief_id, created_at, method, pool_size, result_count, assessed_count, match_count, near_count, ran_by, status, stage, progress_done, progress_total, stop_requested, error, started_at, finished_at";
 
 /** The searches of a brief, newest first, without their results (read one at a time). */
 export async function listSearches(
@@ -173,19 +182,22 @@ export async function listSearches(
 
 /**
  * The newest analysis of a brief as a list shows it, read off the
- * summary columns of its row. `total` is the entries of its results
- * (the profiles kept by a triage, or retrieved), `poolSize` the
- * profiles of the pool when it ran (null for rows stored before the
- * column), `assessed` the ones read in full, `matches` the ones that
- * match (decision fit), `near` the borderline ones. `present` repeats
- * `matches` for the cards written before the summary columns. For a
- * whole-pool search, `triagePending` and `kept` are what its triage has
- * not read and what it kept, counted apart (null when not read).
+ * summary columns of its row. `status` is where its job stands (a row
+ * stored before the job existed reads done), `total` the entries of
+ * its results (the profiles the promotion brought in, or retrieved),
+ * `poolSize` the profiles of the pool when it ran (null for rows
+ * stored before the column), `assessed` the ones read in full,
+ * `matches` the ones that match (decision fit), `near` the borderline
+ * ones. `present` repeats `matches` for the cards written before the
+ * summary columns. `triagePending` and `kept` are never read here any
+ * more (the status says where the job stands); they stay null for the
+ * callers that merge the triage's counts into the row.
  */
 export interface AnalysisSummary {
   searchId: string;
   createdAt: string;
   method: SearchMethod;
+  status: AnalysisStatus;
   poolSize: number | null;
   total: number;
   assessed: number;
@@ -200,7 +212,16 @@ function count(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-/** A summary row with its counts guarded at the boundary (a missing count reads 0, a missing pool size null). */
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/** The job's status of a row: a row stored before the job existed, or read without the column, reads done (the column's default). */
+function statusOf(value: unknown): AnalysisStatus {
+  return isAnalysisStatus(value) ? value : "done";
+}
+
+/** A summary row with its counts and its job columns guarded at the boundary (a missing count reads 0, a missing pool size null, a missing status done). */
 function summaryOf(row: SearchSummary): SearchSummary {
   return {
     ...row,
@@ -209,6 +230,14 @@ function summaryOf(row: SearchSummary): SearchSummary {
     assessed_count: count(row.assessed_count),
     match_count: count(row.match_count),
     near_count: count(row.near_count),
+    status: statusOf(row.status),
+    stage: isAnalysisStage(row.stage) ? row.stage : null,
+    progress_done: count(row.progress_done),
+    progress_total: count(row.progress_total),
+    stop_requested: row.stop_requested === true,
+    error: text(row.error),
+    started_at: text(row.started_at),
+    finished_at: text(row.finished_at),
   };
 }
 
@@ -236,6 +265,7 @@ export function analysisOfSummary(
       searchId: id,
       createdAt,
       method: METHODS.find((known) => known === method) ?? "text",
+      status: statusOf(row["status"]),
       poolSize: typeof poolSize === "number" && Number.isFinite(poolSize) ? poolSize : null,
       total: count(row["result_count"]),
       assessed: count(row["assessed_count"]),
@@ -251,18 +281,13 @@ export function analysisOfSummary(
 /** The most summaries the list reads per lot of briefs to find the newest of each, and the briefs one query names. */
 const LATEST_SEARCH_SCAN = 1000;
 const LATEST_LOT = 50;
-/** How many triages' counts the list reads at once. */
-const PROGRESS_CONCURRENCY = 4;
 
 /**
  * The newest analysis of each of the briefs given, read off the summary
  * columns alone (never the results): the briefs' searches newest first,
  * in lots so no URL names more than fifty ids, the newest row of each
- * brief kept. A whole-pool one whose results are all read in full also
- * gets where its triage stands (two counts, no row travels), so its
- * card tells a triage that kept nobody, or one still running, from a
- * finished analysis; a count that fails leaves them null. A brief
- * without an analysis is absent from the map.
+ * brief kept. Its status says whether the job ended; no other read is
+ * needed. A brief without an analysis is absent from the map.
  */
 export async function readLatestAnalyses(
   supabase: SupabaseClient,
@@ -270,7 +295,7 @@ export async function readLatestAnalyses(
   briefIds: readonly string[],
 ): Promise<Map<string, AnalysisSummary>> {
   const out = new Map<string, AnalysisSummary>();
-  for (const lot of batchesOf([...new Set(briefIds)], LATEST_LOT)) {
+  for (const lot of lotsOf([...new Set(briefIds)], LATEST_LOT)) {
     const { data, error } = await supabase
       .from("searches")
       .select(SEARCH_SUMMARY_COLUMNS)
@@ -287,25 +312,10 @@ export async function readLatestAnalyses(
         out.set(read.briefId, read.analysis);
     }
   }
-  // Results still to read already make the card "unfinished": only the others need the triage's counts.
-  const triages = [...out.values()].filter(
-    (analysis) => analysis.method === "triage" && analysis.assessed >= analysis.total,
-  );
-  await runPool(triages, PROGRESS_CONCURRENCY, async (analysis) => {
-    try {
-      const progress = await readTriageProgress(supabase, orgId, analysis.searchId);
-      analysis.triagePending = progress.pending;
-      analysis.kept = progress.kept;
-      return analysis;
-    } catch (error) {
-      console.error(error);
-      return null;
-    }
-  });
   return out;
 }
 
-/** One search with its stored results and the criteria of the time. */
+/** One search with its stored results and the criteria of the time, its job columns guarded. */
 export async function readSearch(
   supabase: SupabaseClient,
   orgId: string,
@@ -329,7 +339,7 @@ export async function readSearch(
 }
 
 // ---------------------------------------------------------------------
-// the triage of a whole-pool search
+// the triage and the screening of a whole-pool search
 // ---------------------------------------------------------------------
 
 /** Where a whole-pool search's triage stands: the profiles of its snapshot, read or not, by verdict. */
@@ -348,6 +358,12 @@ export interface TriageState {
 
 /** One page of search_triage, the most PostgREST answers at once. */
 const TRIAGE_PAGE = 1000;
+
+/** The verdicts the funnel keeps: the screening scores them and the promotion reads the best. A card it could not judge ("unknown") is set aside, never kept. */
+const KEPT_VERDICTS: readonly TriageVerdict[] = ["yes", "close"];
+
+/** The verdicts of the profiles the triage set aside: another job, or a card it could not judge. */
+const SET_ASIDE_VERDICTS: readonly TriageVerdict[] = ["no", "unknown"];
 
 /** The triage's counts, from count queries alone (one per verdict, one for the rows not read): no row travels. */
 export async function readTriageState(
@@ -378,7 +394,7 @@ export async function readTriageState(
   return { total: read + pending, read, yes, close, no, unknown, pending };
 }
 
-/** Where a whole-pool search's triage stands for a card: the profiles still to read, and the ones kept (yes, close, unknown), from two counts. */
+/** Where a whole-pool search's triage stands for a card: the profiles still to read, and the ones kept (yes, close), from two counts. */
 export async function readTriageProgress(
   supabase: SupabaseClient,
   orgId: string,
@@ -396,68 +412,14 @@ export async function readTriageProgress(
     if (error) throw error;
     return typeof total === "number" ? Math.max(0, total) : 0;
   };
-  const [pending, kept] = await Promise.all([countOf(null), countOf(TRIAGE_PASSING)]);
+  const [pending, kept] = await Promise.all([countOf(null), countOf(KEPT_VERDICTS)]);
   return { pending, kept };
 }
 
-/**
- * How many active candidates of the organisation a whole-pool search's
- * snapshot lacks (imported, or back in the pool, since it was taken):
- * one count, the snapshot's rows embedded empty and required absent
- * (an anti-join), so no row travels.
- */
-export async function countOutsideSnapshot(
-  supabase: SupabaseClient,
-  orgId: string,
-  searchId: string,
-): Promise<number> {
-  const { count: total, error } = await supabase
-    .from("candidates")
-    .select("id, search_triage()", { head: true, count: "exact" })
-    .eq("org_id", orgId)
-    .eq("status", "active")
-    .eq("search_triage.search_id", searchId)
-    .is("search_triage", null);
-  if (error) throw error;
-  return typeof total === "number" ? Math.max(0, total) : 0;
-}
-
-/**
- * The candidates of the snapshot the triage has not read yet, ordered by
- * id, read in pages (each page starts after the last id of the one
- * before, so a verdict written meanwhile never shifts a page) until one
- * comes back empty.
- */
-export async function pendingTriageIds(
-  supabase: SupabaseClient,
-  orgId: string,
-  searchId: string,
-): Promise<string[]> {
-  const ids: string[] = [];
-  for (;;) {
-    let request = supabase
-      .from("search_triage")
-      .select("candidate_id")
-      .eq("org_id", orgId)
-      .eq("search_id", searchId)
-      .is("verdict", null);
-    const after = ids[ids.length - 1];
-    if (after !== undefined) request = request.gt("candidate_id", after);
-    const { data, error } = await request
-      .order("candidate_id", { ascending: true })
-      .range(0, TRIAGE_PAGE - 1);
-    if (error) throw error;
-    const page = ((data ?? []) as unknown as Pick<SearchTriageRow, "candidate_id">[]).filter(
-      (row) => typeof row.candidate_id === "string",
-    );
-    if (!page.length) return ids;
-    for (const row of page) ids.push(row.candidate_id);
-  }
-}
-
-/** One profile the triage set aside: who, and the reason the model gave on its card. */
+/** One profile the triage set aside: who, the verdict, and the reason on its card (the model's for "no"; for "unknown", why the card could not be judged). */
 export interface SetAsideEntry {
   candidateId: string;
+  verdict: Extract<TriageVerdict, "no" | "unknown">;
   reason: string | null;
 }
 
@@ -467,13 +429,18 @@ export interface SetAsidePage {
   total: number | null;
 }
 
+/** A page size inside one PostgREST page and at one row at least. */
+function pageSize(limit: number): number {
+  return Math.min(TRIAGE_PAGE, Math.max(1, Math.floor(Number.isFinite(limit) ? limit : 1)));
+}
+
 /**
- * The profiles a whole-pool search's triage set aside (verdict "no"),
- * one page at a time, ordered by candidate id: each page starts after
- * the last id of the one before (`after`, null for the first), so a
- * verdict written between two reads never shifts a page and never hides
- * a row. The first page also counts them all. RLS decides what the
- * caller reads.
+ * The profiles a whole-pool search's triage set aside (verdict "no":
+ * another job; "unknown": a card it could not judge), one page at a
+ * time, ordered by candidate id: each page starts after the last id of
+ * the one before (`after`, null for the first), so a verdict written
+ * between two reads never shifts a page and never hides a row. The
+ * first page also counts them all. RLS decides what the caller reads.
  */
 export async function listSetAside(
   supabase: SupabaseClient,
@@ -481,30 +448,115 @@ export async function listSetAside(
   searchId: string,
   page: { after: string | null; limit: number },
 ): Promise<SetAsidePage> {
-  const size = Math.min(
-    TRIAGE_PAGE,
-    Math.max(1, Math.floor(Number.isFinite(page.limit) ? page.limit : 1)),
-  );
+  const size = pageSize(page.limit);
   const first = page.after === null;
   let request = supabase
     .from("search_triage")
-    .select("candidate_id, reason", first ? { count: "exact" as const } : undefined)
+    .select("candidate_id, verdict, reason", first ? { count: "exact" as const } : undefined)
     .eq("org_id", orgId)
     .eq("search_id", searchId)
-    .eq("verdict", "no");
+    .in("verdict", [...SET_ASIDE_VERDICTS]);
   if (page.after !== null) request = request.gt("candidate_id", page.after);
   const { data, error, count } = await request
     .order("candidate_id", { ascending: true })
     .range(0, size - 1);
   if (error) throw error;
-  const rows = ((data ?? []) as unknown as Pick<SearchTriageRow, "candidate_id" | "reason">[])
-    .filter((row) => typeof row.candidate_id === "string")
-    .map((row) => ({
+  const rows: SetAsideEntry[] = [];
+  for (const row of (data ?? []) as unknown as Pick<
+    SearchTriageRow,
+    "candidate_id" | "verdict" | "reason"
+  >[]) {
+    if (typeof row.candidate_id !== "string") continue;
+    if (row.verdict !== "no" && row.verdict !== "unknown") continue;
+    rows.push({
       candidateId: row.candidate_id,
+      verdict: row.verdict,
       reason: typeof row.reason === "string" ? row.reason : null,
-    }));
+    });
+  }
   return {
     rows,
+    total: first ? (typeof count === "number" ? Math.max(count, 0) : rows.length) : null,
+  };
+}
+
+/** One profile the screening scored that nobody read in full: who, the triage's verdict, the score and its reason. */
+export interface ScreenedEntry {
+  candidateId: string;
+  verdict: Extract<TriageVerdict, "yes" | "close">;
+  score: number;
+  reason: string | null;
+}
+
+/** One page of the screened profiles, how many rows it answered before the ones in the results were left out (the next page starts after them), and, on the first page, how many there are in all (null on the others). */
+export interface ScreenedPage {
+  rows: ScreenedEntry[];
+  fetched: number;
+  total: number | null;
+}
+
+/** The most ids one read excludes in its query string (the gateway refuses a URL past 16 KB); the rest are left out here. */
+const EXCLUDE_LOT = 100;
+/** The id no candidate carries: what the exclusion names when there is nothing to leave out. */
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * The profiles a whole-pool search's screening scored but the
+ * promotion did not bring into the results (the near profiles a person
+ * may still read in full): the kept rows (yes, close) with a score,
+ * the ones in the results left out (`exclude`: the first hundred in the
+ * query, every one here), best score first, then by candidate id, read
+ * by offset (`from`, 0 for the first page; `fetched` says how far the
+ * page went) since a score, once written, never changes. Every page
+ * asks the count; the first one alone reports it. RLS decides what the
+ * caller reads.
+ */
+export async function listScreened(
+  supabase: SupabaseClient,
+  orgId: string,
+  searchId: string,
+  page: { exclude: readonly string[]; from: number; limit: number },
+): Promise<ScreenedPage> {
+  const size = pageSize(page.limit);
+  const from = Math.max(0, Math.floor(Number.isFinite(page.from) ? page.from : 0));
+  const first = from === 0;
+  const excluded = new Set(page.exclude);
+  const named = [...excluded].slice(0, EXCLUDE_LOT);
+  // One chain, nothing reassigned (tsc refuses the builder assigned to itself as too deep
+  // an instantiation): with nothing to leave out, the exclusion names the nil UUID, which
+  // no candidate carries. The count is asked on every page; the first alone reports it.
+  const leftOut = named.length ? `(${named.join(",")})` : `(${NIL_UUID})`;
+  const { data, error, count } = await supabase
+    .from("search_triage")
+    .select("candidate_id, verdict, score, score_reason", { count: "exact" })
+    .eq("org_id", orgId)
+    .eq("search_id", searchId)
+    .in("verdict", [...KEPT_VERDICTS])
+    .not("score", "is", null)
+    .not("candidate_id", "in", leftOut)
+    .order("score", { ascending: false })
+    .order("candidate_id", { ascending: true })
+    .range(from, from + size - 1);
+  if (error) throw error;
+  const answered = (data ?? []) as unknown as Pick<
+    SearchTriageRow,
+    "candidate_id" | "verdict" | "score" | "score_reason"
+  >[];
+  const rows: ScreenedEntry[] = [];
+  for (const row of answered) {
+    if (typeof row.candidate_id !== "string" || excluded.has(row.candidate_id)) continue;
+    if (row.verdict !== "yes" && row.verdict !== "close") continue;
+    if (typeof row.score !== "number" || !Number.isFinite(row.score)) continue;
+    rows.push({
+      candidateId: row.candidate_id,
+      verdict: row.verdict,
+      score: row.score,
+      reason: typeof row.score_reason === "string" ? row.score_reason : null,
+    });
+  }
+  return {
+    rows,
+    fetched: answered.length,
     total: first ? (typeof count === "number" ? Math.max(count, 0) : rows.length) : null,
   };
 }
@@ -558,7 +610,7 @@ export async function readCandidatesById(
   ids: readonly string[],
 ): Promise<Map<string, ResultCandidate | null>> {
   const out = new Map<string, ResultCandidate | null>();
-  for (const lot of batchesOf([...new Set(ids)], CANDIDATE_LOT)) {
+  for (const lot of lotsOf([...new Set(ids)], CANDIDATE_LOT)) {
     const rows = await readResultCandidates(supabase, orgId, lot);
     const byId = new Map(rows.map((row) => [row.id, row] as const));
     for (const id of lot) out.set(id, byId.get(id) ?? null);
@@ -655,7 +707,7 @@ export async function readRetainedCounts(
   briefIds: readonly string[],
 ): Promise<Map<string, number>> {
   const rows: { briefId: string | null }[] = [];
-  for (const lot of batchesOf([...new Set(briefIds)], LATEST_LOT)) {
+  for (const lot of lotsOf([...new Set(briefIds)], LATEST_LOT)) {
     const { data, error } = await supabase
       .from("shortlists")
       .select("brief_id, shortlist_items!inner(status)")

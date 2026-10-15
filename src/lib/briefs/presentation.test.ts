@@ -11,36 +11,36 @@ import type {
 
 import {
   analysisOfRow,
+  appendPage,
   arrivalIndexes,
-  BAND_STEPS,
   bandStateOf,
   BRIEF_FILTERS,
-  appendPage,
   briefChangedSince,
   cardAnalysisOf,
   digestResults,
   ETA_MIN_ELAPSED_MS,
+  etaOf,
+  failureLineOf,
   figuresLine,
   filterBriefs,
   firstSentence,
   funnelOf,
   isBriefFilter,
   matchesOf,
-  mergeResults,
   nearOf,
-  remainingMs,
   requirementTally,
   reservationLine,
   retainedByBrief,
-  roleChangedSince,
+  screenLine,
   SET_ASIDE_PAGE,
   setAsideOf,
   setAsideReason,
-  stepOf,
+  stageKey,
+  stoppedLineOf,
   synthesisLine,
   withAnalysis,
   withTriageProgress,
-  type BandInputs,
+  type BandRow,
   type Funnel,
   type LatestAnalysis,
 } from "./presentation";
@@ -162,6 +162,7 @@ describe("analysisOfRow", () => {
         searchId: "s1",
         createdAt: "2026-10-03T10:00:00+00:00",
         method: "triage",
+        status: null,
         total: 3,
         assessed: 2,
         present: 1,
@@ -186,6 +187,7 @@ describe("analysisOfRow", () => {
         searchId: "s1",
         createdAt: "2026-10-03T10:00:00+00:00",
         method: "triage",
+        status: null,
         total: 140,
         assessed: 96,
         present: 12,
@@ -195,11 +197,19 @@ describe("analysisOfRow", () => {
     });
   });
 
+  it("reads where the job stands off the row, an unknown status as none", () => {
+    expect(analysisOfRow({ ...row, status: "running" })?.analysis.status).toBe("running");
+    expect(analysisOfRow({ ...row, status: "done" })?.analysis.status).toBe("done");
+    expect(analysisOfRow({ ...row, status: "paused" })?.analysis.status).toBeNull();
+    expect(analysisOfRow({ ...row, status: 3 })?.analysis.status).toBeNull();
+  });
+
   it("counts the results when a summary column is missing or not a number", () => {
     expect(analysisOfRow({ ...row, result_count: 3, assessed_count: null })?.analysis).toEqual({
       searchId: "s1",
       createdAt: "2026-10-03T10:00:00+00:00",
       method: "triage",
+      status: null,
       total: 3,
       assessed: 2,
       present: 1,
@@ -223,11 +233,17 @@ describe("analysisOfRow", () => {
 });
 
 describe("withAnalysis", () => {
-  function latest(searchId: string, createdAt: string, present: number): LatestAnalysis {
+  function latest(
+    searchId: string,
+    createdAt: string,
+    present: number,
+    status: LatestAnalysis["status"] = "done",
+  ): LatestAnalysis {
     return {
       searchId,
       createdAt,
       method: "triage",
+      status,
       total: 10,
       assessed: 10,
       present,
@@ -244,8 +260,9 @@ describe("withAnalysis", () => {
   });
 
   it("takes a newer search, and a brief seen for the first time", () => {
-    const newer = withAnalysis(known, "b1", latest("s3", "2026-10-04T10:00:00Z", 0));
+    const newer = withAnalysis(known, "b1", latest("s3", "2026-10-04T10:00:00Z", 0, "queued"));
     expect(newer.get("b1")?.searchId).toBe("s3");
+    expect(newer.get("b1")?.status).toBe("queued");
     const first = withAnalysis(known, "b2", latest("s9", "2026-10-01T10:00:00Z", 2));
     expect(first.get("b2")?.searchId).toBe("s9");
     expect(first.get("b1")?.searchId).toBe("s2");
@@ -255,14 +272,24 @@ describe("withAnalysis", () => {
     expect(withAnalysis(known, "b1", latest("s1", "2026-10-02T10:00:00Z", 7))).toBe(known);
   });
 
-  it("keeps the triage's counts known for the same search when a patch carries none", () => {
+  it("keeps the status and the triage's counts known for the same search when a patch carries none", () => {
     const counted = new Map([
       ["b1", { ...latest("s2", "2026-10-03T10:00:00Z", 1), triagePending: 0, kept: 10 }],
     ]);
-    const patched = withAnalysis(counted, "b1", latest("s2", "2026-10-03T10:00:00Z", 4));
-    expect(patched.get("b1")).toMatchObject({ present: 4, triagePending: 0, kept: 10 });
-    const newer = withAnalysis(counted, "b1", latest("s3", "2026-10-04T10:00:00Z", 0));
-    expect(newer.get("b1")).toMatchObject({ searchId: "s3", triagePending: null, kept: null });
+    const patched = withAnalysis(counted, "b1", latest("s2", "2026-10-03T10:00:00Z", 4, null));
+    expect(patched.get("b1")).toMatchObject({
+      present: 4,
+      status: "done",
+      triagePending: 0,
+      kept: 10,
+    });
+    const newer = withAnalysis(counted, "b1", latest("s3", "2026-10-04T10:00:00Z", 0, null));
+    expect(newer.get("b1")).toMatchObject({
+      searchId: "s3",
+      status: null,
+      triagePending: null,
+      kept: null,
+    });
   });
 });
 
@@ -274,6 +301,7 @@ describe("withTriageProgress", () => {
         searchId: "s2",
         createdAt: "2026-10-03T10:00:00Z",
         method: "triage",
+        status: "running",
         total: 0,
         assessed: 0,
         present: 0,
@@ -285,7 +313,7 @@ describe("withTriageProgress", () => {
 
   it("writes the counts read into the entry of the same search", () => {
     const next = withTriageProgress(known, "b1", "s2", { pending: 0, kept: 0 });
-    expect(next.get("b1")).toMatchObject({ triagePending: 0, kept: 0 });
+    expect(next.get("b1")).toMatchObject({ status: "running", triagePending: 0, kept: 0 });
     expect(known.get("b1")?.triagePending).toBeNull();
   });
 
@@ -298,20 +326,39 @@ describe("withTriageProgress", () => {
 describe("cardAnalysisOf", () => {
   const base = { method: "triage" as const, total: 40, assessed: 40, present: 12 };
 
-  it("counts the matches of a whole-pool search once every kept profile was read in full", () => {
-    expect(cardAnalysisOf(base)).toEqual({ kind: "matches", count: 12 });
-    expect(cardAnalysisOf({ ...base, present: 0 })).toEqual({ kind: "matches", count: 0 });
+  it("counts the matches of a whole-pool search once its job is done, whatever the funnel kept", () => {
+    expect(cardAnalysisOf({ ...base, status: "done" })).toEqual({ kind: "matches", count: 12 });
+    expect(cardAnalysisOf({ ...base, status: "done", present: 0 })).toEqual({
+      kind: "matches",
+      count: 0,
+    });
+    // The screening kept hundreds and the promotion read thirty: done is done.
+    expect(cardAnalysisOf({ ...base, status: "done", triagePending: 0, kept: 644 })).toEqual({
+      kind: "matches",
+      count: 12,
+    });
+    // One reading failed: the job still ended.
+    expect(cardAnalysisOf({ ...base, status: "done", assessed: 39 })).toEqual({
+      kind: "matches",
+      count: 12,
+    });
   });
 
-  it("calls a whole-pool search unfinished while none or only some of its profiles were read", () => {
-    expect(cardAnalysisOf({ ...base, total: 0, assessed: 0, present: 0 })).toEqual({
+  it("calls a whole-pool search unfinished while its job is queued, running, stopped or failed", () => {
+    for (const status of ["queued", "running", "stopped", "failed"] as const)
+      expect(cardAnalysisOf({ ...base, status })).toEqual({ kind: "unfinished" });
+  });
+
+  it("reads a row without the job's status as before: unfinished while none or only some of its profiles were read", () => {
+    expect(cardAnalysisOf(base)).toEqual({ kind: "matches", count: 12 });
+    expect(cardAnalysisOf({ ...base, status: null, total: 0, assessed: 0, present: 0 })).toEqual({
       kind: "unfinished",
     });
     expect(cardAnalysisOf({ ...base, assessed: 0, present: 0 })).toEqual({ kind: "unfinished" });
     expect(cardAnalysisOf({ ...base, assessed: 39 })).toEqual({ kind: "unfinished" });
   });
 
-  it("reads 0 matches for a triage that kept nobody once nothing is left to read", () => {
+  it("reads 0 matches for a triage that kept nobody once nothing is left to read, without a status", () => {
     const none = { ...base, total: 0, assessed: 0, present: 0 };
     expect(cardAnalysisOf({ ...none, triagePending: 0, kept: 0 })).toEqual({
       kind: "matches",
@@ -320,14 +367,6 @@ describe("cardAnalysisOf", () => {
     expect(cardAnalysisOf({ ...none, triagePending: 12, kept: 0 })).toEqual({
       kind: "unfinished",
     });
-  });
-
-  it("never gives a final count while the triage has profiles to read or kept ones to bring in", () => {
-    // Every result read in full, but the triage left profiles of the pool unread.
-    expect(cardAnalysisOf({ ...base, triagePending: 5, kept: 40 })).toEqual({
-      kind: "unfinished",
-    });
-    // The triage kept more profiles than the results hold.
     expect(cardAnalysisOf({ ...base, triagePending: 0, kept: 44 })).toEqual({
       kind: "unfinished",
     });
@@ -370,6 +409,28 @@ describe("setAsideReason", () => {
     ).toEqual({ kind: "text", text: "Comptable fournisseurs." });
     expect(setAsideReason(criteria, { triage: { verdict: "no", reason: " " } })).toBeNull();
     expect(setAsideReason(criteria, { triage: { verdict: "no", reason: null } })).toBeNull();
+  });
+
+  it("tells a card the model could not read from one with nothing to judge", () => {
+    expect(
+      setAsideReason(criteria, {
+        triage: { verdict: "unknown", reason: "Fiche illisible par le modèle" },
+      }),
+    ).toEqual({ kind: "unread" });
+    expect(
+      setAsideReason(criteria, {
+        triage: { verdict: "unknown", reason: "Fiche sans poste ni intitulé" },
+      }),
+    ).toEqual({ kind: "thin" });
+    expect(setAsideReason(criteria, { triage: { verdict: "unknown", reason: null } })).toEqual({
+      kind: "thin",
+    });
+    expect(
+      setAsideReason(criteria, { triage: { verdict: "unknown", reason: "Profil sorti du vivier" } }),
+    ).toEqual({ kind: "gone" });
+    expect(
+      setAsideReason(criteria, { triage: { verdict: "unknown", reason: " Titres génériques. " } }),
+    ).toEqual({ kind: "text", text: "Titres génériques." });
   });
 
   it("names the role, then a required requirement at no, never one that is only weighted", () => {
@@ -418,13 +479,35 @@ describe("setAsideReason", () => {
     ).toBeNull();
   });
 
-  it("reads a profile the triage kept by its reading, never by the triage's reason", () => {
+  it("reads a profile the triage kept, or one read in full anyway, by its reading, never by the triage's reason", () => {
     const kept = {
       triage: { verdict: "close" as const, reason: "Métier voisin." },
       assessment: assessed("no_fit", { concerns: ["Trop junior."] }),
     };
     expect(setAsideReason(criteria, kept)).toEqual({ kind: "text", text: "Trop junior." });
     expect(setAsideReason(criteria, { triage: kept.triage })).toBeNull();
+    expect(
+      setAsideReason(criteria, {
+        triage: { verdict: "unknown", reason: null },
+        assessment: assessed("no_fit", { concerns: ["Trop junior."] }),
+      }),
+    ).toEqual({ kind: "text", text: "Trop junior." });
+  });
+});
+
+describe("screenLine", () => {
+  it("puts the score first, then the reason, and says what it has alone", () => {
+    expect(screenLine({ score: 72, reason: " Senior, huit ans en contrôle. " })).toBe(
+      "72 · Senior, huit ans en contrôle.",
+    );
+    expect(screenLine({ score: 72.4, reason: null })).toBe("72");
+    expect(screenLine({ score: null, reason: "Titre générique" })).toBe("Titre générique");
+  });
+
+  it("answers null when the screening wrote nothing", () => {
+    expect(screenLine({ score: null, reason: " " })).toBeNull();
+    expect(screenLine(null)).toBeNull();
+    expect(screenLine(undefined)).toBeNull();
   });
 });
 
@@ -445,35 +528,6 @@ describe("appendPage", () => {
 
   it("pages fifty at a time", () => {
     expect(SET_ASIDE_PAGE).toBe(50);
-  });
-});
-
-describe("roleChangedSince", () => {
-  const role: BriefCriterion = {
-    id: "role",
-    kind: "role",
-    label: "Contrôleur de gestion",
-    value: "finance d'entreprise",
-    required: true,
-    weight: 3,
-  };
-
-  it("is true once the profile defines the role otherwise than the search's role criterion", () => {
-    expect(roleChangedSince(profile("audit interne"), [role])).toBe(true);
-  });
-
-  it("is false for the same definition, a criterion saved elsewhere, or nothing to compare", () => {
-    expect(roleChangedSince(profile("finance d'entreprise"), [role])).toBe(false);
-    // Only the role counts: the triage sorts on the job, never on the other criteria.
-    expect(
-      roleChangedSince(profile("finance d'entreprise"), [
-        role,
-        { ...role, id: "skill", kind: "skill", required: false },
-      ]),
-    ).toBe(false);
-    expect(roleChangedSince(null, [role])).toBe(false);
-    expect(roleChangedSince(profile("audit interne"), [])).toBe(false);
-    expect(roleChangedSince({ ...profile(""), title: " " }, [role])).toBe(false);
   });
 });
 
@@ -581,13 +635,13 @@ describe("funnelOf", () => {
     result("e"),
   ];
 
-  it("reads the first two figures off the triage and the reading's off the results", () => {
+  it("reads the first two figures off the triage (unknown is never kept) and the reading's off the results", () => {
     expect(funnelOf(results, { read: 1091, yes: 30, close: 12, no: 1045, unknown: 4 })).toEqual({
       analysed: 1091,
-      kept: 46,
+      kept: 42,
       assessed: 4,
       matches: 2,
-      setAside: 1046,
+      setAside: 1050,
     });
   });
 
@@ -612,18 +666,21 @@ describe("funnelOf", () => {
   });
 
   it("never counts a negative triage figure", () => {
-    expect(funnelOf([], { read: -1, yes: 0, close: 0, no: -4, unknown: 0 }).setAside).toBe(0);
+    const funnel = funnelOf([], { read: -1, yes: -2, close: 3, no: -4, unknown: 1 });
+    expect(funnel.analysed).toBe(0);
+    expect(funnel.kept).toBe(3);
+    expect(funnel.setAside).toBe(1);
   });
 });
 
 describe("figuresLine", () => {
-  const funnel: Funnel = { analysed: 1091, kept: 84, assessed: 61, matches: 12, setAside: 1010 };
+  const funnel: Funnel = { analysed: 1091, kept: 84, assessed: 30, matches: 12, setAside: 1010 };
 
-  it("says the profiles analysed, kept by the triage, read so far and set aside, each once, never the matches", () => {
+  it("says the profiles analysed, kept by the triage, read in full and set aside, each once, never the matches", () => {
     expect(figuresLine(funnel, true)).toEqual([
       { key: "analysed", count: 1091 },
       { key: "kept", count: 84 },
-      { key: "assessed", count: 61 },
+      { key: "assessed", count: 30 },
       { key: "setAside", count: 1010 },
     ]);
   });
@@ -723,131 +780,155 @@ describe("requirementTally", () => {
 });
 
 describe("bandStateOf", () => {
-  const settled: BandInputs = {
-    model: true,
+  const done: BandRow = {
     method: "triage",
-    running: false,
-    criteriaCount: 4,
-    resultCount: 40,
+    status: "done",
     poolSize: 1091,
-    triagePending: 0,
-    promotionPending: false,
-    stagePending: 0,
+    resultCount: 30,
+    criteriaCount: 4,
   };
 
-  it("says running first, whatever else holds", () => {
-    expect(bandStateOf({ ...settled, running: true, method: null })).toBe("running");
-    expect(bandStateOf({ ...settled, running: true, triagePending: 1091 })).toBe("running");
-  });
-
   it("says empty without an analysis", () => {
-    expect(bandStateOf({ ...settled, method: null })).toBe("empty");
+    expect(bandStateOf(null, true)).toBe("empty");
+    expect(bandStateOf(null, null)).toBe("empty");
   });
 
-  it("reads a whole-pool analysis as done once nothing waits, incomplete otherwise", () => {
-    expect(bandStateOf(settled)).toBe("done");
-    expect(bandStateOf({ ...settled, resultCount: 0 })).toBe("done");
-    expect(bandStateOf({ ...settled, triagePending: 3 })).toBe("incomplete");
-    expect(bandStateOf({ ...settled, promotionPending: true })).toBe("incomplete");
-    expect(bandStateOf({ ...settled, stagePending: 6 })).toBe("incomplete");
+  it("follows the job's status: queued, running, stopped, failed, then done", () => {
+    expect(bandStateOf({ ...done, status: "queued" }, true)).toBe("queued");
+    expect(bandStateOf({ ...done, status: "running" }, true)).toBe("running");
+    expect(bandStateOf({ ...done, status: "stopped" }, true)).toBe("stopped");
+    expect(bandStateOf({ ...done, status: "failed" }, true)).toBe("failed");
+    expect(bandStateOf(done, true)).toBe("done");
+    expect(bandStateOf({ ...done, resultCount: 0 }, true)).toBe("done");
   });
 
   it("never reads a whole-pool analysis as text only, even without a model now", () => {
-    expect(bandStateOf({ ...settled, model: false })).toBe("done");
-    expect(bandStateOf({ ...settled, model: false, criteriaCount: 0 })).toBe("done");
+    expect(bandStateOf(done, false)).toBe("done");
+    expect(bandStateOf({ ...done, criteriaCount: 0 }, false)).toBe("done");
   });
 
   it("reads an analysis on the text alone without a model or without criteria", () => {
-    expect(bandStateOf({ ...settled, method: "hybrid", model: false })).toBe("textOnly");
-    expect(bandStateOf({ ...settled, method: "text", criteriaCount: 0, resultCount: 1091 })).toBe(
-      "textOnly",
-    );
+    expect(bandStateOf({ ...done, method: "hybrid" }, false)).toBe("textOnly");
+    expect(
+      bandStateOf({ ...done, method: "text", criteriaCount: 0, resultCount: 1091 }, true),
+    ).toBe("textOnly");
   });
 
   it("reads an older analysis that read part of the pool as legacy", () => {
-    expect(bandStateOf({ ...settled, method: "hybrid", resultCount: 120 })).toBe("legacy");
-    expect(bandStateOf({ ...settled, method: "text", poolSize: null })).toBe("legacy");
-    expect(bandStateOf({ ...settled, method: "text", model: null, resultCount: 120 })).toBe(
-      "legacy",
-    );
+    expect(bandStateOf({ ...done, method: "hybrid", resultCount: 120 }, true)).toBe("legacy");
+    expect(bandStateOf({ ...done, method: "text", poolSize: null }, true)).toBe("legacy");
+    expect(bandStateOf({ ...done, method: "text", resultCount: 120 }, null)).toBe("legacy");
   });
 
-  it("reads an older analysis of the whole pool like any other", () => {
-    expect(bandStateOf({ ...settled, method: "text", resultCount: 150, poolSize: 150 })).toBe(
+  it("reads an older analysis of the whole pool as done", () => {
+    expect(bandStateOf({ ...done, method: "text", resultCount: 150, poolSize: 150 }, true)).toBe(
       "done",
     );
-    expect(
-      bandStateOf({
-        ...settled,
-        method: "text",
-        resultCount: 150,
-        poolSize: 150,
-        stagePending: 2,
-      }),
-    ).toBe("incomplete");
   });
 });
 
-describe("stepOf", () => {
-  it("puts the six stages on the four steps of the stepper", () => {
-    expect(BAND_STEPS).toEqual(["triage", "read", "challenge", "rank"]);
-    expect(stepOf("triage")).toBe(0);
-    expect(stepOf("promote")).toBe(0);
-    expect(stepOf("read")).toBe(1);
-    expect(stepOf("challenge")).toBe(2);
-    expect(stepOf("rank")).toBe(3);
-    expect(stepOf("final")).toBe(3);
+describe("stageKey", () => {
+  it("names the sentence of a stage", () => {
+    expect(stageKey("triage")).toBe("briefs.analysis.stage.triage");
+    expect(stageKey("final")).toBe("briefs.analysis.stage.final");
   });
 });
 
-describe("remainingMs", () => {
-  const start = 1_000_000;
+describe("etaOf", () => {
+  const startedAt = "2026-10-15T10:00:00Z";
+  const start = Date.parse(startedAt);
 
-  it("answers null until a batch came back and the stage ran long enough", () => {
-    expect(
-      remainingMs({ done: 40, total: 100, doneAtStart: 40, startedAt: start, now: start + 60_000 }),
-    ).toBeNull();
-    expect(
-      remainingMs({
-        done: 80,
-        total: 100,
-        doneAtStart: 40,
-        startedAt: start,
-        now: start + ETA_MIN_ELAPSED_MS - 1,
-      }),
-    ).toBeNull();
+  it("answers null without a start, before anything settled, or too soon", () => {
+    expect(etaOf(null, 40, 100, start + 60_000)).toBeNull();
+    expect(etaOf("not a date", 40, 100, start + 60_000)).toBeNull();
+    expect(etaOf(startedAt, 0, 100, start + 60_000)).toBeNull();
+    expect(etaOf(startedAt, 40, 100, start + ETA_MIN_ELAPSED_MS - 1)).toBeNull();
+    expect(etaOf(startedAt, 5, 0, start + 60_000)).toBeNull();
   });
 
-  it("projects the pace seen since the stage started onto what is left", () => {
-    expect(
-      remainingMs({ done: 80, total: 200, doneAtStart: 40, startedAt: start, now: start + 20_000 }),
-    ).toBe(60_000);
+  it("projects the pace seen since the start onto what is left", () => {
+    expect(etaOf(startedAt, 40, 100, start + 20_000)).toBe(30_000);
+    expect(etaOf(startedAt, 640, 1093, start + 120_000)).toBe(Math.round((120_000 * 453) / 640));
   });
 
   it("answers 0 once nothing is left", () => {
-    expect(
-      remainingMs({ done: 100, total: 100, doneAtStart: 0, startedAt: start, now: start + 1 }),
-    ).toBe(0);
+    expect(etaOf(startedAt, 100, 100, start + 1)).toBe(0);
+    expect(etaOf(startedAt, 120, 100, start + 1)).toBe(0);
   });
 });
 
-describe("mergeResults", () => {
-  it("replaces an entry in place and appends the ones the results lack", () => {
-    const before = [result("a"), result("b"), result("c")];
-    const merged = mergeResults(before, [tiered("b", "fit", 90), tiered("d", "no_fit", 10)]);
-    expect(merged.map((entry) => entry.candidateId)).toEqual(["a", "b", "c", "d"]);
-    expect(merged[1]?.assessment?.decision).toBe("fit");
-    expect(before[1]?.assessment).toBeUndefined();
+describe("stoppedLineOf", () => {
+  it("counts the profiles a stage that reads profiles had left, never below zero", () => {
+    expect(stoppedLineOf({ stage: "triage", progress_done: 453, progress_total: 1093 })).toEqual({
+      kind: "profiles",
+      count: 640,
+    });
+    expect(stoppedLineOf({ stage: "screening", progress_done: 100, progress_total: 644 })).toEqual({
+      kind: "profiles",
+      count: 544,
+    });
+    expect(stoppedLineOf({ stage: "assessing", progress_done: -5, progress_total: 10 })).toEqual({
+      kind: "profiles",
+      count: 10,
+    });
+    expect(
+      stoppedLineOf({ stage: "triage", progress_done: Number.NaN, progress_total: 3 }),
+    ).toEqual({
+      kind: "profiles",
+      count: 3,
+    });
   });
 
-  it("answers the same list for an empty answer", () => {
-    const before = [result("a")];
-    expect(mergeResults(before, [])).toBe(before);
+  it("names the stage with its own count when its items are not profiles, or once every profile was read", () => {
+    expect(stoppedLineOf({ stage: "ranking", progress_done: 2, progress_total: 4 })).toEqual({
+      kind: "stage",
+      stage: "ranking",
+      done: 2,
+      total: 4,
+    });
+    expect(stoppedLineOf({ stage: "challenging", progress_done: 3, progress_total: 5 })).toEqual({
+      kind: "stage",
+      stage: "challenging",
+      done: 3,
+      total: 5,
+    });
+    expect(stoppedLineOf({ stage: "triage", progress_done: 1093, progress_total: 1093 })).toEqual({
+      kind: "stage",
+      stage: "triage",
+      done: 1093,
+      total: 1093,
+    });
+    expect(stoppedLineOf({ stage: "final", progress_done: 2, progress_total: 1 })).toEqual({
+      kind: "stage",
+      stage: "final",
+      done: 1,
+      total: 1,
+    });
   });
 
-  it("appends a repeated new entry once, the last one given", () => {
-    const merged = mergeResults([], [tiered("x", "borderline", 50), tiered("x", "fit", 80)]);
-    expect(merged).toHaveLength(1);
-    expect(merged[0]?.assessment?.decision).toBe("fit");
+  it("says unfinished alone without a stage or without items", () => {
+    expect(stoppedLineOf({ stage: null, progress_done: 0, progress_total: 0 })).toEqual({
+      kind: "unfinished",
+    });
+    expect(stoppedLineOf({ stage: "promotion", progress_done: 0, progress_total: 0 })).toEqual({
+      kind: "unfinished",
+    });
+    expect(stoppedLineOf({ stage: "triage", progress_done: 10, progress_total: 0 })).toEqual({
+      kind: "unfinished",
+    });
+  });
+});
+
+describe("failureLineOf", () => {
+  it("names the changed brief, the model, or any other error", () => {
+    expect(failureLineOf("brief_changed")).toBe("brief");
+    expect(failureLineOf("model_unavailable")).toBe("model");
+    expect(failureLineOf("  MODEL_UNAVAILABLE: 503 ")).toBe("model");
+    expect(failureLineOf("processor_error")).toBe("other");
+    expect(failureLineOf("brief_empty")).toBe("other");
+    expect(failureLineOf("brief_unreadable")).toBe("other");
+    expect(failureLineOf("")).toBe("other");
+    expect(failureLineOf(null)).toBe("other");
+    expect(failureLineOf(undefined)).toBe("other");
   });
 });

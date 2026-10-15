@@ -28,6 +28,7 @@ const candidate: CandidateRow = {
   status: "active",
   fingerprint: "secret-key",
   photo_path: null,
+  photo_checked_at: null,
   search_text: "index text",
   created_by: "u1",
   created_at: "2026-10-13T08:00:00Z",
@@ -72,8 +73,17 @@ describe("buildExport", () => {
   });
 
   it("carries the photo as a signed link when the profile has one", () => {
-    const photo = { path: "o1/c1.png", url: "https://signed/c1.png", expiresAt: "2026-10-13T11:00:00.000Z" };
-    const data = buildExport({ ...candidate, photo_path: "o1/c1.png" }, [], new Date("2026-10-13T10:00:00Z"), photo);
+    const photo = {
+      path: "o1/c1.png",
+      url: "https://signed/c1.png",
+      expiresAt: "2026-10-13T11:00:00.000Z",
+    };
+    const data = buildExport(
+      { ...candidate, photo_path: "o1/c1.png" },
+      [],
+      new Date("2026-10-13T10:00:00Z"),
+      photo,
+    );
     expect(data.photo).toEqual(photo);
     expect(data.candidate.photo_path).toBe("o1/c1.png");
   });

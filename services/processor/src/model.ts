@@ -21,27 +21,32 @@ import type { z, ZodTypeAny } from "zod";
 import type { ModelConfig } from "./config.js";
 import { EMBEDDING_DIMENSIONS } from "./types.js";
 
+export interface Usage {
+  model: string;
+  tokensIn: number;
+  tokensOut: number;
+}
+
 export interface ModelErrorOptions extends ErrorOptions {
   /** The width the embedding model answered, when that is what went wrong. */
   dimensions?: number;
+  /** What the failed call billed before it failed (the completions made), for the ledger. */
+  usage?: Usage;
 }
 
 /** A model call failed, answered nothing usable, or answered the wrong width. */
 export class ModelError extends Error {
   /** The width the embedding model answered when the vector was the wrong size; null otherwise. */
   readonly dimensions: number | null;
+  /** The tokens the failed call billed, so a failed call is recorded like an answered one; null when nothing was billed. */
+  readonly usage: Usage | null;
 
   constructor(message: string, options?: ModelErrorOptions) {
     super(message, options);
     this.name = "ModelError";
     this.dimensions = options?.dimensions ?? null;
+    this.usage = options?.usage ?? null;
   }
-}
-
-export interface Usage {
-  model: string;
-  tokensIn: number;
-  tokensOut: number;
 }
 
 export interface JsonAnswer<T> {
@@ -144,7 +149,10 @@ export async function completeJson<S extends ZodTypeAny>(input: {
         response_format: { type: "json_object" },
       })
       .catch((error: unknown): never => {
-        throw new ModelError("The model call failed", { cause: error });
+        throw new ModelError("The model call failed", {
+          cause: error,
+          usage: { model: input.config.model, tokensIn, tokensOut },
+        });
       });
     tokensIn += completion.usage?.prompt_tokens ?? 0;
     tokensOut += completion.usage?.completion_tokens ?? 0;
@@ -173,7 +181,9 @@ export async function completeJson<S extends ZodTypeAny>(input: {
       .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
       .join("; ");
   }
-  throw new ModelError(`The model did not answer valid JSON: ${lastError}`);
+  throw new ModelError(`The model did not answer valid JSON: ${lastError}`, {
+    usage: { model: input.config.model, tokensIn, tokensOut },
+  });
 }
 
 /** One embedding, EMBEDDING_DIMENSIONS wide (OpenAI models are shortened; others must match). */

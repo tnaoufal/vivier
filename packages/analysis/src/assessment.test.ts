@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Assessment, BriefCriterion, CriterionResult, MatchResult } from "@/lib/db/types";
+import type { Assessment, BriefCriterion, CriterionResult, MatchResult } from "./types.js";
 
 import {
   applyChallenge,
@@ -30,8 +30,8 @@ import {
   STRENGTHS_MAX,
   tierOf,
   type ModelAssessmentAnswer,
-} from "./assessment";
-import { NEUTRAL_SCORE } from "./scoring";
+} from "./assessment.js";
+import { NEUTRAL_SCORE } from "./scoring.js";
 
 const criteria: BriefCriterion[] = [
   {

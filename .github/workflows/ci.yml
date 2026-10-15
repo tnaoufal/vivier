@@ -109,6 +109,7 @@ jobs:
           filters: |
             processor:
               - 'services/processor/**'
+              - 'packages/analysis/**'
               - '.dockerignore'
               - '.github/workflows/ci.yml'
       - id: gate
@@ -118,6 +119,9 @@ jobs:
         with:
           node-version: "22"
       # No lockfile yet (see the service README): a plain install until one is committed.
+      # The install links the shared package (packages/analysis, a file:
+      # dependency); the typecheck, the tests and the build each build it
+      # first through the pre-scripts of package.json.
       - name: Install dependencies
         if: steps.gate.outputs.run == 'true'
         run: |

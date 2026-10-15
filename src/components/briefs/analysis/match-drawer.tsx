@@ -14,9 +14,10 @@
  * lack), the strengths and the reservations side by side (the second
  * reading's doubt first), the reading against the role (the five
  * dimensions, how the score is composed behind an info icon), the
- * points for the interview, the triage's verdict, small and muted, and
- * the team's thread on the candidate (the same one as the candidate's
- * page). A profile no model read shows its requirements alone.
+ * points for the interview, the screening's score and the triage's
+ * verdict, small and muted, and the team's thread on the candidate
+ * (the same one as the candidate's page). A profile no model read
+ * shows its requirements alone.
  */
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
@@ -41,6 +42,7 @@ import { requireSupabase } from "@/lib/auth/supabase-client";
 import { decisionOf, requirementRows, tierOf } from "@/lib/briefs/assessment";
 import { kindKey } from "@/lib/briefs/criteria";
 import { candidatePath } from "@/lib/briefs/paths";
+import { screenLine } from "@/lib/briefs/presentation";
 import { readCandidateYears } from "@/lib/briefs/queries";
 import { currentPosition, displayName, yearsLabel } from "@/lib/candidates/format";
 import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
@@ -204,6 +206,7 @@ export function MatchDrawer({
   const questions = assessment?.questions ?? [];
   const withheld = assessment?.withheld ?? 0;
   const rankNote = assessment?.rankNote?.trim() || null;
+  const screen = shown ? screenLine(shown.screen) : null;
   const rows: RequirementRow[] = shown
     ? requirementRows(criteria, shown).map(({ kind, evidenceUnverified, ...row }) => ({
         ...row,
@@ -419,8 +422,15 @@ export function MatchDrawer({
                 </DrawerSection>
               ) : null}
 
+              {/* What the funnel decided before the full reading: the screening's score, the triage's verdict. */}
+              {screen ? (
+                <DrawerSection title={t("briefs.analysis.stage.screening")}>
+                  <p className="text-sm text-muted-foreground tabular-nums">{screen}</p>
+                </DrawerSection>
+              ) : null}
+
               {shown.triage ? (
-                <DrawerSection title={t("briefs.analysis.step.triage")}>
+                <DrawerSection title={t("briefs.analysis.stage.triage")}>
                   <p className="text-sm text-muted-foreground">
                     <span className="font-medium">{t(TRIAGE_KEYS[shown.triage.verdict])}</span>
                     {shown.triage.reason ? ` · ${shown.triage.reason}` : ""}

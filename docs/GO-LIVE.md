@@ -7,7 +7,7 @@ provider accounts. Work it in one block before the first real CV.
 
 - [ ] Create the project `vivier_prod` in `eu-west-1` (or Frankfurt); note the
       project ref, the URL and the publishable key.
-- [ ] Apply the eight files of `supabase/migrations` in order (`supabase link`
+- [ ] Apply the nine files of `supabase/migrations` in order (`supabase link`
       then `supabase db push`, or the SQL editor): `20261013090000_vivier_init`,
       then evolution 2: `20261013180000_vivier_assessment` (status `rejected`,
       `documents.document_kind`, `similar_candidates()`),
@@ -32,12 +32,22 @@ provider accounts. Work it in one block before the first real CV.
       (`seniority_band()`, and `similar_candidates()` answering the
       neighbour's `years_experience`, the fifty nearest ordered by the
       distance between seniority bands first; it drops and recreates the
-      function, so it can be re-run).
-      The evolution 2, 3 and 6 files can be re-run; `vivier_init` and the
+      function, so it can be re-run), then evolution 7:
+      `20261015150000_vivier_analysis_jobs` (the job's columns of `searches`:
+      `status`, `stage`, `progress_done`, `progress_total`, `stop_requested`,
+      `error`, `started_at`, `finished_at`, `heartbeat_at`, `runner`,
+      `analysis_model`, and the index the processor scans; on `search_triage`
+      the screening's `score`, `score_reason`, `scored_at`, `forced` and
+      `attempts`, with `record_screen()` and `bump_triage_attempts()`
+      executable by the service role alone; the usage kind `screen`;
+      `candidates.photo_checked_at` and the photo pass's index; the new
+      columns are read by members under the existing policies and written
+      by the processor and the Worker's server functions alone).
+      The evolution 2, 3, 6 and 7 files can be re-run; `vivier_init` and the
       photos and triage files create policies and stop on a second run
       (`policy … already exists`), so mark them applied rather than running
       them again. The dev project `vivier_dev` (ref `qtujdeolcdvlzwvpqpuv`,
-      eu-west-1, free tier) carries all eight (checked on its schema on 2026-10-13: `document_kind`,
+      eu-west-1, free tier) carries the first eight (checked on its schema on 2026-10-13: `document_kind`,
       `shares.brief`, `phone_digits`, `similar_candidates()`,
       `searches.pool_size` exist and the quota function excludes `rejected`;
       `briefs.role_profile` and `20261014130000` applied on 2026-10-14;
@@ -55,8 +65,16 @@ provider accounts. Work it in one block before the first real CV.
       20261014150558 20261014162202` (the push refuses remote versions it
       has no file for), then `supabase migration repair --status applied
       20261013180000 20261013190000 20261013200000 20261014090000
-      20261014130000 20261015090000 20261015120000`. Reset the dev database password in
-      the dashboard before using it from a machine.
+      20261014130000 20261015090000 20261015120000` (add `20261015150000` to
+      that list once it too was applied by hand). Reset the dev database
+      password in the dashboard before using it from a machine.
+- [ ] Apply `20261015150000_vivier_analysis_jobs` on `vivier_dev` (the SQL
+      editor, or `db push` after the repair above), then check
+      `searches.status` and `search_triage.score` exist and `record_screen()`
+      is granted to the service role alone. The evolution 7 processor reads
+      `searches.status` at every scan and the Worker's `runSearch` inserts
+      it: without the file, every claim and every "Lancer l'analyse" fail.
+      Record the date here as for the earlier files.
 - [ ] Default privileges for `anon` and `authenticated` are revoked by the
       migration: every later table or RPC meant for the browser needs its own
       `GRANT` (the migration shows the pattern).
@@ -78,8 +96,10 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Create the Worker from this repository with the Git integration
       (root directory `vivier`, build `bun run build`, deploy with wrangler).
 - [ ] Variables: `SITE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`,
-      `PROCESSOR_URL`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_EMBEDDING_MODEL`, `EMAIL_FROM`, `EMAIL_REPLY_TO`;
-      optionally `LLM_ASSESSMENT_MODEL` (see "Model vendor").
+      `PROCESSOR_URL`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_EMBEDDING_MODEL`, `EMAIL_FROM`, `EMAIL_REPLY_TO`.
+      `LLM_ASSESSMENT_MODEL` is read for `/status` only since evolution 7: the
+      analysis's model is the processor's `LLM_ANALYSIS_MODEL` (see "Model
+      vendor").
 - [ ] Secrets: `SUPABASE_SERVICE_ROLE_KEY`, `PROCESSOR_SHARED_SECRET`,
       `LLM_API_KEY`, `RESEND_API_KEY`.
 - [ ] Check `/status` shows every part green without any value.
@@ -88,16 +108,15 @@ provider accounts. Work it in one block before the first real CV.
       `src/lib/platform/rate-limit.server.ts`) counts per scope, per address
       (an IPv6 by its /64) and per user, in each data centre; the `triage`
       and `assess` scopes count per user alone once the member is known,
-      so recruiters behind one office address do not share a bucket. An
-      analysis spends three scopes: `search` (the search, the snapshot's
-      extension and the promotion), `triage` (four calls in flight) and
-      `assess` (the screening three in flight, then the second opinion and
-      the tiering). A refused analysis call waits 20, 40 then 65 seconds
-      before it fails, and the end of its stage or "Reprendre" sends it
-      again, so nothing is lost; but a very fast model can bring four
-      triage calls near sixty a minute. If teams report long pauses,
-      raise `simple.limit` in `wrangler.jsonc` and `RATE_LIMIT_POLICY`
-      together, and deploy.
+      so recruiters behind one office address do not share a bucket. Since
+      evolution 7 an analysis spends `search` alone, once per click ("Lancer
+      l'analyse", "Reprendre", "Lire quand même"): its model calls are the
+      processor's, paced by `ANALYSIS_CONCURRENCY` and the provider's own
+      refusals (sent again after 2, 6, 15, 30 and 60 seconds, or the
+      `Retry-After` named, then the run fails), never by this binding; the
+      `triage` and `assess` scopes stay declared and unused. If teams report
+      `RATE:limited` on other actions, raise `simple.limit` in
+      `wrangler.jsonc` and `RATE_LIMIT_POLICY` together, and deploy.
 
 ## Railway (processor)
 
@@ -108,6 +127,22 @@ provider accounts. Work it in one block before the first real CV.
       `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_EMBEDDING_MODEL`,
       optionally `MISTRAL_OCR_API_KEY` for scanned PDFs. `PROCESSOR_CONCURRENCY`
       now defaults to 4 (was 2): set it only to lower it when the model answers 429.
+      Evolution 7 adds `LLM_ANALYSIS_MODEL` (the model every call of an
+      analysis goes to; `LLM_MODEL` unless set: see "Model vendor"),
+      `ANALYSIS_CONCURRENCY` (model calls one analysis keeps in flight, 4;
+      lower it on 429), `ANALYSIS_MAX_RUNS` (analyses one process runs at
+      once, 2) and `ANALYSIS_POLL_INTERVAL_MS` (the scan for queued and stale
+      runs, 30 s); the defaults need no variable.
+- [ ] Redeploy the processor for evolution 7, after the migration and before
+      the Worker: the analysis runs there now, the web app only queues
+      `searches` rows, and a processor built before this evolution never
+      claims them (the band waits on "Démarrage…"). The image builds the
+      shared package `packages/analysis` and ships its `dist/`; add
+      `packages/analysis/**` to the service's watch paths. After the deploy
+      the `listening` log line shows `analysisConcurrency`, `analysisMaxRuns`
+      and `analysisPollIntervalMs`, and the first analysis logs
+      `analysis_claimed`, one `analysis_step` line per stage and
+      `analysis_done`; `GET /metrics` counts `analysesRunning`.
 - [ ] `LLM_EMBEDDING_MODEL=mistral-embed` is set on the Railway service. The
       candidates processed on 2026-10-13 had no vector for another reason: the
       processor's `openai` SDK asked Mistral for base64 embeddings, Mistral
@@ -124,8 +159,12 @@ provider accounts. Work it in one block before the first real CV.
       lockfile is generated). An older unpdf logs `photo_images_unsupported`
       and gives no photo, never a failed document; after the first CVs the logs
       show `photo_written` lines and `candidate_written` says `photo: true`.
-      Candidates read before this deploy have no photo until a new CV of
-      theirs with a portrait is processed.
+      Candidates read before this deploy get theirs from the hourly
+      maintenance pass once `20261015150000` is applied (the photo pass:
+      50 a batch, up to 10 batches a run, the newest CV with a text layer
+      only, every candidate marked checked once in `photo_checked_at`); the
+      report's `photosChecked` and `photosFound` say how far it is, and
+      `POST /maintenance` with the bearer runs it now.
 
 ## Model vendor
 
@@ -134,40 +173,45 @@ provider accounts. Work it in one block before the first real CV.
       Sign the data processing terms; confirm no training on API data.
 - [ ] Alternative: OpenAI (`LLM_BASE_URL=https://api.openai.com/v1`,
       `LLM_EMBEDDING_MODEL=text-embedding-3-small`, shortened to 1024 dimensions automatically).
-- [ ] An analysis runs on the assessment model: the triage
-      (`triageCandidates`, kind `triage`: every active profile of the pool
-      sorted by métier, forty per call, from a card without name, contact
-      details, place, link or CV text), then three passes (kind `assess`) on
-      the profiles it kept: the screening (`assessCandidates`: one call per
-      profile kept, the five dimensions with their evidence), the second
-      opinion (`challengeCandidates`: one more call per retained profile)
-      and the tiering (`rankCandidates`: one call per group of up to eight
-      retained or borderline profiles, then one for the A's of every group).
-      They decide which CVs a hiring team sees, and the triage and the
-      screening both judge first whether the candidate's métier is the job
-      from what the person did, not from the titles (a semantic judgement a
-      small model gets wrong more often): set
-      `LLM_ASSESSMENT_MODEL=mistral-medium-latest` (or `mistral-large-latest`
-      when budget allows) on the Worker for those calls alone and keep
-      `LLM_MODEL=mistral-small-latest` for structuring and the one reading
-      of a brief. Unset, `LLM_MODEL` does them too. What a run costs: one
-      reading of the brief (kind `brief`, the text clipped to 12 000
-      characters in, 3 200 tokens out at most) only when the brief was
-      never read or its text changed, then one triage call per 40 profiles
-      (about 16 000 characters in
-      at most, 5 000 tokens out at most) plus one screening per profile kept
-      (about 9 000 characters, roughly 3 000 tokens in and, with the
-      dimensions and the lists, 1 500 to 2 500 out), then one second-opinion
-      call per retained profile (the same input, about 100 out) and one
-      tiering call per group of eight (a few thousand characters in, about
-      100 out per candidate). A pool of 1 000 profiles of which 150 are kept
-      and thirty retained is some 215 calls (25 of them the triage), roughly
-      0.7 M tokens in and 0.4 M out, the output weighing as much as the
-      input in the bill: the cost follows the profiles kept, not the size of
-      the pool. At Mistral's list prices at the time of
-      writing that is a few euros at most with `mistral-medium-latest` and
-      several with `mistral-large-latest` (check the current price list before
-      deciding); `ai_usage.model` says which model answered each call.
+- [ ] An analysis runs on the processor, every call of it, on
+      `LLM_ANALYSIS_MODEL` (the Railway service; `LLM_MODEL` unless set): the
+      one reading of the brief (kind `brief`), the triage (kind `triage`:
+      every active profile of the pool sorted by métier, forty per call,
+      from a card without name, contact details, place, link or CV text),
+      the screening (kind `screen`: the profiles kept scored 0..100 against
+      the brief's reading, twenty-five per call, from the same card), then
+      three passes (kind `assess`) on the thirty best: the full reading (one
+      call per profile, the five dimensions with their evidence), the second
+      opinion (one more call per retained profile) and the tiering (one call
+      per group of up to eight retained or borderline profiles, then one for
+      the A's of every group). They decide which CVs a hiring team sees, and
+      the triage, the screening and the full reading judge first whether the
+      candidate's métier is the job from what the person did, not from the
+      titles (a semantic judgement a small model gets wrong more often): set
+      `LLM_ANALYSIS_MODEL=mistral-medium-latest` (or `mistral-large-latest`
+      when budget allows) on Railway for those calls alone and keep
+      `LLM_MODEL=mistral-small-latest` for the structuring. Unset,
+      `LLM_MODEL` does them too; the Worker's `LLM_ASSESSMENT_MODEL` no
+      longer takes part. What a run costs: one reading of the brief (the
+      text clipped to 12 000 characters in, 3 200 tokens out at most) only
+      when the brief was never read or its text changed, then one triage
+      call per 40 profiles (about 16 000 characters in at most, 5 000 tokens
+      out at most), one screening call per 25 profiles kept (the same cards,
+      about 2 700 tokens out at most), thirty full readings (about 9 000
+      characters, roughly 3 000 tokens in and, with the dimensions and the
+      lists, 1 800 to 3 200 out), then one second-reading call per retained
+      profile (the same input, 400 out) and one tiering call per group of
+      eight (a few thousand characters in, 120 out per candidate), plus one
+      for the A's. A pool of 1 000 profiles of which 150 are kept is 25
+      triage calls, 6 screening calls and 30 full readings, then at most 30
+      second readings and 5 tiering calls: a hundred calls at most, roughly
+      a third of a million tokens in and 150 000 out, whatever the pool
+      holds beyond the thirty best (the earlier funnel read every profile
+      kept in full). At Mistral's list prices at the time of writing that is
+      a fraction of what the earlier funnel cost, a few euros at the very
+      most with `mistral-large-latest` (check the current price list before
+      deciding); `ai_usage.model` and `searches.analysis_model` say which
+      model answered.
 
 ## Resend
 
@@ -176,14 +220,16 @@ provider accounts. Work it in one block before the first real CV.
       built from it and `sendShare` refuses a link on another origin; without it
       the share dialog only offers the link to copy. Share emails set Reply-To
       to the sender's confirmed address (`EMAIL_REPLY_TO` is the fallback).
-- [ ] Without `LLM_API_KEY` nothing reads the brief: an analysis lists the
-      pool on the text alone, without requirements, triage, screening,
-      second opinion or tiering, and the band says "Texte seul, sans
-      modèle"; with a key, the one reading of a brief (`brief`), hybrid
-      retrieval (`embed`), the triage (`triage`) and the three passes
-      (`assess`) record `ai_usage` rows (`summary`, a dossier draft reworded
-      by the model, is an option of `draftShare` the one-step dialog never
-      asks for).
+- [ ] Without `LLM_API_KEY` on the processor no analysis runs: the run
+      fails at its claim (`model_unavailable`) and the band says "Modèle
+      indisponible" with "Relancer"; the Worker's key serves `/status`, the
+      brief page's capability and the dossier draft's option only. With a
+      key on the processor, the one reading of a brief (`brief`), the triage
+      (`triage`), the screening (`screen`) and the three passes (`assess`)
+      record `ai_usage` rows for the organisation (`summary`, a dossier draft
+      reworded by the model, is an option of `draftShare` the one-step dialog
+      never asks for). An analysis stored on the text alone before evolution
+      7 still reads "Texte seul, sans modèle".
 
 ## Legal
 

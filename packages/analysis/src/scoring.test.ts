@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { BriefCriterion, RequirementAssessment } from "@/lib/db/types";
+import type { BriefCriterion, RequirementAssessment } from "./types.js";
 
 import {
   compositeScore,
@@ -15,7 +15,7 @@ import {
   WEIGHT_ROLE,
   WEIGHT_SENIORITY,
   WEIGHT_TRACK,
-} from "./scoring";
+} from "./scoring.js";
 
 const criteria: BriefCriterion[] = [
   {

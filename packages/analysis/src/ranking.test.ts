@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { Assessment, AssessmentTier, BriefCriterion, MatchResult } from "@/lib/db/types";
+import type { Assessment, AssessmentTier, BriefCriterion, MatchResult } from "./types.js";
 
-import { NOTE_MAX } from "./assessment";
+import { NOTE_MAX } from "./assessment.js";
 import {
   applyRanking,
   RANK_GROUP_MAX,
@@ -11,7 +11,7 @@ import {
   rankingSheets,
   rankingSystemPrompt,
   sortByTier,
-} from "./ranking";
+} from "./ranking.js";
 
 function assessed(
   decision: Assessment["decision"],

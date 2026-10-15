@@ -60,6 +60,7 @@ describe("config", () => {
       apiKey: "key",
       model: "mistral-small-latest",
       embeddingModel: "mistral-embed",
+      analysisModel: "mistral-small-latest",
     });
     expect(c.ocr?.model).toBe("mistral-ocr-latest");
     expect(c.pollIntervalMs).toBe(0);
@@ -143,6 +144,9 @@ describe("app", () => {
         reembedded: 3,
         reembedFailed: 0,
         reembedSkipped: 0,
+        photosChecked: 0,
+        photosFound: 0,
+        photosFailed: 0,
         ms: 5,
       }),
     });

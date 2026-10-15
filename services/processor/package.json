@@ -7,13 +7,18 @@
   "main": "dist/src/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "build:analysis": "tsc -p ../../packages/analysis/tsconfig.json",
+    "prebuild": "npm run build:analysis",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/server.js",
+    "pretest": "npm run build:analysis",
     "test": "vitest run",
+    "pretypecheck": "npm run build:analysis",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
+    "@vivier/analysis": "file:../../packages/analysis",
     "fastify": "^5.2.0",
     "openai": "^5.0.0",
     "unpdf": "^0.12.2",

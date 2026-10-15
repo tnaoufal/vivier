@@ -2,6 +2,7 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
+    "packages/analysis/src",
     "scripts/**/*.ts",
     "vite.config.ts",
     "eslint.config.js"
@@ -33,7 +34,8 @@
     "exactOptionalPropertyTypes": true,
     "noUncheckedSideEffectImports": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@vivier/analysis": ["./packages/analysis/src/index.ts"]
     }
   }
 }

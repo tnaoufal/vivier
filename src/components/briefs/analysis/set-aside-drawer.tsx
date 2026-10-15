@@ -3,32 +3,29 @@
  * that the funnel's figure opens, its title carrying that same count and
  * marked as the model's reading. Two groups: the profiles set aside
  * after the full reading (no_fit), closest first, then the ones the
- * triage read as another métier, by candidate. Each row names the
- * person (the photo when the organisation shows photos, else the
- * initials, in greyscale), the position held today and the reason (the
- * triage's, else the first must-have at "no", else the reading's main
- * reservation), and
- * leads to the profile; a person may bring one the triage set aside back
- * to be read in full ("Lire quand même"). A group shows fifty rows, then
- * "Voir plus": the triage's are read from search_triage page by page
- * under RLS (each page after the last id read, so a verdict written
- * meanwhile hides no row), and the candidates of the rows shown in
- * lots. The model proposed this; a person can always look, and decides.
+ * triage set aside, by candidate: another métier (the model's reason on
+ * the row), or a card it could not judge ("Non lus" when the model
+ * could not read it, "Fiche trop mince pour trancher" when it carried
+ * no title and no position). Each row names the person, the position
+ * held today and the reason, and leads to the profile; a person may
+ * bring one the triage set aside back to be read in full ("Lire quand
+ * même": the runner promotes it and reads it). A group shows fifty
+ * rows, then "Voir plus": the triage's are read from search_triage page
+ * by page under RLS (each page after the last id read, so a verdict
+ * written meanwhile hides no row), and the candidates of the rows shown
+ * in lots. The model proposed this; a person can always look, and
+ * decides.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
-import { Archive, CircleAlert, FileSearch, RefreshCw } from "lucide-react";
+import { Archive, CircleAlert, RefreshCw } from "lucide-react";
 
-import { Avatar } from "@/components/app-shell/avatar";
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { Pill } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Skeleton, SkeletonRows } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { kindKey } from "@/lib/briefs/criteria";
-import { candidatePath } from "@/lib/briefs/paths";
 import {
   appendPage,
   SET_ASIDE_PAGE,
@@ -41,13 +38,11 @@ import {
   type ResultCandidate,
   type SetAsideEntry,
 } from "@/lib/briefs/queries";
-import { currentPosition, displayName, formatCount } from "@/lib/candidates/format";
-import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
+import { formatCount } from "@/lib/candidates/format";
 import type { BriefCriterion, MatchResult } from "@/lib/db/types";
-import { useI18n, useT } from "@/lib/i18n";
-import { staggerVars } from "@/lib/motion";
-import { useOrg } from "@/lib/org/org-context";
-import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
+
+import { AsideRows, MoreButton, type ShownRow } from "./aside-rows";
 
 /** The triage's rows read so far, the last id read (the next page starts after it), how many there are in all, and whether the last page ended the list. */
 interface TriageList {
@@ -55,13 +50,6 @@ interface TriageList {
   cursor: string | null;
   total: number;
   ended: boolean;
-}
-
-/** One row as the list draws it: who, why in words, and the way to read it in full when a person may. */
-interface ShownRow {
-  candidateId: string;
-  reason: string;
-  onReadAnyway?: (() => Promise<void>) | undefined;
 }
 
 export function SetAsideDrawer({
@@ -83,7 +71,7 @@ export function SetAsideDrawer({
   searchId: string;
   /** The funnel's figure: the title says it, and no other place in the drawer does. */
   total: number;
-  /** The profiles the triage set aside (0 without a triage). */
+  /** The profiles the triage set aside, another métier or a card it could not judge (0 without a triage). */
   triageCount: number;
   /** The full readings decided no_fit, closest first. */
   read: readonly MatchResult[];
@@ -185,10 +173,14 @@ export function SetAsideDrawer({
       }
     })();
   }, [orgId, wanted]);
+  const candidateOf = useCallback((candidateId: string) => people.get(candidateId), [people]);
 
   function reasonText(reason: SetAsideReason | null, fallback: string): string {
     if (!reason) return fallback;
     if (reason.kind === "text") return reason.text;
+    if (reason.kind === "unread") return t("briefs.setAside.unread");
+    if (reason.kind === "gone") return t("briefs.setAside.gone");
+    if (reason.kind === "thin") return t("briefs.triage.unknown");
     const { kind, label } = reason.criterion;
     return t("briefs.setAside.missing", {
       label: kind === "role" ? `${t(kindKey(kind))} · ${label}` : label,
@@ -197,9 +189,9 @@ export function SetAsideDrawer({
 
   const shownRead: ShownRow[] = readRows.map((result) => ({
     candidateId: result.candidateId,
-    reason: reasonText(setAsideReason(criteria, result), t("briefs.decision.no_fit")),
+    line: reasonText(setAsideReason(criteria, result), t("briefs.decision.no_fit")),
   }));
-  /** A row brought back leaves the list: it is now among the profiles read in full. */
+  /** A row brought back leaves the list: the runner promotes it and reads it in full. */
   async function readAnyway(candidateId: string): Promise<void> {
     if (!(await onReadAnyway(candidateId)) || !mounted.current) return;
     setTriage((current) =>
@@ -215,9 +207,9 @@ export function SetAsideDrawer({
 
   const shownTriage: ShownRow[] = triageRows.map((row) => ({
     candidateId: row.candidateId,
-    reason: reasonText(
-      setAsideReason(criteria, { triage: { verdict: "no", reason: row.reason } }),
-      t("briefs.triage.no"),
+    line: reasonText(
+      setAsideReason(criteria, { triage: { verdict: row.verdict, reason: row.reason } }),
+      t(row.verdict === "no" ? "briefs.triage.no" : "briefs.triage.unknown"),
     ),
     onReadAnyway: canReadAnyway ? () => readAnyway(row.candidateId) : undefined,
   }));
@@ -261,7 +253,7 @@ export function SetAsideDrawer({
               title={t("briefs.setAside.group.read")}
               count={both ? count(read.length) : null}
             >
-              <Rows rows={shownRead} people={people} onOpen={close} />
+              <AsideRows rows={shownRead} candidateOf={candidateOf} onOpen={close} />
               {readShown < read.length ? (
                 <MoreButton onClick={() => setReadShown((value) => value + SET_ASIDE_PAGE)} />
               ) : null}
@@ -280,7 +272,7 @@ export function SetAsideDrawer({
                   <SkeletonRows rows={3} avatarSize="md" className="-mx-2 [&>li]:px-2" />
                 </>
               ) : (
-                <Rows rows={shownTriage} people={people} onOpen={close} />
+                <AsideRows rows={shownTriage} candidateOf={candidateOf} onOpen={close} />
               )}
               {triageFailed ? (
                 <div className="flex flex-wrap items-center gap-3">
@@ -331,172 +323,5 @@ function Group({
       </h3>
       {children}
     </section>
-  );
-}
-
-/** "Voir plus": a quiet button under its list, held while the next page is read. */
-function MoreButton({
-  busy = false,
-  onClick,
-}: {
-  busy?: boolean | undefined;
-  onClick: () => void;
-}) {
-  const t = useT();
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      onClick={onClick}
-      disabled={busy}
-      aria-busy={busy || undefined}
-      className="-ml-3 px-3 text-muted-foreground hover:text-ink"
-    >
-      {t("briefs.setAside.more")}
-    </Button>
-  );
-}
-
-/** The rows of a group; each page rises in once, one row after the other. */
-function Rows({
-  rows,
-  people,
-  onOpen,
-}: {
-  rows: readonly ShownRow[];
-  people: ReadonlyMap<string, ResultCandidate | null>;
-  onOpen: () => void;
-}) {
-  return (
-    <ul className="-mx-2 divide-y divide-border">
-      {rows.map((row, index) => (
-        <li
-          key={row.candidateId}
-          className="rise-in min-w-0"
-          style={staggerVars(index % SET_ASIDE_PAGE)}
-        >
-          <SetAsideRow
-            candidate={people.get(row.candidateId)}
-            reason={row.reason}
-            onOpen={onOpen}
-            onReadAnyway={row.onReadAnyway}
-          />
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * One profile set aside, compact: the photo or the initials, the name and
- * the position held today, the reason; the row leads to the profile, and
- * beside it, for a profile the triage set aside, the way to read it in
- * full anyway. A candidate still being read shows placeholders; an
- * erased one says so and leads nowhere.
- */
-function SetAsideRow({
-  candidate,
-  reason,
-  onOpen,
-  onReadAnyway,
-}: {
-  /** Undefined while it is read, null when the candidate was erased. */
-  candidate: ResultCandidate | null | undefined;
-  reason: string;
-  onOpen: () => void;
-  onReadAnyway?: (() => Promise<void>) | undefined;
-}) {
-  const t = useT();
-  const [busy, setBusy] = useState(false);
-  const { showPhotos } = useOrg();
-  const photoUrl = usePhotoUrl(candidate?.photo_path ?? null, showPhotos && Boolean(candidate));
-  const loading = candidate === undefined;
-  const name = candidate
-    ? displayName(candidate, t("briefs.results.noName"))
-    : t("briefs.results.gone");
-  const position = candidate ? currentPosition(candidate) : null;
-
-  const content = (
-    <>
-      <Avatar name={loading ? "" : name} size="md" photoUrl={photoUrl} decorative />
-      <span className="min-w-0 flex-1 md:flex md:items-center md:gap-6">
-        {loading ? (
-          <span className="block space-y-2 md:w-48 md:shrink-0">
-            <Skeleton className="h-3.5 w-32" />
-            <Skeleton className="h-3 w-40 max-w-full" />
-          </span>
-        ) : (
-          <span className="block min-w-0 md:w-48 md:shrink-0">
-            <span
-              className={cn(
-                "block truncate text-sm font-medium",
-                candidate ? "text-ink" : "text-muted-foreground",
-              )}
-            >
-              {name}
-            </span>
-            <span className="block truncate text-sm text-muted-foreground">
-              {position
-                ? position.company
-                  ? `${position.title} @ ${position.company}`
-                  : position.title
-                : t("common.unknown")}
-            </span>
-          </span>
-        )}
-        <span className="mt-0.5 line-clamp-2 min-w-0 text-sm text-ink md:mt-0 md:flex-1">
-          {reason}
-        </span>
-      </span>
-    </>
-  );
-
-  const row = "flex min-w-0 items-center gap-3 px-2 py-3 sm:gap-4";
-  if (!candidate) return <div className={row}>{content}</div>;
-  const link = (
-    <Link
-      to={candidatePath(candidate.id)}
-      onClick={onOpen}
-      className={cn(
-        row,
-        "min-w-0 flex-1 rounded-sm transition-colors duration-fast ease-out-soft hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-      )}
-    >
-      {content}
-    </Link>
-  );
-  if (!onReadAnyway) return link;
-  const label = t("briefs.setAside.readAnyway");
-  async function readAnyway() {
-    if (busy || !onReadAnyway) return;
-    setBusy(true);
-    try {
-      await onReadAnyway();
-    } finally {
-      setBusy(false);
-    }
-  }
-  // The button sits beside the link, never inside it.
-  return (
-    <div className="flex min-w-0 items-center gap-1">
-      {link}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={label}
-            disabled={busy}
-            aria-busy={busy || undefined}
-            onClick={() => void readAnyway()}
-            className="shrink-0 text-muted-foreground hover:text-ink"
-          >
-            <FileSearch aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
-    </div>
   );
 }

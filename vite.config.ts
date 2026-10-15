@@ -38,7 +38,12 @@ export default defineConfig(({ command, mode }) => {
       rollupOptions: { external: ["cloudflare:workers"] },
     },
     resolve: {
-      alias: { "@": `${process.cwd()}/src` },
+      // "@vivier/analysis" is the shared analysis package, read straight
+      // from its sources here (the processor reads its built dist/).
+      alias: {
+        "@": `${process.cwd()}/src`,
+        "@vivier/analysis": `${process.cwd()}/packages/analysis/src/index.ts`,
+      },
       dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
     },
     optimizeDeps: {

@@ -3,23 +3,30 @@
  * that says what to fix), builds the app, listens on 0.0.0.0:PORT, probes
  * the embedding model once when there is one (the log and /health say
  * whether it answers the right width), and when Supabase is configured
- * starts the poller and the maintenance timer. SIGTERM/SIGINT stop the
- * timers, close the server, wait for the documents in flight (up to 25 s)
- * and exit 0; what did not finish is put back in the queue by the next
- * stale reset.
+ * starts the poller, the maintenance timer and the analysis runner (its
+ * claim at boot resumes the runs a crash or a redeploy left, then every
+ * ANALYSIS_POLL_INTERVAL_MS). SIGTERM/SIGINT stop the timers, close the
+ * server, wait for the documents and the analysis batches in flight (up
+ * to 25 s) and exit 0; what did not finish is put back in the queue by
+ * the next stale reset, and a run left running is claimed again once its
+ * heartbeat is stale.
  */
+import { hostname } from "node:os";
+
+import { AnalysisRunner } from "./analysis/runner.js";
+import type { RunnerDeps } from "./analysis/steps.js";
 import { buildApp, type AppRuntime } from "./app.js";
 import { loadConfig, type ProcessorConfig } from "./config.js";
 import { createDb } from "./db.js";
 import { probeEmbedding } from "./embedding.js";
 import { logError, logInfo, logWarn } from "./log.js";
 import { runMaintenance, type MaintenanceDeps, type MaintenanceReport } from "./maintenance.js";
-import { embedOne } from "./model.js";
+import { completeJson, embedOne } from "./model.js";
 import { defaultDeps } from "./pipeline.js";
 import { Poller } from "./poller.js";
 import { usageRecorderOf } from "./usage.js";
 
-/** Time given to the documents in flight after a stop signal. */
+/** Time given to the documents and the analysis batches in flight after a stop signal. */
 const SHUTDOWN_DRAIN_MS = 25_000;
 /** A stuck shutdown is cut here, before the platform's own kill. */
 const SHUTDOWN_FORCE_MS = 28_000;
@@ -66,11 +73,50 @@ function maintenanceOnce(): Promise<MaintenanceReport> {
   return maintenanceRun;
 }
 
+// The analysis runner: its calls go to the analysis model (LLM_ANALYSIS_MODEL,
+// the chat model unless set); without a model a claimed run fails with
+// model_unavailable rather than waiting for one for ever.
+const analysisModel = config.model;
+const runnerDeps: RunnerDeps | null = db
+  ? {
+      db,
+      complete: analysisModel
+        ? (request) =>
+            completeJson({
+              system: request.system,
+              user: request.user,
+              schema: request.schema,
+              temperature: request.temperature,
+              maxTokens: request.maxTokens,
+              config: { ...analysisModel, model: analysisModel.analysisModel },
+            })
+        : null,
+      model: analysisModel ? analysisModel.analysisModel : null,
+      concurrency: config.analysisConcurrency,
+      recordUsage: usageRecorderOf(db),
+      now: () => new Date(),
+      sleep: (ms) =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, ms);
+        }),
+    }
+  : null;
+const runner = runnerDeps
+  ? new AnalysisRunner(runnerDeps, {
+      intervalMs: config.analysisPollIntervalMs,
+      maxRuns: config.analysisMaxRuns,
+      name: `${hostname()}:${process.pid}`,
+    })
+  : null;
+
 const runtime: AppRuntime = {
   polling: poller !== null && config.pollIntervalMs > 0,
   inFlight: () => poller?.inFlight ?? 0,
   schedule: poller ? (ids) => poller.schedule(ids) : null,
   maintenance: maintenanceDeps ? maintenanceOnce : null,
+  analysis: runner
+    ? { poke: (searchId) => runner.poke(searchId), running: () => runner.running }
+    : null,
 };
 const app = buildApp(config, runtime);
 
@@ -81,10 +127,16 @@ let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  logInfo("shutdown", { signal, inFlight: poller?.inFlight ?? 0 });
+  logInfo("shutdown", {
+    signal,
+    inFlight: poller?.inFlight ?? 0,
+    analysesRunning: runner?.running ?? 0,
+  });
   const force = setTimeout(() => process.exit(1), SHUTDOWN_FORCE_MS);
   force.unref();
   poller?.stop();
+  // The runs in flight end their batches, write their progress and leave their rows running.
+  runner?.stop();
   if (maintenanceTimer) clearInterval(maintenanceTimer);
   if (maintenanceKickoff) clearTimeout(maintenanceKickoff);
   try {
@@ -92,8 +144,15 @@ async function shutdown(signal: string): Promise<void> {
   } catch (error) {
     logError("close_failed", error);
   }
-  const drained = poller ? await poller.drain(SHUTDOWN_DRAIN_MS) : true;
-  logInfo("exit", { drained, inFlight: poller?.inFlight ?? 0 });
+  const [documentsDrained, analysesDrained] = await Promise.all([
+    poller ? poller.drain(SHUTDOWN_DRAIN_MS) : true,
+    runner ? runner.drain(SHUTDOWN_DRAIN_MS) : true,
+  ]);
+  logInfo("exit", {
+    drained: documentsDrained && analysesDrained,
+    inFlight: poller?.inFlight ?? 0,
+    analysesRunning: runner?.running ?? 0,
+  });
   process.exit(0);
 }
 
@@ -127,6 +186,9 @@ app
       concurrency: config.concurrency,
       pollIntervalMs: config.pollIntervalMs,
       maintenanceIntervalMs: config.maintenanceIntervalMs,
+      analysisConcurrency: config.analysisConcurrency,
+      analysisMaxRuns: config.analysisMaxRuns,
+      analysisPollIntervalMs: config.analysisPollIntervalMs,
     });
     // Fire and forget: /health answers from the state the probe leaves,
     // never waits for it (Railway's check and CI's smoke test hit it at once).
@@ -135,6 +197,8 @@ app
       void probeEmbedding((text) => embedOne(text, model), model.embeddingModel);
     }
     if (poller && config.pollIntervalMs > 0) poller.start();
+    // The boot's claim resumes the runs a crash or a redeploy left; the timer takes over.
+    runner?.start();
     if (maintenanceDeps && config.maintenanceIntervalMs > 0) {
       const pass = () => {
         maintenanceOnce().catch((error: unknown) => logError("maintenance_failed", error));

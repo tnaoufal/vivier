@@ -10,14 +10,19 @@ stack and nothing else.
   be green.
 - The stack is the one of Namearly: TanStack Start on Cloudflare Workers,
   Supabase (Postgres, Auth, Storage, Realtime, pgvector), a Node service on
-  Railway (`services/processor`), Resend, Paddle. Dependencies are locked:
+  Railway (`services/processor`), Resend, Paddle. Since evolution 7 the
+  processor also runs each analysis of a brief as a job and the browser
+  never calls a model: the analysis's pure code is the shared package
+  `packages/analysis` (`@vivier/analysis`, no dependency;
+  `docs/CONVENTIONS.md`). Dependencies are locked:
   the frontend's `bun.lock` is frozen (`bun install --frozen-lockfile`);
   adding a package is an owner decision, not a session's.
 - No decision is ever made by a machine. The model structures CVs,
   reads a brief once into a role profile and requirements (the
   consultant's text is the only source; nobody checks or edits that
-  reading), sorts the pool by métier and assesses requirement by
-  requirement (a reading, bound by rules in `src/lib/briefs/assessment.ts`);
+  reading), sorts the pool by métier, scores the profiles it kept and
+  reads the best requirement by requirement (a reading, bound by rules in
+  `packages/analysis/src/assessment.ts`);
   a person retains or dismisses, and `shortlist_items.decided_by` says who. The UI never hides
   this: a profile an analysis set aside stays viewable on demand, with its reason, from the
   funnel's figure, and a member can have one the triage set aside read in
@@ -31,7 +36,8 @@ stack and nothing else.
   never reaches the model or any criterion. A career break, a gap or a
   period without a position is never read, scored or mentioned either
   (such sentences are withheld). The triage card (`triageCard()`,
-  `src/lib/briefs/triage.ts`) carries no identity: never the name, the
+  `packages/analysis/src/triage.ts`; the screening reads the same card)
+  carries no identity: never the name, the
   contact details, the place, a link, the photo, the summary or the CV
   text, and the name and the place are taken out of its texts too.
 - Access is decided by `memberships.role` through RLS
@@ -70,7 +76,8 @@ stack and nothing else.
   Node 22).
 - Processor: `npm install` (then `npm ci` once `package-lock.json` is
   committed), `npm run typecheck`, `npm test`, `npm run build` from
-  `services/processor`; `docker build -f services/processor/Dockerfile .`
+  `services/processor` (each builds `packages/analysis` first);
+  `docker build -f services/processor/Dockerfile .`
   from the repository root, and `GET /health` must answer 200.
 - `docs/GO-LIVE.md` is the owner's checklist (dashboards, secrets,
   providers): append what a session finds there instead of repeating it
