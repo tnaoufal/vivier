@@ -1,7 +1,8 @@
 /**
  * Words of the team area: the dashboard's briefs and pool, the activity
- * feed and its sentences, members and invitations, the settings
- * (organisation, account, photos included), the public status page
+ * feed and its sentences, the members and invitations of a space (a
+ * team, or the personal space of a person working alone), the settings
+ * (the space, the account, photos included), the public status page
  * and the legal pages' chrome. Role names, auth and invitation
  * acceptance live in messages.ts (role.*, auth.*, invite.*) and are
  * reused, not repeated.
@@ -96,18 +97,20 @@ const fr = {
 
   // members
   "members.list": "Membres",
-  "members.joined": "Depuis le {date}",
+  "members.count.one": "1 membre",
+  "members.count.many": "{count} membres",
+  "members.personal.invite": "Inviter quelqu'un en fait une équipe",
   "members.empty": "Personne pour l'instant.",
   "members.remove": "Retirer de l'équipe",
-  "members.leave": "Quitter l'organisation",
+  "members.leave": "Quitter l'équipe",
   "members.remove.title": "Retirer {name} ?",
   "members.remove.text": "{name} perd l'accès ; ses actions restent dans l'historique.",
   "members.leave.title": "Quitter {org} ?",
-  "members.leave.text": "Vous perdez l'accès à cette organisation.",
+  "members.leave.text": "Vous perdez l'accès à cette équipe.",
   "members.lastOwner": "Dernier propriétaire : transférez d'abord la propriété.",
   "members.roleChanged": "Rôle mis à jour.",
   "members.removed": "Membre retiré.",
-  "members.left": "Vous avez quitté l'organisation.",
+  "members.left": "Vous avez quitté l'équipe.",
   "members.invitations": "Invitations en attente",
   "members.invitations.empty": "Aucune invitation en attente.",
   "members.invitations.expires": "Expire le {date}",
@@ -138,8 +141,7 @@ const fr = {
   "team.invitePage.wrongAccount": "Invitation pour {email} : reconnectez-vous avec cette adresse.",
   "team.invitePage.goToApp": "Aller à l'application",
 
-  // settings
-  "settings.org": "Organisation",
+  // settings (the space's section is titled by its kind: nav.members or nav.personalSpace)
   "settings.account": "Mon compte",
   "settings.photos": "Photos des candidats",
   "settings.photos.help":
@@ -150,17 +152,17 @@ const fr = {
   "settings.retention.help":
     "Un candidat est supprimé {months} mois après le dernier contact, avec ses fichiers. 24 mois au plus (CNIL).",
   "settings.retention.range": "Entre {min} et {max} mois.",
-  "settings.plan": "Formule",
+  "settings.plan": "Forfait",
   "settings.plan.unread": "Les compteurs n'ont pas pu être lus.",
   "settings.plan.cvs": "CV traités ce mois",
   "settings.plan.seats": "Sièges",
   "settings.danger": "Zone de danger",
   "settings.danger.text":
     "Candidats, fichiers, briefs, shortlists et historique seront supprimés. C'est définitif.",
-  "settings.delete": "Supprimer l'organisation",
+  "settings.delete": "Supprimer l'espace",
   "settings.delete.title": "Supprimer {org} ?",
   "settings.delete.text": "Tapez le nom pour confirmer.",
-  "settings.deleted": "Organisation supprimée.",
+  "settings.deleted": "Espace supprimé.",
 
   // account
   "account.displayName": "Nom affiché",
@@ -171,7 +173,7 @@ const fr = {
   "account.danger": "Supprimer mon compte",
   "account.delete.title": "Supprimer votre compte ?",
   "account.delete.text":
-    "Votre compte et les organisations dont vous êtes seul propriétaire seront supprimés. C'est définitif.",
+    "Votre compte et les espaces dont vous êtes seul propriétaire seront supprimés. C'est définitif.",
   "account.deleted": "Compte supprimé.",
 
   // the public status page
@@ -290,18 +292,20 @@ const en = {
   "activity.kind.unknown": "{actor}: {kind}.",
 
   "members.list": "Members",
-  "members.joined": "Since {date}",
+  "members.count.one": "1 member",
+  "members.count.many": "{count} members",
+  "members.personal.invite": "Inviting someone makes it a team",
   "members.empty": "Nobody yet.",
   "members.remove": "Remove from the team",
-  "members.leave": "Leave the organisation",
+  "members.leave": "Leave the team",
   "members.remove.title": "Remove {name}?",
   "members.remove.text": "{name} loses access; their actions stay in the history.",
   "members.leave.title": "Leave {org}?",
-  "members.leave.text": "You lose access to this organisation.",
+  "members.leave.text": "You lose access to this team.",
   "members.lastOwner": "Last owner: transfer ownership first.",
   "members.roleChanged": "Role updated.",
   "members.removed": "Member removed.",
-  "members.left": "You left the organisation.",
+  "members.left": "You left the team.",
   "members.invitations": "Pending invitations",
   "members.invitations.empty": "No pending invitation.",
   "members.invitations.expires": "Expires on {date}",
@@ -330,7 +334,6 @@ const en = {
   "team.invitePage.wrongAccount": "Invitation for {email}: sign in again with that address.",
   "team.invitePage.goToApp": "Go to the app",
 
-  "settings.org": "Organisation",
   "settings.account": "My account",
   "settings.photos": "Candidates' photos",
   "settings.photos.help":
@@ -348,10 +351,10 @@ const en = {
   "settings.danger": "Danger zone",
   "settings.danger.text":
     "Candidates, files, briefs, shortlists and history will be deleted. This cannot be undone.",
-  "settings.delete": "Delete the organisation",
+  "settings.delete": "Delete the space",
   "settings.delete.title": "Delete {org}?",
   "settings.delete.text": "Type the name to confirm.",
-  "settings.deleted": "Organisation deleted.",
+  "settings.deleted": "Space deleted.",
 
   "account.displayName": "Display name",
   "account.locale": "Preferred language",
@@ -361,7 +364,7 @@ const en = {
   "account.danger": "Delete my account",
   "account.delete.title": "Delete your account?",
   "account.delete.text":
-    "Your account and the organisations you alone own will be deleted. This cannot be undone.",
+    "Your account and the spaces you alone own will be deleted. This cannot be undone.",
   "account.deleted": "Account deleted.",
 
   "status.title": "Service status",

@@ -1,11 +1,10 @@
 /**
- * Words of the similar profiles: the button on a profile, the drawer
- * that lists them seniority first, the proximity line and the two
- * measures the database may have used, and the years when a profile
- * states none.
+ * Words of the similar profiles: the block of a sheet and the menu's
+ * entry, the drawer that lists them seniority first, the proximity line
+ * and the two measures the database may have used, and the years when a
+ * profile states none.
  */
 const fr = {
-  "similar.button": "Profils similaires",
   "similar.title": "Profils proches",
   "similar.subtitle": "Proches de {name}",
   "similar.method.embedding": "Sens du parcours",
@@ -18,7 +17,6 @@ const fr = {
 } as const;
 
 const en = {
-  "similar.button": "Similar profiles",
   "similar.title": "Close profiles",
   "similar.subtitle": "Close to {name}",
   "similar.method.embedding": "Career meaning",

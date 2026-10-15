@@ -1,31 +1,42 @@
 /**
- * The team page, for everyone: the members with their roles as rows;
- * for administrators and owners, the pending invitations under them,
- * the plan card with its two usages beside, and the page's one filled
- * button, "Inviter", which opens the invite dialog. A quiet link leads
- * to the activity log. Every removal is confirmed; the database keeps
- * the last owner; leaving oneself lives in the settings.
+ * The team page on the plane, for everyone: the title names the kind of
+ * space ("Équipe", or "Espace personnel" for a person working alone),
+ * the meta counts the members and names the plan (a personal space says
+ * instead, in one line, that inviting someone makes it a team), the one
+ * filled button invites (administrators and owners, held while the
+ * seats are full) and the menu leads to the activity log. The members
+ * as rows in the wide pane; for administrators and owners the fill pane
+ * holds the pending invitations and the plan's two usages. Every
+ * removal is confirmed; the database keeps the last owner; leaving
+ * oneself lives in the settings.
  */
 import { useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { Activity, RefreshCw, TriangleAlert, UserPlus } from "lucide-react";
+import { Activity, Ellipsis, RefreshCw, TriangleAlert, UserPlus } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { EmptyState } from "@/components/app-shell/empty-state";
-import { PageHeader } from "@/components/app-shell/page-header";
 import { Section } from "@/components/app-shell/section";
+import { PHONE_ICON, Pane, PaneTitle, Workspace } from "@/components/app-shell/workspace";
 import { InvitationsList } from "@/components/team/invitations-list";
 import { InviteDialog } from "@/components/team/invite-dialog";
-import { MembersTable } from "@/components/team/members-table";
-import { PlanCard } from "@/components/team/plan-card";
+import { MemberRows } from "@/components/team/member-rows";
+import { PlanUsage } from "@/components/team/plan-usage";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
+import { formatCount } from "@/lib/candidates/format";
 import { useQuery } from "@/lib/data/use-query";
 import type { InvitationRow, OrgRole } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
-import { memberName, useCurrentOrg, useOrg } from "@/lib/org/org-context";
+import { isPersonal, memberName, useCurrentOrg, useOrg } from "@/lib/org/org-context";
 import { seatsAvailable } from "@/lib/team/seats";
 import {
   changeMemberRole,
@@ -44,20 +55,13 @@ export const Route = createFileRoute("/app/members")({
   component: MembersPage,
 });
 
-function ListSkeleton() {
-  return (
-    <div className="sheet overflow-hidden">
-      <SkeletonRows rows={3} />
-    </div>
-  );
-}
-
 function MembersPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { org, role } = useCurrentOrg();
   const { can, refresh: refreshOrg } = useOrg();
   const { user } = useAuth();
   const admin = can("admin");
+  const personal = isPersonal(org);
   const userId = user?.id ?? "";
 
   const { data, loading, error, refresh } = useQuery(`members:${org.id}:${admin}`, async () => {
@@ -147,14 +151,91 @@ function MembersPage() {
   const members = data?.members ?? [];
   const invitations = data?.invitations ?? [];
   const ready = !(loading && !data);
+  // A failed read is said as such: an empty team, or no invitation, would be a false fact.
+  const failed = error !== null && data === null;
+  const countText = !ready
+    ? null
+    : members.length === 1
+      ? t("members.count.one")
+      : t("members.count.many", { count: formatCount(locale, members.length) });
+  const consequence = t("members.personal.invite");
 
-  const lists = (
-    <div className="space-y-8">
-      <Section title={t("members.list")} count={ready ? members.length : undefined}>
-        {!ready ? (
-          <ListSkeleton />
+  return (
+    <Workspace
+      title={personal ? t("nav.personalSpace") : t("nav.members")}
+      meta={
+        personal ? (
+          <span>{consequence}</span>
         ) : (
-          <MembersTable
+          <>
+            {countText ? <span className="font-medium tabular-nums">{countText}</span> : null}
+            <span>{t(`shell.org.plan.${org.plan}`)}</span>
+          </>
+        )
+      }
+      actions={
+        <>
+          {admin ? (
+            <Button
+              type="button"
+              icon={<UserPlus />}
+              onClick={() => setInviteOpen(true)}
+              disabled={seatsFull}
+              aria-label={t("team.invite")}
+              className={PHONE_ICON}
+            >
+              <span className="max-sm:sr-only">{t("team.invite")}</span>
+            </Button>
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="icon" aria-label={t("common.actions")}>
+                <Ellipsis />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link to="/app/activity">
+                  <Activity aria-hidden="true" />
+                  {t("nav.activity")}
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      }
+    >
+      <Pane
+        label={t("members.list")}
+        width={admin && !failed ? "wide" : "fill"}
+        header={<PaneTitle title={t("members.list")} count={ready ? members.length : undefined} />}
+      >
+        {/* The meta is hidden on a phone: the consequence is said once there, in the pane. */}
+        {personal ? (
+          <p className="border-b border-line px-4 py-2 text-meta text-muted-foreground sm:hidden">
+            {consequence}
+          </p>
+        ) : null}
+        {failed ? (
+          <EmptyState
+            quiet
+            icon={<TriangleAlert />}
+            title={t("common.error")}
+            action={
+              <Button
+                type="button"
+                variant="outline"
+                icon={<RefreshCw />}
+                onClick={() => void refresh()}
+              >
+                {t("common.retry")}
+              </Button>
+            }
+          />
+        ) : !ready ? (
+          <SkeletonRows rows={3} avatarSize="md" />
+        ) : (
+          <MemberRows
             members={members}
             currentUserId={userId}
             actorRole={role}
@@ -163,79 +244,35 @@ function MembersPage() {
             onRemove={setRemoving}
           />
         )}
-      </Section>
-      {admin ? (
-        <Section title={t("members.invitations")} count={ready ? invitations.length : undefined}>
-          {!ready ? (
-            <ListSkeleton />
-          ) : (
-            <InvitationsList
-              invitations={invitations}
-              busyId={busyInvitationId}
-              onRevoke={setRevoking}
-            />
-          )}
-        </Section>
-      ) : null}
-    </div>
-  );
+      </Pane>
 
-  return (
-    <>
-      {/* No seat figure here: the plan card beside the lists carries the seats, said once. */}
-      <PageHeader
-        eyebrow={org.name}
-        title={t("nav.members")}
-        actions={
-          <>
-            <Button asChild variant="ghost" icon={<Activity />}>
-              <Link to="/app/activity">{t("nav.activity")}</Link>
-            </Button>
-            {admin ? (
-              <Button
-                type="button"
-                icon={<UserPlus />}
-                onClick={() => setInviteOpen(true)}
-                disabled={seatsFull}
-              >
-                {t("team.invite")}
-              </Button>
-            ) : null}
-          </>
-        }
-      />
-
-      {/* A failed read is said as such: an empty team would be a false fact. */}
-      {error && !data ? (
-        <EmptyState
-          icon={<TriangleAlert />}
-          title={t("common.error")}
-          action={
-            <Button
-              type="button"
-              variant="outline"
-              icon={<RefreshCw />}
-              onClick={() => void refresh()}
-            >
-              {t("common.retry")}
-            </Button>
-          }
-        />
-      ) : admin ? (
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
-          {lists}
-          <aside className="lg:sticky lg:top-8">
-            <PlanCard
+      {admin && !failed ? (
+        <Pane
+          label={`${t("members.invitations")} · ${t("settings.plan")}`}
+          width="fill"
+          bodyClassName="flex flex-col gap-6 p-4 sm:p-6"
+        >
+          <Section title={t("members.invitations")} count={ready ? invitations.length : undefined}>
+            {!ready ? (
+              <SkeletonRows rows={2} avatar={false} />
+            ) : (
+              <InvitationsList
+                invitations={invitations}
+                busyId={busyInvitationId}
+                onRevoke={setRevoking}
+              />
+            )}
+          </Section>
+          <Section title={t("settings.plan")}>
+            <PlanUsage
               org={org}
               seatsUsed={seatsUsed}
               cvsProcessed={data?.cvsProcessed ?? null}
               loading={!ready}
             />
-          </aside>
-        </div>
-      ) : (
-        lists
-      )}
+          </Section>
+        </Pane>
+      ) : null}
 
       {admin ? (
         <InviteDialog
@@ -271,6 +308,6 @@ function MembersPage() {
         busy={busyInvitationId !== null}
         onConfirm={confirmRevoke}
       />
-    </>
+    </Workspace>
   );
 }

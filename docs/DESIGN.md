@@ -65,43 +65,43 @@ v4, the scale of the one-plane workspace: stronger than v3 (a reader sees
 the lines and the greys), every pair AA at least and proven by
 `src/lib/design/contrast.test.ts` on the real file.
 
-| Grey      | Light     | Dark      | Used for                                                                                   |
-| --------- | --------- | --------- | ------------------------------------------------------------------------------------------ |
-| paper     | `#FFFFFF` | `#0A0A0A` | the page, the panes, dialogs, menus; the text on an ink fill                               |
-| 50        | `#F7F7F7` | `#0F0F0F` | `thread`: the thread pane's background (dark: `card`, `popover` too)                       |
-| 100       | `#F5F5F5` | `#141414` | `hover`: a row under the pointer                                                           |
-| 150       | `#EFEFEF` | `#1C1C1C` | `muted`, `secondary`, `accent`: the selected row, the segmented track, a chip, a disc       |
-| 200       | `#DEDEDE` | `#2A2A2A` | `line`, `border`, `track`: pane edges, row dividers, the header's edge, under a bar's ink   |
-| 300       | `#C8C8C8` | `#3A3A3A` | `input`: field borders; the disc behind initials when there is no photo                    |
-| 400       | `#C8C8C8` | `#5A5A5A` | `neutral`: the quiet outline of a dismissed mark, tier C                                   |
+| Grey      | Light     | Dark      | Used for                                                                                       |
+| --------- | --------- | --------- | ---------------------------------------------------------------------------------------------- |
+| paper     | `#FFFFFF` | `#0A0A0A` | the page, the panes, dialogs, menus; the text on an ink fill                                   |
+| 50        | `#F7F7F7` | `#0F0F0F` | `thread`: the thread pane's background (dark: `card`, `popover` too)                           |
+| 100       | `#F5F5F5` | `#141414` | `hover`: a row under the pointer                                                               |
+| 150       | `#EFEFEF` | `#1C1C1C` | `muted`, `secondary`, `accent`: the selected row, the segmented track, a chip, a disc          |
+| 200       | `#DEDEDE` | `#2A2A2A` | `line`, `border`, `track`: pane edges, row dividers, the header's edge, under a bar's ink      |
+| 300       | `#C8C8C8` | `#3A3A3A` | `input`: field borders; the disc behind initials when there is no photo                        |
+| 400       | `#C8C8C8` | `#5A5A5A` | `neutral`: the quiet outline of a dismissed mark, tier C                                       |
 | 500       | `#5F5F5F` | `#A8A8A8` | `muted-foreground`, `negative`: meta lines, labels (6.4:1 on paper, 5.6:1 on the selected row) |
-| 700       | `#333333` | `#D4D4D4` | `ink-soft`, `caution`: a second-rank text that stays dark                                  |
-| ink (900) | `#0A0A0A` | `#F5F5F5` | text, `primary`, `ring`, `positive`, `destructive`, the active rail mark, the filled action |
+| 700       | `#333333` | `#D4D4D4` | `ink-soft`, `caution`: a second-rank text that stays dark                                      |
+| ink (900) | `#0A0A0A` | `#F5F5F5` | text, `primary`, `ring`, `positive`, `destructive`, the active rail mark, the filled action    |
 
 ### Colour
 
-| Token                                            | Light                                | Dark                                 | Role                                                            |
-| ------------------------------------------------ | ------------------------------------ | ------------------------------------ | --------------------------------------------------------------- |
-| `background`                                     | `#FFFFFF`                            | `#0A0A0A`                            | the page, the panes                                             |
-| `foreground`, `ink`                              | `#0A0A0A`                            | `#F5F5F5`                            | text, the filled action, the active rail mark                   |
-| `ink-soft`                                       | `#333333`                            | `#D4D4D4`                            | a second-rank text that stays dark                              |
-| `muted-foreground`                               | `#5F5F5F`                            | `#A8A8A8`                            | meta lines, labels (AA on the page, on `muted`, `hover`, `thread`) |
-| `line`, `border`                                 | `#DEDEDE`                            | `#2A2A2A`                            | pane edges, row dividers, the header's edge                     |
-| `track`                                          | `#DEDEDE`                            | `#2A2A2A`                            | under the ink of a bar or a ring                                |
-| `input`                                          | `#C8C8C8`                            | `#3A3A3A`                            | field borders                                                   |
-| `neutral`                                        | `#C8C8C8`                            | `#5A5A5A`                            | the quiet outline of a dismissed mark, tier C                   |
-| `muted`, `secondary`, `accent`                   | `#EFEFEF`                            | `#1C1C1C`                            | the selected row, the segmented track, a chip, a disc           |
-| `hover`                                          | `#F5F5F5`                            | `#141414`                            | a row under the pointer                                         |
-| `card`, `popover`                                | `#FFFFFF`                            | `#0F0F0F`                            | dialogs, drawers, menus (with a `border`)                       |
-| `thread`                                         | `#F7F7F7`                            | `#0F0F0F`                            | the thread pane's background                                    |
-| `primary` / `primary-foreground`                 | `#0A0A0A` / `#FFFFFF`                | `#F5F5F5` / `#0A0A0A`                | the one filled action                                           |
-| `ring`                                           | `#0A0A0A`                            | `#F5F5F5`                            | the focus ring                                                  |
-| `destructive` / `destructive-foreground`         | the ink / paper                      | paper / the ink                      | erase: the confirm dialog and the word carry the consequence    |
-| `positive` / `positive-foreground`               | `#0A0A0A` / `#FFFFFF`                | `#F5F5F5` / `#0A0A0A`                | met, retained, tier A                                           |
-| `caution` / `caution-foreground`                 | `#333333` / `#0A0A0A`                | `#D4D4D4` / `#F5F5F5`                | partial, to check: an outline tone (see below)                  |
-| `negative` / `negative-foreground`               | `#5F5F5F` / `#FFFFFF`                | `#A8A8A8` / `#0A0A0A`                | missing, dismissed                                              |
-| `inverse` / `-foreground` / `-muted-foreground`  | `#0A0A0A` / `#FFFFFF` / `#A8A8A8`    | `#F5F5F5` / `#0A0A0A` / `#5F5F5F`    | a toast, a tooltip                                              |
-| `scrim`                                          | the ink at 40 percent                | black at 70 percent                  | under a dialog or a drawer (a veil darkens in both themes)      |
+| Token                                           | Light                             | Dark                              | Role                                                               |
+| ----------------------------------------------- | --------------------------------- | --------------------------------- | ------------------------------------------------------------------ |
+| `background`                                    | `#FFFFFF`                         | `#0A0A0A`                         | the page, the panes                                                |
+| `foreground`, `ink`                             | `#0A0A0A`                         | `#F5F5F5`                         | text, the filled action, the active rail mark                      |
+| `ink-soft`                                      | `#333333`                         | `#D4D4D4`                         | a second-rank text that stays dark                                 |
+| `muted-foreground`                              | `#5F5F5F`                         | `#A8A8A8`                         | meta lines, labels (AA on the page, on `muted`, `hover`, `thread`) |
+| `line`, `border`                                | `#DEDEDE`                         | `#2A2A2A`                         | pane edges, row dividers, the header's edge                        |
+| `track`                                         | `#DEDEDE`                         | `#2A2A2A`                         | under the ink of a bar or a ring                                   |
+| `input`                                         | `#C8C8C8`                         | `#3A3A3A`                         | field borders                                                      |
+| `neutral`                                       | `#C8C8C8`                         | `#5A5A5A`                         | the quiet outline of a dismissed mark, tier C                      |
+| `muted`, `secondary`, `accent`                  | `#EFEFEF`                         | `#1C1C1C`                         | the selected row, the segmented track, a chip, a disc              |
+| `hover`                                         | `#F5F5F5`                         | `#141414`                         | a row under the pointer                                            |
+| `card`, `popover`                               | `#FFFFFF`                         | `#0F0F0F`                         | dialogs, drawers, menus (with a `border`)                          |
+| `thread`                                        | `#F7F7F7`                         | `#0F0F0F`                         | the thread pane's background                                       |
+| `primary` / `primary-foreground`                | `#0A0A0A` / `#FFFFFF`             | `#F5F5F5` / `#0A0A0A`             | the one filled action                                              |
+| `ring`                                          | `#0A0A0A`                         | `#F5F5F5`                         | the focus ring                                                     |
+| `destructive` / `destructive-foreground`        | the ink / paper                   | paper / the ink                   | erase: the confirm dialog and the word carry the consequence       |
+| `positive` / `positive-foreground`              | `#0A0A0A` / `#FFFFFF`             | `#F5F5F5` / `#0A0A0A`             | met, retained, tier A                                              |
+| `caution` / `caution-foreground`                | `#333333` / `#0A0A0A`             | `#D4D4D4` / `#F5F5F5`             | partial, to check: an outline tone (see below)                     |
+| `negative` / `negative-foreground`              | `#5F5F5F` / `#FFFFFF`             | `#A8A8A8` / `#0A0A0A`             | missing, dismissed                                                 |
+| `inverse` / `-foreground` / `-muted-foreground` | `#0A0A0A` / `#FFFFFF` / `#A8A8A8` | `#F5F5F5` / `#0A0A0A` / `#5F5F5F` | a toast, a tooltip                                                 |
+| `scrim`                                         | the ink at 40 percent             | black at 70 percent               | under a dialog or a drawer (a veil darkens in both themes)         |
 
 The `sidebar-*` tokens left with the sidebar: the rail draws itself with
 `background`, `line`, `muted` and the ink. The `sheet` utility keeps its
@@ -128,11 +128,11 @@ the call sites and draws like `caution`.
 
 ### Elevation, radii, layers
 
-| Scale    | Steps                                                                                  |
-| -------- | -------------------------------------------------------------------------------------- |
-| Shadows  | `shadow-hairline` 0 1px 0 black at 6 percent (a sheet, with its 1px border), `shadow-raised` 0 2px 8px at 8 percent (a card lifted on hover), `shadow-float` 0 8px 24px at 10 percent (menus, popovers, toasts), `shadow-dialog` 0 16px 48px at 12 percent (dialogs, drawers); every floating surface also has a 1px border, and no button has a shadow; dark deepens the alphas |
-| Radii    | `rounded-sm` 6 (menu items, tooltips, small discs), `rounded-md` 8 (nav items, the organisation switcher), `rounded-lg` 12 (sheets, textareas, toasts), `rounded-xl` 16 (dialogs, drawers), `rounded-full` (buttons, pills, fields); nothing rounder than 16 but the pill |
-| Layers   | `z-sticky` 20 (sticky headers), `z-overlay` 40 (the scrim), `z-modal` 50 (dialog, drawer), `z-popover` 60 (menus above a drawer), `z-toast` 70 |
+| Scale   | Steps                                                                                                                                                                                                                                                                                                                                                                            |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shadows | `shadow-hairline` 0 1px 0 black at 6 percent (a sheet, with its 1px border), `shadow-raised` 0 2px 8px at 8 percent (a card lifted on hover), `shadow-float` 0 8px 24px at 10 percent (menus, popovers, toasts), `shadow-dialog` 0 16px 48px at 12 percent (dialogs, drawers); every floating surface also has a 1px border, and no button has a shadow; dark deepens the alphas |
+| Radii   | `rounded-sm` 6 (menu items, tooltips, small discs), `rounded-md` 8 (nav items, the organisation switcher), `rounded-lg` 12 (sheets, textareas, toasts), `rounded-xl` 16 (dialogs, drawers), `rounded-full` (buttons, pills, fields); nothing rounder than 16 but the pill                                                                                                        |
+| Layers  | `z-sticky` 20 (sticky headers), `z-overlay` 40 (the scrim), `z-modal` 50 (dialog, drawer), `z-popover` 60 (menus above a drawer), `z-toast` 70                                                                                                                                                                                                                                   |
 
 ### Type
 
@@ -169,15 +169,15 @@ desktop row that already measures 40px or more.
 
 ### Motion
 
-| Token                         | Value                     | For                                            |
-| ----------------------------- | ------------------------- | ---------------------------------------------- |
-| `duration-fast`               | 120 ms                    | hover, press, a colour change                  |
-| `duration-base`               | 180 ms                    | menus, popovers, the page change, the nav mark |
-| `duration-slow`               | 240 ms                    | dialogs and drawers entering                   |
-| `duration-slower`             | 320 ms                    | rows rising in, a bar reaching its value |
-| `ease-out-soft`               | cubic-bezier(.2,.7,.2,1)  | everything that settles                        |
-| `ease-spring`                 | cubic-bezier(.34,1.3,.64,1) | a dialog entering (a gentle overshoot, 4 percent) |
-| `--stagger`                   | 40 ms                     | the wait between two rows of a list            |
+| Token             | Value                       | For                                               |
+| ----------------- | --------------------------- | ------------------------------------------------- |
+| `duration-fast`   | 120 ms                      | hover, press, a colour change                     |
+| `duration-base`   | 180 ms                      | menus, popovers, the page change, the nav mark    |
+| `duration-slow`   | 240 ms                      | dialogs and drawers entering                      |
+| `duration-slower` | 320 ms                      | rows rising in, a bar reaching its value          |
+| `ease-out-soft`   | cubic-bezier(.2,.7,.2,1)    | everything that settles                           |
+| `ease-spring`     | cubic-bezier(.34,1.3,.64,1) | a dialog entering (a gentle overshoot, 4 percent) |
+| `--stagger`       | 40 ms                       | the wait between two rows of a list               |
 
 `src/lib/motion.ts` carries the same numbers for code that drives a
 timer (`DURATION`, `staggerDelay`, `staggerVars`) and the reading of the
@@ -259,7 +259,7 @@ Every primitive keeps its props from v2; the look is monochrome.
 - **Sheet** (drawer) the same surface; `side`, `size` md 32rem · lg 44rem
   · full (the viewport minus a gutter, for the CV viewer); slots
   `SheetHeader`, `SheetBody` (give the content `flex flex-col gap-6
-  overflow-hidden` to pin the header and footer), `SheetFooter`.
+overflow-hidden` to pin the header and footer), `SheetFooter`.
 - **Tabs** a 40px grey 100 track with pill triggers, the active one a
   paper thumb with a 1px grey 200 edge and ink text; **Segmented** the
   same track without panels, `value`/`onChange`/`options` (label, one
@@ -383,20 +383,20 @@ grey sheen), `animate-indeterminate` (a bar whose size is unknown),
 
 ## Motion: what moves and why
 
-| Moment                              | Motion                                                                                   |
-| ----------------------------------- | ---------------------------------------------------------------------------------------- |
-| A page change                       | the column fades in and rises 6px, 180ms (`PageTransition`)                              |
-| A list arriving                     | rows rise in one after the other, 320ms, 40ms apart, once (`stagger` + `rise-in`); never on a refresh |
-| A control pressed                   | it gives 2 percent, 120ms (`press`)                                                      |
-| A card that leads somewhere, hovered| it lifts 1px and its shadow with it (`sheet-link`, `lift`)                              |
-| The section changing in the sidebar | the active mark slides to it, 180ms                                                      |
-| A segmented control                 | the thumb slides to the chosen option, 180ms                                             |
-| A dialog opening                    | fades, scales from 96 percent and rises 8px with a gentle spring, 240ms; leaves in 180ms |
-| A drawer opening                    | slides in from its edge, 240ms; the scrim fades                                          |
-| A menu, a popover, a tooltip        | fades and scales from 95 percent toward its trigger, 180ms (tooltip 120ms)               |
-| Work running                        | the bar's width eases to its value and a sheen crosses it (`shine`); indeterminate when the size is unknown |
-| A photo loading                     | it fades in over the initials, 240ms                                                     |
-| A theme change                      | one viewport cross-fade (view transition), component transitions frozen meanwhile        |
+| Moment                               | Motion                                                                                                      |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| A page change                        | the column fades in and rises 6px, 180ms (`PageTransition`)                                                 |
+| A list arriving                      | rows rise in one after the other, 320ms, 40ms apart, once (`stagger` + `rise-in`); never on a refresh       |
+| A control pressed                    | it gives 2 percent, 120ms (`press`)                                                                         |
+| A card that leads somewhere, hovered | it lifts 1px and its shadow with it (`sheet-link`, `lift`)                                                  |
+| The section changing in the sidebar  | the active mark slides to it, 180ms                                                                         |
+| A segmented control                  | the thumb slides to the chosen option, 180ms                                                                |
+| A dialog opening                     | fades, scales from 96 percent and rises 8px with a gentle spring, 240ms; leaves in 180ms                    |
+| A drawer opening                     | slides in from its edge, 240ms; the scrim fades                                                             |
+| A menu, a popover, a tooltip         | fades and scales from 95 percent toward its trigger, 180ms (tooltip 120ms)                                  |
+| Work running                         | the bar's width eases to its value and a sheen crosses it (`shine`); indeterminate when the size is unknown |
+| A photo loading                      | it fades in over the initials, 240ms                                                                        |
+| A theme change                       | one viewport cross-fade (view transition), component transitions frozen meanwhile                           |
 
 Nothing moves on every re-render, nothing loops except the sheen of a
 running bar and the shimmer of a skeleton. `prefers-reduced-motion`
@@ -414,30 +414,30 @@ trigger has its one chevron; a menu item has one leading icon and, if
 anything, text on the right. Every icon-only button carries an
 `aria-label`; every decorative icon `aria-hidden`.
 
-| Meaning                 | Icon            | Meaning                | Icon              |
-| ----------------------- | --------------- | ---------------------- | ----------------- |
-| upload CVs              | `Upload`        | add a person by hand   | `UserPlus`        |
-| a brief                 | `Briefcase`     | a shortlist            | `ListChecks`      |
-| share, send a dossier   | `Share2`        | run the analysis       | `Sparkles`        |
-| present (the dossier)   | `Presentation`  | a deeper look          | `FileSearch`      |
-| set aside               | `Archive`       | similar profiles       | `Users`           |
-| print                   | `Printer`       | stop                   | `Square`          |
-| resume                  | `Play`          | retry                  | `RefreshCw`       |
-| quota, waiting          | `Hourglass`     | a photo                | `Image`           |
-| a document, a CV        | `FileText`      | consent, GDPR          | `ShieldCheck`     |
-| delete, erase           | `Trash2`        | archive                | `Archive`         |
-| edit                    | `Pencil`        | save                   | `Check`           |
-| cancel, close           | `X`             | search                 | `Search`          |
-| filter                  | `SlidersHorizontal` | sort               | `ArrowUpDown`     |
-| back                    | `ArrowLeft`     | more actions           | `Ellipsis`        |
-| retained                | `Check`         | dismissed              | `X`               |
-| partially met           | `Minus`         | not stated             | `CircleHelp`      |
-| the dashboard           | `LayoutDashboard` | activity             | `Activity`        |
-| the talent pool         | `Users`         | settings               | `Settings`        |
-| a comment               | `MessageSquare` | a mention              | `AtSign`                  |
-| copy a link             | `Copy`          | an email               | `Mail`            |
-| in processing           | `CircleDashed`  | open elsewhere (a new tab, outside the app) | `ExternalLink` |
-| a profile (in the app)  | `UserRound`     | more information       | `Info`            |
+| Meaning                | Icon                | Meaning                                     | Icon           |
+| ---------------------- | ------------------- | ------------------------------------------- | -------------- |
+| upload CVs             | `Upload`            | add a person by hand                        | `UserPlus`     |
+| a brief                | `Briefcase`         | a shortlist                                 | `ListChecks`   |
+| share, send a dossier  | `Share2`            | run the analysis                            | `Sparkles`     |
+| present (the dossier)  | `Presentation`      | a deeper look                               | `FileSearch`   |
+| set aside              | `Archive`           | similar profiles                            | `Users`        |
+| print                  | `Printer`           | stop                                        | `Square`       |
+| resume                 | `Play`              | retry                                       | `RefreshCw`    |
+| quota, waiting         | `Hourglass`         | a photo                                     | `Image`        |
+| a document, a CV       | `FileText`          | consent, GDPR                               | `ShieldCheck`  |
+| delete, erase          | `Trash2`            | archive                                     | `Archive`      |
+| edit                   | `Pencil`            | save                                        | `Check`        |
+| cancel, close          | `X`                 | search                                      | `Search`       |
+| filter                 | `SlidersHorizontal` | sort                                        | `ArrowUpDown`  |
+| back                   | `ArrowLeft`         | more actions                                | `Ellipsis`     |
+| retained               | `Check`             | dismissed                                   | `X`            |
+| partially met          | `Minus`             | not stated                                  | `CircleHelp`   |
+| the dashboard          | `LayoutDashboard`   | activity                                    | `Activity`     |
+| the talent pool        | `Users`             | settings                                    | `Settings`     |
+| a comment              | `MessageSquare`     | a mention                                   | `AtSign`       |
+| copy a link            | `Copy`              | an email                                    | `Mail`         |
+| in processing          | `CircleDashed`      | open elsewhere (a new tab, outside the app) | `ExternalLink` |
+| a profile (in the app) | `UserRound`         | more information                            | `Info`         |
 
 Known doubles to purge, and what replaces them:
 
@@ -635,7 +635,7 @@ through the monochrome tones above.
     the role (the `Meter`s, the composite behind an `InfoTip`), the
     interview points, the triage's verdict, small and muted, and the
     candidate's `TeamThread compact` at the end.
-  The shortlist tab mounts the board.
+    The shortlist tab mounts the board.
 - **Board** (the shortlist tab): no header of its own (the brief page's
   carries the primary); above the columns, at most one filled "Partager"
   once someone is retained, right-aligned; three columns from `lg` (à

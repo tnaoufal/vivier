@@ -43,15 +43,15 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { BRAND } from "@/lib/brand";
 import type { OrganizationRow } from "@/lib/db/types";
 import { useI18n, type Locale, type TranslationKey } from "@/lib/i18n";
-import { memberName, useOrg, type OrgMembership } from "@/lib/org/org-context";
+import { isPersonal, memberName, useOrg, type OrgMembership } from "@/lib/org/org-context";
 import { cn } from "@/lib/utils";
 
 import { Avatar } from "./avatar";
 import { ThemeToggle } from "./toggles";
 
-/** A space of one person. `kind` is the column spaces.md adds: read through a cast until db/types.ts carries it. */
+/** A space of one person (organizations.kind), the rail's name for org-context's reading. */
 export function isPersonalSpace(org: OrganizationRow | null | undefined): boolean {
-  return (org as { kind?: string } | null | undefined)?.kind === "personal";
+  return isPersonal(org);
 }
 
 /** How a space is named: the personal one by its kind, a team by its name. */
@@ -204,7 +204,9 @@ export function Rail({ className }: { className?: string | undefined }) {
                 className={cn(
                   "press flex size-11 items-center justify-center rounded-[10px] [&_svg]:size-5",
                   FOCUS,
-                  active ? "bg-ink text-background" : "text-muted-foreground hover:bg-muted hover:text-ink",
+                  active
+                    ? "bg-ink text-background"
+                    : "text-muted-foreground hover:bg-muted hover:text-ink",
                 )}
               >
                 <span aria-hidden="true" className="inline-flex">
@@ -356,11 +358,7 @@ export function RailItems({ onNavigate }: { onNavigate?: (() => void) | undefine
             </MenuRow>
           </li>
           <li>
-            <MenuRow
-              icon={<Languages />}
-              onSelect={() => setLocale(nextLocale)}
-              lang={nextLocale}
-            >
+            <MenuRow icon={<Languages />} onSelect={() => setLocale(nextLocale)} lang={nextLocale}>
               {t("common.language")} · {t(`common.locale.${nextLocale}`)}
             </MenuRow>
           </li>

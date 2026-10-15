@@ -1,7 +1,7 @@
 /**
- * GDPR on one card, folded by default behind one line that says what
- * matters ("Consentement inconnu · suppression le 14 oct. 2028"): the
- * consent (unknown, given, withdrawn), the last contact (the rule it
+ * GDPR in one block, folded by default behind the line that says what
+ * matters ("Consentement non renseigné · suppression le 14 oct. 2028"):
+ * the consent (unknown, given, withdrawn), the last contact (the rule it
  * drives, so many months after it, behind the field's info icon) and
  * the date the hourly purge deletes the profile, read from
  * retention_due_at() and never computed in the browser. Withdrawing
@@ -27,6 +27,8 @@ import type { CandidateRow, ConsentStatus } from "@/lib/db/types";
 import { formatDate, useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
+import { Block, type BlockHeading } from "./block";
+
 const CONSENT_OPTIONS: readonly ConsentStatus[] = ["unknown", "given", "withdrawn"];
 
 /** A type alias (not an interface) so it can travel as a Record<string, unknown> to the update. */
@@ -36,11 +38,12 @@ export type ConsentPatch = {
   last_contact_at?: string | null;
 };
 
-export function ConsentCard({
+export function ConsentBlock({
   candidate,
   retentionDueAt,
   retentionMonths,
   canEdit,
+  as,
   onSave,
 }: {
   candidate: CandidateRow;
@@ -48,10 +51,11 @@ export function ConsentCard({
   retentionDueAt: string | null;
   retentionMonths: number;
   canEdit: boolean;
+  as: BlockHeading;
   onSave: (patch: ConsentPatch) => Promise<void>;
 }) {
   const { t, locale } = useI18n();
-  const bodyId = useId();
+  const ids = useId();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
@@ -105,43 +109,36 @@ export function ConsentCard({
     : t("candidates.consent.summaryUnknown", { consent });
 
   return (
-    <section className="sheet">
-      <h2 className="text-base font-semibold text-ink">
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          aria-expanded={open}
-          aria-controls={bodyId}
-          className="flex w-full cursor-pointer items-start justify-between gap-3 rounded-lg p-6 text-left transition-colors duration-fast hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block">{t("candidates.consent.title")}</span>
-            <span className="mt-1 block text-meta font-normal text-muted-foreground">
-              {summary}
-            </span>
-          </span>
-          <ChevronDown
-            className={cn(
-              "mt-1 size-4 shrink-0 text-muted-foreground transition-transform duration-base ease-out-soft",
-              open && "rotate-180",
-            )}
-            aria-hidden="true"
-          />
-          <span className="sr-only">
-            {open ? t("candidates.section.collapse") : t("candidates.section.expand")}
-          </span>
-        </button>
-      </h2>
+    <Block as={as} title={t("candidates.consent.title")}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-controls={`${ids}-body`}
+        className="flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-sm text-left text-meta text-muted-foreground transition-colors duration-fast hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="min-w-0 flex-1 break-words tabular-nums">{summary}</span>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 transition-transform duration-base ease-out-soft",
+            open && "rotate-180",
+          )}
+          aria-hidden="true"
+        />
+        <span className="sr-only">
+          {open ? t("candidates.section.collapse") : t("candidates.section.expand")}
+        </span>
+      </button>
       {open ? (
-        <div id={bodyId} className="fade-in space-y-4 border-t border-border p-6">
+        <div id={`${ids}-body`} className="fade-in space-y-4 pt-1">
           <div className="space-y-2">
-            <Label htmlFor="consent-status">{t("candidates.consent.status")}</Label>
+            <Label htmlFor={`${ids}-status`}>{t("candidates.consent.status")}</Label>
             <Select
               value={candidate.consent_status}
               onValueChange={changeConsent}
               disabled={!canEdit || busy}
             >
-              <SelectTrigger id="consent-status">
+              <SelectTrigger id={`${ids}-status`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -168,8 +165,8 @@ export function ConsentCard({
           </div>
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Label htmlFor="last-contact">{t("candidates.consent.lastContact")}</Label>
-              {/* The rule this date drives, on demand; the summary above already says the date it gives. */}
+              <Label htmlFor={`${ids}-contact`}>{t("candidates.consent.lastContact")}</Label>
+              {/* The rule this date drives, on demand; the folded line already says the date it gives. */}
               <InfoTip label={t("candidates.consent.lastContact")}>
                 {retentionMonths === 1
                   ? t("candidates.consent.retention.one")
@@ -177,7 +174,7 @@ export function ConsentCard({
               </InfoTip>
             </div>
             <Input
-              id="last-contact"
+              id={`${ids}-contact`}
               type="date"
               value={lastContact}
               onChange={(event) => setLastContact(event.target.value)}
@@ -189,8 +186,8 @@ export function ConsentCard({
       ) : null}
       <ConfirmDialog
         open={confirmWithdraw}
-        onOpenChange={(open) => {
-          if (!busy) setConfirmWithdraw(open);
+        onOpenChange={(next) => {
+          if (!busy) setConfirmWithdraw(next);
         }}
         title={t("candidates.consent.withdrawTitle")}
         text={t("candidates.consent.withdrawText")}
@@ -199,6 +196,6 @@ export function ConsentCard({
         busy={busy}
         onConfirm={withdraw}
       />
-    </section>
+    </Block>
   );
 }

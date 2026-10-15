@@ -30,7 +30,8 @@ export function ThemeToggle({
       aria-label={label}
       title={label}
       className={cn(
-        rail && "size-11 rounded-[10px] text-muted-foreground hover:bg-muted hover:text-ink [&_svg]:size-5",
+        rail &&
+          "size-11 rounded-[10px] text-muted-foreground hover:bg-muted hover:text-ink [&_svg]:size-5",
         className,
       )}
     >

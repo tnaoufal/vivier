@@ -1,90 +1,62 @@
 /**
- * The consultant's brief on its page, folded: one sheet with the text
- * clamped to three lines, "Voir le brief" to unfold it and "Replier"
- * to fold it back (shown only when three lines do not hold it, which
- * is measured, not guessed: a phone clips what a desk shows), and
- * "Modifier" for a member, which the page answers with its drawer. A
- * brief without a text says so in muted words. The brief is the only
- * source of the analysis: what the model derived from it stays
- * internal.
+ * The consultant's brief at the top of the list pane, folded: its
+ * label, the text clamped to two lines, then "Voir le brief" (the page
+ * answers with the full text in a sheet) and, for a member, "Modifier"
+ * (the form in a sheet), as quiet links in one row. A brief without a
+ * text says so in muted words. The brief is the only source of the
+ * analysis: what the model derived from it stays internal.
  */
-import { useId, useLayoutEffect, useRef, useState } from "react";
-import { Pencil } from "lucide-react";
+import { useId } from "react";
 
-import { QuietButton } from "@/components/briefs/analysis/quiet-button";
-import { Button } from "@/components/ui/button";
 import type { BriefRow } from "@/lib/db/types";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
+const QUIET_LINK =
+  "cursor-pointer rounded-sm text-meta font-medium text-ink underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 export function BriefText({
   brief,
   canEdit,
+  onShow,
   onEdit,
+  className,
 }: {
   brief: Pick<BriefRow, "description">;
   canEdit: boolean;
+  /** Opens the full text. */
+  onShow: () => void;
+  /** Opens the form. */
   onEdit: () => void;
+  className?: string | undefined;
 }) {
   const t = useT();
   const headingId = useId();
-  const textId = useId();
-  const [open, setOpen] = useState(false);
-  const [clipped, setClipped] = useState(false);
-  const textRef = useRef<HTMLParagraphElement>(null);
   const text = brief.description.trim();
-
-  // Whether three lines hold the whole text, measured on the folded
-  // paragraph and again when its width changes; unfolded, the toggle
-  // stays so the text can be folded back.
-  useLayoutEffect(() => {
-    const element = textRef.current;
-    if (!element || open) return undefined;
-    const measure = () => setClipped(element.scrollHeight > element.clientHeight + 1);
-    measure();
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [open, text]);
-
-  const toggle = clipped || open;
   return (
-    <section aria-labelledby={headingId} className="sheet space-y-3 p-6">
-      <h2 id={headingId} className="sr-only">
+    <section aria-labelledby={headingId} className={cn("px-4 pt-4 pb-3", className)}>
+      <h2 id={headingId} className="label-caps">
         {t("briefs.part.brief")}
       </h2>
       <p
-        ref={textRef}
-        id={textId}
         className={cn(
-          "whitespace-pre-line text-body break-words",
-          text ? "text-ink" : "text-muted-foreground",
-          !open && "line-clamp-3",
+          "mt-1.5 line-clamp-2 whitespace-pre-line text-meta break-words",
+          text ? "text-ink-soft" : "text-muted-foreground",
         )}
       >
         {text || t("briefs.list.noDescription")}
       </p>
-      {toggle || canEdit ? (
-        <div className="-mb-2 -ml-3 flex flex-wrap items-center gap-1">
-          {toggle ? (
-            <QuietButton
-              label={open ? t("briefs.brief.fold") : t("briefs.brief.show")}
-              expanded={open}
-              controls={textId}
-              onClick={() => setOpen((value) => !value)}
-            />
+      {text || canEdit ? (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          {text ? (
+            <button type="button" onClick={onShow} className={QUIET_LINK}>
+              {t("briefs.brief.show")}
+            </button>
           ) : null}
           {canEdit ? (
-            <Button
-              type="button"
-              variant="ghost"
-              icon={<Pencil />}
-              onClick={onEdit}
-              className="px-3 text-muted-foreground hover:text-ink"
-            >
+            <button type="button" onClick={onEdit} className={QUIET_LINK}>
               {t("common.edit")}
-            </Button>
+            </button>
           ) : null}
         </div>
       ) : null}

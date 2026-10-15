@@ -101,7 +101,12 @@ export function Row({
           {inner}
         </button>
       ) : as === "link" && to !== undefined ? (
-        <Link to={to} onClick={onClick} aria-label={ariaLabel} className={cn(INNER, "cursor-pointer")}>
+        <Link
+          to={to}
+          onClick={onClick}
+          aria-label={ariaLabel}
+          className={cn(INNER, "cursor-pointer")}
+        >
           {inner}
         </Link>
       ) : (
@@ -124,7 +129,9 @@ export function RowText({
 }) {
   return (
     <span className={cn("block min-w-0 flex-1", className)}>
-      <span className="block truncate text-sm leading-[1.125rem] font-semibold text-ink">{title}</span>
+      <span className="block truncate text-sm leading-[1.125rem] font-semibold text-ink">
+        {title}
+      </span>
       {line ? (
         <span className="block truncate text-meta leading-[1.125rem] text-muted-foreground tabular-nums">
           {line}

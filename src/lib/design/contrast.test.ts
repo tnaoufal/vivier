@@ -28,6 +28,11 @@ import { describe, expect, it } from "vitest";
 import { contrastRatio, isHex, readTokens, relativeLuminance } from "./contrast";
 
 const css = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
+
+/** A hex or an rgba() anywhere in the value: a colour, or a shadow drawn with one. */
+function carriesColour(value: string): boolean {
+  return /#[0-9a-f]{3,6}\b|rgba?\(/i.test(value);
+}
 const THEMES = { light: readTokens(css, ":root"), dark: readTokens(css, ".dark") } as const;
 
 /** [the text or the mark, the surface it sits on, the least ratio]. */
@@ -86,8 +91,12 @@ describe("tokens v4", () => {
     expect(THEMES.dark.size).toBeGreaterThan(30);
   });
 
-  it("mirrors every token of :root in .dark and back", () => {
-    const light = [...THEMES.light.keys()].sort();
+  it("mirrors every colour of :root in .dark and back", () => {
+    // Motion and layer tokens (durations, z-indexes) live in :root alone: only what carries a colour mirrors.
+    const light = [...THEMES.light]
+      .filter(([, value]) => carriesColour(value))
+      .map(([name]) => name)
+      .sort();
     const dark = [...THEMES.dark.keys()].sort();
     expect(dark).toEqual(light);
   });

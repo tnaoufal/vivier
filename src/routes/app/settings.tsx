@@ -1,25 +1,28 @@
 /**
- * The settings, in three sections. Organisation, for administrators
- * and owners: the name, the working language, the retention of
- * candidates (CNIL: two years at most, the rule behind an info icon,
- * an error line only when the value is out of range) and the
- * candidates' photos switch, saved at once. My account, for everyone:
- * the display name, the language (saved at once), the theme (applied
- * at once) and the password behind a small dialog, which opens by
- * itself after a reset link. One filled button saves the fields of
- * both. The danger zone: leaving the organisation, deleting it (the
- * owner, behind a typed confirmation) and deleting the account, each
- * behind a confirmation that states its consequence.
+ * The settings on the plane: one pane, the content in a column, three
+ * sections under label-caps titles and no sheet. The space, for
+ * administrators and owners (titled "Équipe" or "Espace personnel"):
+ * the name, the working language, the retention of candidates (CNIL:
+ * two years at most, the rule behind an info icon, an error line only
+ * when the value is out of range) and the candidates' photos switch,
+ * saved at once. My account, for everyone: the display name, the
+ * language (saved at once), the theme (applied at once) and the
+ * password behind a small dialog, which opens by itself after a reset
+ * link. The header's one filled button saves the fields of both. The
+ * danger zone: leaving the team (not a personal space, whose one member
+ * is its owner), deleting the space (the owner, behind a typed
+ * confirmation) and deleting the account, each behind a confirmation
+ * that states its consequence.
  */
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CircleAlert, KeyRound, LogOut, Moon, Sun, Trash2, UserRoundX } from "lucide-react";
+import { Check, CircleAlert, KeyRound, LogOut, Moon, Sun, Trash2, UserRoundX } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { InfoTip } from "@/components/app-shell/info-tip";
 import { LocaleChips } from "@/components/app-shell/locale-chips";
-import { PageHeader } from "@/components/app-shell/page-header";
+import { PHONE_ICON, Pane, Workspace } from "@/components/app-shell/workspace";
 import { DeleteOrgDialog } from "@/components/team/delete-org-dialog";
 import { PasswordDialog } from "@/components/team/password-dialog";
 import { Switch } from "@/components/team/switch";
@@ -33,7 +36,13 @@ import { requireSupabase } from "@/lib/auth/supabase-client";
 import { useQuery } from "@/lib/data/use-query";
 import type { Locale } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
-import { memberName, readShowPhotos, useCurrentOrg, useOrg } from "@/lib/org/org-context";
+import {
+  isPersonal,
+  memberName,
+  readShowPhotos,
+  useCurrentOrg,
+  useOrg,
+} from "@/lib/org/org-context";
 import {
   deleteOrganization,
   errorSays,
@@ -119,10 +128,12 @@ function SettingsPage() {
   const { user, passwordRecovery, clearPasswordRecovery, updatePassword, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
+  const formId = useId();
   const orgLocaleLabelId = useId();
   const myLocaleLabelId = useId();
   const admin = can("admin");
   const owner = can("owner");
+  const personal = isPersonal(org);
   const userId = user?.id ?? "";
   const email = user?.email ?? "";
 
@@ -269,17 +280,29 @@ function SettingsPage() {
   }
 
   return (
-    <>
-      <PageHeader eyebrow={org.name} title={t("nav.settings")} />
-
-      <div className="space-y-8">
-        <form onSubmit={save} className="space-y-8">
-          {admin ? (
-            <section className="sheet p-6" aria-labelledby="settings-org-title">
-              <h2 id="settings-org-title" className="text-base font-semibold text-ink">
-                {t("settings.org")}
-              </h2>
-              <div className="mt-6 space-y-6">
+    <Workspace
+      title={t("nav.settings")}
+      actions={
+        <Button
+          type="submit"
+          form={formId}
+          icon={<Check />}
+          disabled={!canSave}
+          aria-label={t("common.save")}
+          className={PHONE_ICON}
+        >
+          <span className="max-sm:sr-only">{t("common.save")}</span>
+        </Button>
+      }
+    >
+      <Pane label={t("nav.settings")} width="fill" bodyClassName="p-4 sm:p-6">
+        <div className="max-w-3xl space-y-8">
+          <form id={formId} onSubmit={save} className="space-y-8">
+            {admin ? (
+              <section aria-labelledby="settings-org-title" className="space-y-6">
+                <h2 id="settings-org-title" className="label-caps">
+                  {personal ? t("nav.personalSpace") : t("nav.members")}
+                </h2>
                 <div className="space-y-2">
                   <Label htmlFor="org-name">{t("common.name")}</Label>
                   <Input
@@ -334,114 +357,112 @@ function SettingsPage() {
                   )}
                 </div>
                 <PhotosRow orgId={org.id} initial={readShowPhotos(org)} onSaved={refresh} />
-              </div>
-            </section>
-          ) : null}
+              </section>
+            ) : null}
 
-          <section className="sheet p-6" aria-labelledby="settings-account-title">
-            <div className="flex items-center gap-4">
-              {/* The name is in the field below: the avatar is not read a second time. */}
-              <Avatar name={shownName} size="lg" decorative />
-              <div className="min-w-0">
-                <h2 id="settings-account-title" className="text-base font-semibold text-ink">
-                  {t("settings.account")}
-                </h2>
-                <p className="truncate text-meta text-muted-foreground">{email}</p>
+            <section aria-labelledby="settings-account-title" className="space-y-6">
+              <div className="flex items-center gap-4">
+                {/* The name is in the field below: the avatar is not read a second time. */}
+                <Avatar name={shownName} size="lg" decorative />
+                <div className="min-w-0">
+                  <h2 id="settings-account-title" className="label-caps">
+                    {t("settings.account")}
+                  </h2>
+                  <p className="truncate text-meta text-muted-foreground">{email}</p>
+                </div>
               </div>
-            </div>
-            <div className="mt-6 grid gap-6 sm:grid-cols-2">
-              <div className="min-w-0 space-y-2">
-                <Label htmlFor="account-name">{t("account.displayName")}</Label>
-                <Input
-                  id="account-name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  maxLength={120}
-                  autoComplete="name"
-                  disabled={saving || profile.loading}
-                />
-              </div>
-              <div className="min-w-0 space-y-2">
-                <Label id={myLocaleLabelId}>{t("account.locale")}</Label>
-                <div role="group" aria-labelledby={myLocaleLabelId}>
-                  <LocaleChips
-                    value={savedLocale}
-                    onChange={(next) => void chooseLocale(next)}
-                    disabled={savingLocale || profile.loading}
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="min-w-0 space-y-2">
+                  <Label htmlFor="account-name">{t("account.displayName")}</Label>
+                  <Input
+                    id="account-name"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    maxLength={120}
+                    autoComplete="name"
+                    disabled={saving || profile.loading}
                   />
                 </div>
-              </div>
-              <div className="min-w-0 space-y-2">
-                <Label>{t("common.theme")}</Label>
-                <Segmented
-                  value={theme}
-                  onChange={setTheme}
-                  aria-label={t("common.theme")}
-                  options={[
-                    { value: "light", label: t("common.theme.light"), icon: <Sun /> },
-                    { value: "dark", label: t("common.theme.dark"), icon: <Moon /> },
-                  ]}
-                />
-              </div>
-              <div className="min-w-0 space-y-2">
-                <Label>{t("auth.password")}</Label>
-                <div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    icon={<KeyRound />}
-                    onClick={() => setPasswordOpen(true)}
-                  >
-                    {t("account.password.change")}
-                  </Button>
+                <div className="min-w-0 space-y-2">
+                  <Label id={myLocaleLabelId}>{t("account.locale")}</Label>
+                  <div role="group" aria-labelledby={myLocaleLabelId}>
+                    <LocaleChips
+                      value={savedLocale}
+                      onChange={(next) => void chooseLocale(next)}
+                      disabled={savingLocale || profile.loading}
+                    />
+                  </div>
+                </div>
+                <div className="min-w-0 space-y-2">
+                  <Label>{t("common.theme")}</Label>
+                  <Segmented
+                    value={theme}
+                    onChange={setTheme}
+                    aria-label={t("common.theme")}
+                    options={[
+                      { value: "light", label: t("common.theme.light"), icon: <Sun /> },
+                      { value: "dark", label: t("common.theme.dark"), icon: <Moon /> },
+                    ]}
+                  />
+                </div>
+                <div className="min-w-0 space-y-2">
+                  <Label>{t("auth.password")}</Label>
+                  <div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      icon={<KeyRound />}
+                      onClick={() => setPasswordOpen(true)}
+                    >
+                      {t("account.password.change")}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="mt-8">
-              <Button type="submit" disabled={!canSave}>
-                {t("common.save")}
-              </Button>
-            </div>
-          </section>
-        </form>
+            </section>
+          </form>
 
-        <section className="sheet p-6" aria-labelledby="settings-danger-title">
-          <h2 id="settings-danger-title" className="text-base font-semibold text-ink">
-            {t("settings.danger")}
-          </h2>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              icon={<LogOut />}
-              onClick={() => setLeaveOpen(true)}
-              disabled={leaving}
-            >
-              {t("members.leave")}
-            </Button>
-            {owner ? (
+          <section aria-labelledby="settings-danger-title" className="space-y-6">
+            <h2 id="settings-danger-title" className="label-caps">
+              {t("settings.danger")}
+            </h2>
+            <div className="flex flex-wrap gap-3">
+              {/* The one member of a personal space is its owner: the database would refuse their leaving. */}
+              {personal ? null : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  icon={<LogOut />}
+                  onClick={() => setLeaveOpen(true)}
+                  disabled={leaving}
+                >
+                  {t("members.leave")}
+                </Button>
+              )}
+              {owner ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  icon={<Trash2 />}
+                  onClick={() => setDeleteOrgOpen(true)}
+                  disabled={deletingOrg}
+                >
+                  {t("settings.delete")}
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"
-                icon={<Trash2 />}
-                onClick={() => setDeleteOrgOpen(true)}
-                disabled={deletingOrg}
+                icon={<UserRoundX />}
+                onClick={() => setDeleteAccountOpen(true)}
+                disabled={deletingAccount}
               >
-                {t("settings.delete")}
+                {t("account.danger")}
               </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              icon={<UserRoundX />}
-              onClick={() => setDeleteAccountOpen(true)}
-              disabled={deletingAccount}
-            >
-              {t("account.danger")}
-            </Button>
-          </div>
-        </section>
-      </div>
+            </div>
+          </section>
+        </div>
+      </Pane>
 
       <PasswordDialog
         open={passwordOpen}
@@ -491,6 +512,6 @@ function SettingsPage() {
         busy={deletingAccount}
         onConfirm={confirmDeleteAccount}
       />
-    </>
+    </Workspace>
   );
 }

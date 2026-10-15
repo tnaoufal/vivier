@@ -128,11 +128,12 @@ export const fr = {
   "auth.password.short": "Huit caractères au moins.",
   "auth.footer.human": "Le modèle propose, l'équipe décide.",
 
-  // onboarding
-  "onboarding.title": "Créez votre organisation",
-  "onboarding.orgName": "Nom de l'organisation",
+  // onboarding: a personal space in one click, or a team
+  "onboarding.title": "Bienvenue",
+  "onboarding.alone": "Je travaille seul",
+  "onboarding.team": "Je crée une équipe",
+  "onboarding.orgName": "Nom de l'équipe",
   "onboarding.orgName.placeholder": "Ex. Groupe Lumière RH",
-  "onboarding.create": "Créer l'organisation",
   "onboarding.locale": "Langue de travail",
   "onboarding.slugTaken": "Ce nom est déjà pris. Précisez-le.",
 
@@ -272,10 +273,11 @@ export const en = {
   "auth.password.short": "At least eight characters.",
   "auth.footer.human": "The model proposes, the team decides.",
 
-  "onboarding.title": "Create your organisation",
-  "onboarding.orgName": "Organisation name",
+  "onboarding.title": "Welcome",
+  "onboarding.alone": "I work alone",
+  "onboarding.team": "I'm creating a team",
+  "onboarding.orgName": "Team name",
   "onboarding.orgName.placeholder": "e.g. Lumière Group HR",
-  "onboarding.create": "Create the organisation",
   "onboarding.locale": "Working language",
   "onboarding.slugTaken": "This name is already taken. Make it more specific.",
 

@@ -10,12 +10,15 @@
  * processor reads the profiles in full, so they land as they are read),
  * the triage's counts once the job ended (the band's figures), the near
  * profiles the screening scored but nobody read (page by page, best
- * first, a person may still have one read in full), the candidates the
- * rows show, and the brief's shortlist, kept live. "Lancer l'analyse"
- * stores the row and pokes the processor (a run stopped or failed on
- * the same reading of the brief is queued again and resumes where it
- * was); "Interrompre" asks the runner to stop at its next step; closing
- * the tab changes nothing. Earlier analyses stay in the database and
+ * first, a person may still have one read in full), the profiles the
+ * rows show (read in lots, with the years and the place the reading
+ * pane says), and the brief's shortlist, kept live. "Analyser" stores
+ * the row and pokes the processor (a run stopped or failed on the same
+ * reading of the brief is queued again and resumes where it was);
+ * "Interrompre" asks the runner to stop at its next step; closing the
+ * tab changes nothing. `add` puts a match on the shortlist in one
+ * click, to examine or straight as retained or dismissed (the database
+ * stamps who and when, as for any decision). Earlier analyses stay in the database and
  * are not opened here: the newest is the one on screen, and a newer one
  * a colleague starts takes its place.
  */
@@ -43,15 +46,12 @@ import {
   type StoppedLine,
 } from "@/lib/briefs/presentation";
 import {
-  addShortlistItem,
   ensureShortlist,
   listScreened,
   listSearches,
-  readCandidatesById,
   readSearch,
   readShortlistState,
   readTriageState,
-  type ResultCandidate,
   type ScreenedEntry,
   type SearchSummary,
   type TriageState,
@@ -65,9 +65,11 @@ import type {
   BriefRow,
   MatchResult,
   SearchMethod,
+  ShortlistItemStatus,
 } from "@/lib/db/types";
-import { useI18n } from "@/lib/i18n";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { errorMessage, withToken } from "@/lib/platform/call";
+import { addWithStatus, readProfilesById, type ProfileCandidate } from "@/lib/shortlists/queries";
 import { toast } from "@/lib/toast";
 
 /** The analysis on screen, as stored. */
@@ -83,7 +85,14 @@ export interface AnalysisView {
 }
 
 /** The candidate of a row: undefined while it is being read, null when it was erased. */
-export type RowCandidate = ResultCandidate | null | undefined;
+export type RowCandidate = ProfileCandidate | null | undefined;
+
+/** The toast of a profile entering the shortlist: two words, by the status it enters with. */
+const ADDED_TOASTS: Record<ShortlistItemStatus, TranslationKey> = {
+  to_review: "briefs.results.addedToast",
+  retained: "shortlists.toast.retained",
+  dismissed: "shortlists.toast.dismissed",
+};
 
 /** The near profiles the screening scored but nobody read in full, best first, read page by page. */
 export interface ScreenedList {
@@ -151,6 +160,8 @@ export interface AnalysisController {
   candidateOf: (candidateId: string) => RowCandidate;
   shortlistId: string | null;
   addedIds: ReadonlySet<string>;
+  /** How many of them the team retained. */
+  retained: number;
   canRun: boolean;
   /** True when the band carries the primary action (Reprendre, Relancer): the header's button steps back. */
   canResume: boolean;
@@ -159,7 +170,8 @@ export interface AnalysisController {
   run: () => Promise<void>;
   /** Asks the runner to stop at its next step; what was stored stays. */
   stop: () => Promise<void>;
-  add: (result: MatchResult) => Promise<void>;
+  /** Puts a match on the shortlist, to examine by default, or straight as retained or dismissed (one click, the database stamps who and when); true once stored. */
+  add: (result: MatchResult, status?: ShortlistItemStatus) => Promise<boolean>;
   /** Brings a profile the triage or the screening left out back to be read in full (a person overrules the model); true once stored. */
   readAnyway: (candidateId: string) => Promise<boolean>;
 }
@@ -196,7 +208,7 @@ export function useAnalysis({
   stoppingRef.current = stopping;
   const [triage, setTriage] = useState<{ searchId: string; state: TriageState } | null>(null);
   // The candidates the rows show, by id (null: erased).
-  const [people, setPeople] = useState<ReadonlyMap<string, ResultCandidate | null>>(
+  const [people, setPeople] = useState<ReadonlyMap<string, ProfileCandidate | null>>(
     () => new Map(),
   );
   const asked = useRef(new Set<string>());
@@ -514,7 +526,7 @@ export function useAnalysis({
     for (const id of missing) asked.current.add(id);
     void (async () => {
       try {
-        const found = await readCandidatesById(await requireSupabase(), orgId, missing);
+        const found = await readProfilesById(await requireSupabase(), orgId, missing);
         if (!mounted.current) return;
         setPeople((current) => {
           const next = new Map(current);
@@ -609,8 +621,8 @@ export function useAnalysis({
   }, [briefId, canEdit, locale, orgId, refreshSearches]);
 
   const add = useCallback(
-    async (result: MatchResult) => {
-      if (!user || !canEdit) return;
+    async (result: MatchResult, status: ShortlistItemStatus = "to_review"): Promise<boolean> => {
+      if (!user || !canEdit) return false;
       // The freshest entry of the analysis (a reading may have landed since the
       // row rendered), with the criteria of the search alongside, so the
       // shortlist reads the verdicts against the brief they were made for.
@@ -622,20 +634,27 @@ export function useAnalysis({
         const supabase = await requireSupabase();
         const id =
           shortlistId ?? (await ensureShortlist(supabase, { orgId, briefId, userId: user.id }));
-        const outcome = await addShortlistItem(supabase, {
+        const outcome = await addWithStatus(supabase, {
           orgId,
           shortlistId: id,
           candidateId: result.candidateId,
           match,
           userId: user.id,
+          status,
         });
         await refreshShortlist();
         toast.success(
-          outcome === "added" ? t("briefs.results.addedToast") : t("briefs.results.alreadyAdded"),
+          t(
+            outcome === "already" && status === "to_review"
+              ? "briefs.results.alreadyAdded"
+              : ADDED_TOASTS[status],
+          ),
         );
+        return true;
       } catch (error) {
         console.error(error);
         toast.error(t("common.error"));
+        return false;
       }
     },
     [briefId, canEdit, orgId, refreshShortlist, shortlistId, t, user],
@@ -713,13 +732,12 @@ export function useAnalysis({
     candidateOf,
     shortlistId,
     addedIds,
+    retained: shortlist.data?.retained ?? 0,
     canRun: canEdit && !starting && !live,
     canResume:
       canEdit &&
       !starting &&
-      (band === "stopped" ||
-        band === "failed" ||
-        (band === "done" && unreadOf(latest?.error) > 0)),
+      (band === "stopped" || band === "failed" || (band === "done" && unreadOf(latest?.error) > 0)),
     canStop: canEdit && live && !stopping && !stopRequested,
     run,
     stop,

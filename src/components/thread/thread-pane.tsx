@@ -152,7 +152,9 @@ export function ThreadPane({
           className,
         )}
       >
-        {children ? <div className="shrink-0 border-b border-line px-4 py-3">{children}</div> : null}
+        {children ? (
+          <div className="shrink-0 border-b border-line px-4 py-3">{children}</div>
+        ) : null}
         <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
           <TeamThread
             target={target}
@@ -227,7 +229,9 @@ export function ThreadToggle({
       onClick={onToggle}
       aria-label={label}
       title={label}
-      {...(desktop ? { "aria-pressed": open } : { "aria-haspopup": "dialog", "aria-expanded": open })}
+      {...(desktop
+        ? { "aria-pressed": open }
+        : { "aria-haspopup": "dialog", "aria-expanded": open })}
       className={cn(shown ? PHONE_ICON : null, className)}
     >
       {shown ? <span className="tabular-nums max-sm:sr-only">{shown}</span> : null}
