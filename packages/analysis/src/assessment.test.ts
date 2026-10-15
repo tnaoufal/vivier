@@ -470,6 +470,39 @@ describe("enforceAssessment", () => {
     });
   });
 
+  it("never disputes a yes on a degree: the deterministic reading of a diploma is too weak to deny it", () => {
+    const diploma: BriefCriterion = {
+      id: "deg",
+      kind: "education",
+      label: "Diplôme d'ingénieur ou équivalent",
+      value: "ingénieur ou équivalent",
+      required: true,
+      weight: 3,
+    };
+    const verdicts: CriterionResult[] = [
+      { criterionId: "deg", verdict: "missing", evidence: "Diploma, Karlsruher Institut für Technologie" },
+    ];
+    const assessment = enforceAssessment(
+      [...criteria, diploma],
+      verdicts,
+      answer({
+        requirements: [
+          { criterionId: "skill", met: "yes", evidence: "Contrôleur de gestion chez X (2018-2024)" },
+          { criterionId: "lang", met: "yes", evidence: "Anglais (C1)" },
+          { criterionId: "sap", met: "yes", evidence: "SAP FI/CO" },
+          { criterionId: "deg", met: "yes", evidence: "Diploma, Karlsruher Institut für Technologie (KIT)" },
+        ],
+      }),
+      "m",
+    );
+    expect(assessment.requirements[3]).toEqual({
+      criterionId: "deg",
+      met: "yes",
+      evidence: "Diploma, Karlsruher Institut für Technologie (KIT)",
+    });
+    expect(assessment.decision).toBe("fit");
+  });
+
   it("leaves a yes alone when the deterministic pass found nothing or has no evidence", () => {
     const verdicts: CriterionResult[] = [
       { criterionId: "skill", verdict: "not_stated", evidence: null },
