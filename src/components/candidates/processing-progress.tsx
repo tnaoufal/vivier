@@ -34,12 +34,17 @@ export function ProcessingProgress({
   const count = (value: number): string => formatCount(locale, value);
   const done = active ? progress.done : (finishedTotal ?? 0);
   const total = active ? progress.total : (finishedTotal ?? 0);
+  // A wave of one CV reads in the singular.
   const sentence = active
-    ? t("candidates.processing.progress.active", {
-        done: count(progress.done),
-        total: count(progress.total),
-      })
-    : t("candidates.processing.progress.done", { total: count(total) });
+    ? progress.total === 1
+      ? t("candidates.processing.progress.active.one", { done: count(progress.done) })
+      : t("candidates.processing.progress.active", {
+          done: count(progress.done),
+          total: count(progress.total),
+        })
+    : total === 1
+      ? t("candidates.processing.progress.done.one")
+      : t("candidates.processing.progress.done", { total: count(total) });
   const rate = !active
     ? null
     : progress.throughput === null || progress.etaMinutes === null

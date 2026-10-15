@@ -1,11 +1,12 @@
 /**
  * The CVs behind a profile: each with its name, what is known of it
- * (size, date, pages, how it was structured), its status pill (which
- * says a set-aside file or a quota wait on its own) and the service's
- * sentence when it failed (an icon and the words, never a hue), a
- * "Lire" button that opens the viewer in place, a retry for a failed,
- * unreadable or set-aside one (a person may disagree with the service's
- * reading), and a button to add another CV to this profile.
+ * (size, date, pages, how it was structured), a status pill only when
+ * it is not simply processed (queued, in progress, failed, unreadable,
+ * set aside or waiting for the quota: the pill says it on its own), the
+ * service's sentence when it failed (an icon and the words, never a
+ * hue), a "Lire" button that opens the viewer in place, a retry for a
+ * failed, unreadable or set-aside one (a person may disagree with the
+ * service's reading), and a button to add another CV to this profile.
  */
 import { useState } from "react";
 import { CircleAlert, FileSearch, FileText, RefreshCw, Upload } from "lucide-react";
@@ -100,16 +101,16 @@ export function DocumentsCard({
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
                     {document.file_name}
                   </span>
-                  {/* A quota refusal is a wait, not a failure: it reads as one. */}
+                  {/* A quota refusal is a wait, not a failure: it reads as one. A processed document is the normal case and wears no pill. */}
                   {isQuotaFailure(document) ? (
                     <Pill size="sm" tone="caution" dot>
                       {t("candidates.documents.status.quota")}
                     </Pill>
-                  ) : (
+                  ) : document.status !== "processed" ? (
                     <Pill size="sm" tone={documentTone(document.status)} dot>
                       {t(documentStatusKey(document.status))}
                     </Pill>
-                  )}
+                  ) : null}
                 </div>
                 <p className="mt-0.5 text-meta text-muted-foreground tabular-nums">
                   {details(document)}

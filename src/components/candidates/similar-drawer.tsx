@@ -6,17 +6,16 @@
  * the headline and the skills). Every row reads the seniority first
  * ("12 ans", or that the profile states none), then who (the photo
  * when the organisation shows photos), the position held today, and
- * the proximity as a meter named after the measure that spoke. The
+ * the proximity as a percentage beside the measure that spoke. The
  * list loads when the drawer opens, its rows rising in once. A
  * proximity is a reading aid: the person opens the profiles and
  * compares, nothing is decided here.
  */
 import { Link } from "@tanstack/react-router";
-import { RefreshCw, Users } from "lucide-react";
+import { CircleAlert, RefreshCw, Users } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { EmptyState } from "@/components/app-shell/empty-state";
-import { Meter } from "@/components/app-shell/meter";
 import { Pill } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,7 +81,10 @@ export function SimilarDrawer({
             </>
           ) : similar.error !== null ? (
             <div className="space-y-3">
-              <p className="text-sm text-negative">{t("similar.loadError")}</p>
+              <p role="alert" className="flex items-start gap-1.5 text-sm text-ink">
+                <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0">{t("similar.loadError")}</span>
+              </p>
               <Button
                 type="button"
                 variant="outline"
@@ -151,7 +153,9 @@ function SimilarRow({
           ) : null}
         </div>
         {headline ? <p className="truncate text-sm text-muted-foreground">{headline}</p> : null}
-        <Meter className="mt-3" label={t(`similar.method.${profile.method}`)} value={percent} />
+        <p className="mt-1 text-meta text-muted-foreground tabular-nums">
+          {t("similar.proximity", { percent, method: t(`similar.method.${profile.method}`) })}
+        </p>
       </div>
     </div>
   );

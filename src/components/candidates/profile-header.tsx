@@ -63,7 +63,7 @@ export function ProfileHeader({
     candidate.consent_status === "withdrawn";
 
   return (
-    <section className="sheet p-6 sm:p-8" aria-label={name}>
+    <section className="sheet p-6" aria-label={name}>
       <div className="flex items-start gap-5">
         <Avatar name={name} size="xl" variant="profile" photoUrl={photoUrl} decorative />
         <div className="min-w-0 flex-1">

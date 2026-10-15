@@ -40,7 +40,7 @@ function Block({
   children: ReactNode;
 }) {
   return (
-    <section className="p-6 sm:p-8">
+    <section className="p-6">
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <h2 className="text-base font-semibold text-ink">
           {title}
@@ -172,12 +172,13 @@ function SkillsBlock({
               </li>
             ))}
           </ul>
+          {/* A 40px target drawn at the text's height: the padding and the negative margin cancel on the page. */}
           {hidden > 0 || skills.length > SKILLS_SHOWN ? (
             <button
               type="button"
               onClick={() => setExpanded((value) => !value)}
               aria-expanded={expanded}
-              className="cursor-pointer rounded-sm text-sm font-medium text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="-my-2.5 cursor-pointer rounded-sm py-2.5 text-sm font-medium text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {hidden === 1
                 ? t("candidates.skills.more.one")

@@ -77,6 +77,7 @@ export function ChipEditor({
               className={cn(CHIP_BASE, "gap-0.5 pl-2.5", canEdit ? "pr-1" : "pr-2.5")}
             >
               <span className="min-w-0 truncate">{value}</span>
+              {/* A 24px mark in the chip, a 40px target through the pseudo-element around it. */}
               {canEdit ? (
                 <button
                   type="button"
@@ -84,7 +85,7 @@ export function ChipEditor({
                   disabled={busy}
                   aria-label={t("candidates.chips.remove", { value })}
                   title={t("candidates.chips.remove", { value })}
-                  className="press inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  className="press relative inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full before:absolute before:-inset-2 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                 >
                   <X className="size-3.5" aria-hidden="true" />
                 </button>

@@ -1,14 +1,16 @@
 /**
  * Words of the similar profiles: the button on a profile, the drawer
- * that lists them seniority first, the two measures the database may
- * have used, and the years when a profile states none.
+ * that lists them seniority first, the proximity line and the two
+ * measures the database may have used, and the years when a profile
+ * states none.
  */
 const fr = {
   "similar.button": "Profils similaires",
-  "similar.title": "Profils proches · séniorité d'abord",
+  "similar.title": "Profils proches",
   "similar.subtitle": "Proches de {name}",
   "similar.method.embedding": "Sens du parcours",
   "similar.method.skills": "Compétences",
+  "similar.proximity": "{percent} % · {method}",
   "similar.years.unknown": "Non renseigné",
   "similar.empty.title": "Aucun profil proche",
   "similar.loadError": "Les profils similaires n'ont pas pu être chargés.",
@@ -17,10 +19,11 @@ const fr = {
 
 const en = {
   "similar.button": "Similar profiles",
-  "similar.title": "Close profiles · seniority first",
+  "similar.title": "Close profiles",
   "similar.subtitle": "Close to {name}",
   "similar.method.embedding": "Career meaning",
   "similar.method.skills": "Skills",
+  "similar.proximity": "{percent}% · {method}",
   "similar.years.unknown": "Not stated",
   "similar.empty.title": "No close profile",
   "similar.loadError": "The similar profiles could not be loaded.",

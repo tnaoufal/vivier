@@ -546,13 +546,8 @@ export function UploadDialog({
                         )}
                         aria-hidden="true"
                       />
-                      <span className="min-w-0 truncate">
-                        {failedOpen
-                          ? t("candidates.upload.failed.hide")
-                          : t("candidates.upload.failed.show", {
-                              count: formatCount(locale, failedItems.length),
-                            })}
-                      </span>
+                      {/* One label in both states: the chevron and aria-expanded say open or closed, the counter above says how many. */}
+                      <span className="min-w-0 truncate">{t("candidates.upload.failed.show")}</span>
                     </button>
                     <Button
                       type="button"

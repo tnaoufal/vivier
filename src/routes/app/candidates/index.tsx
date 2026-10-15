@@ -375,7 +375,11 @@ function CandidatesPage() {
               ) : null}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-80 space-y-4">
+          <PopoverContent
+            align="end"
+            aria-label={t("candidates.filters")}
+            className="w-80 space-y-4"
+          >
             {filterField("location", t("candidates.field.location"))}
             {filterField("years", t("candidates.filter.years"), {
               inputMode: "numeric",

@@ -50,12 +50,13 @@ export function ClampedText({
       >
         {text}
       </p>
+      {/* A 40px target drawn at the text's height, 4px under the paragraph: the padding and the margins cancel on the page. */}
       {overflows ? (
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
           aria-expanded={expanded}
-          className="mt-1 cursor-pointer rounded-sm text-sm font-medium text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="-mt-1.5 -mb-2.5 cursor-pointer rounded-sm py-2.5 text-sm font-medium text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {expanded ? t("candidates.showLess") : t("candidates.showMore")}
         </button>

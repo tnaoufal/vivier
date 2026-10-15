@@ -271,7 +271,7 @@ function CandidatePage() {
         <p className="sr-only">{t("common.loading")}</p>
         <div className={GRID} aria-busy="true">
           <div className="min-w-0 space-y-6">
-            <div className="sheet flex items-start gap-5 p-6 sm:p-8">
+            <div className="sheet flex items-start gap-5 p-6">
               <Skeleton className="size-18 shrink-0 rounded-lg" />
               <div className="flex-1 space-y-3 pt-1">
                 <Skeleton className="h-5 w-1/3" />
@@ -327,8 +327,9 @@ function CandidatePage() {
   const documentList = documents.data ?? [];
   const primary = primaryDocument(documentList);
 
-  // One filled action, the CV read in place; everything else waits in the menu. Under `sm` the
-  // filled button is its 40px icon, its name kept for assistive technologies.
+  // One filled action, the CV read in place; then the thread's button, then the menu for the
+  // rest, in the order of a brief's page. Under `sm` the filled button is its 40px icon, its
+  // name kept for assistive technologies.
   const actions = (
     <>
       {primary ? (
@@ -341,6 +342,7 @@ function CandidatePage() {
           <span className="max-sm:sr-only">{t("candidates.documents.view")}</span>
         </Button>
       ) : null}
+      <ThreadButton target={target} onClick={() => setThreadOpen(true)} />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -391,7 +393,6 @@ function CandidatePage() {
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-      <ThreadButton target={target} onClick={() => setThreadOpen(true)} />
     </>
   );
 

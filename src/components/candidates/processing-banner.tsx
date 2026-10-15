@@ -13,7 +13,7 @@
  * profile has no page of its own.
  */
 import { useEffect, useState } from "react";
-import { ChevronDown, ExternalLink, Hourglass, RefreshCw } from "lucide-react";
+import { ChevronDown, CircleAlert, ExternalLink, Hourglass, RefreshCw } from "lucide-react";
 
 import { Pill } from "@/components/app-shell/pill";
 import { ProcessingProgress } from "@/components/candidates/processing-progress";
@@ -132,7 +132,10 @@ export function ProcessingBanner({
     finished
       ? {
           key: "done",
-          text: t("candidates.processing.progress.done", { total: count(finished.total) }),
+          text:
+            finished.total === 1
+              ? t("candidates.processing.progress.done.one")
+              : t("candidates.processing.progress.done", { total: count(finished.total) }),
         }
       : null,
     counts.failed > 0 ? { key: "failed", text: failedText } : null,
@@ -195,7 +198,7 @@ export function ProcessingBanner({
   const hidden = others.data ? setAside - others.data.length : 0;
 
   return (
-    <section className="sheet fade-in mb-6 px-5 py-4 text-sm sm:px-6">
+    <section className="sheet fade-in mb-6 p-4 text-sm sm:px-6">
       <p className="sr-only" role="status">
         {announcement.map((part) => (
           <span key={part.key}>{part.text} </span>
@@ -248,8 +251,23 @@ export function ProcessingBanner({
               <SkeletonRows rows={2} avatar={false} className="-mx-4 sm:-mx-6" />
             </>
           ) : null}
+          {others.error ? (
+            <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3 text-ink">
+              <span className="flex min-w-0 flex-1 items-start gap-1.5">
+                <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0">{t("candidates.listError")}</span>
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                icon={<RefreshCw />}
+                onClick={() => void others.refresh()}
+              >
+                {t("common.retry")}
+              </Button>
+            </div>
+          ) : null}
           <ul className="divide-y divide-border">
-            {others.error ? <li className="py-3 text-ink">{t("candidates.listError")}</li> : null}
             {(others.data ?? []).map((document: DocumentRow) => (
               <li key={document.id} className="flex flex-wrap items-center gap-3 py-3">
                 <div className="min-w-0 flex-1">
@@ -294,7 +312,9 @@ export function ProcessingBanner({
             ))}
             {hidden > 0 ? (
               <li className="py-3 text-meta text-muted-foreground tabular-nums">
-                {t("candidates.processing.more", { count: count(hidden) })}
+                {hidden === 1
+                  ? t("candidates.processing.more.one")
+                  : t("candidates.processing.more", { count: count(hidden) })}
               </li>
             ) : null}
           </ul>
