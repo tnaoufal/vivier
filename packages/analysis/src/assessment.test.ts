@@ -7,6 +7,8 @@ import {
   BORDERLINE_MIN_SCORE,
   bucketResults,
   CHALLENGE_DOUBT_SCORE_CAP,
+  CHALLENGE_KINDS,
+  DEMOTING_CHALLENGE_KINDS,
   CONCERNS_MAX,
   decisionOf,
   enforceAssessment,
@@ -501,6 +503,61 @@ describe("enforceAssessment", () => {
       evidence: "Diploma, Karlsruher Institut für Technologie (KIT)",
     });
     expect(assessment.decision).toBe("fit");
+  });
+
+  it("keeps a yes the deterministic pass confirms, even when the model's sentence is its own computation", () => {
+    const years: BriefCriterion = {
+      id: "years",
+      kind: "experience",
+      label: "8 ans d'expérience minimum",
+      value: "8",
+      required: true,
+      weight: 3,
+    };
+    const verdicts: CriterionResult[] = [{ criterionId: "years", verdict: "match", evidence: "16" }];
+    const read = (evidence: string | null) =>
+      enforceAssessment(
+        [...criteria, years],
+        verdicts,
+        answer({
+          requirements: [
+            { criterionId: "skill", met: "yes", evidence: "Contrôleur de gestion chez X (2018-2024)" },
+            { criterionId: "lang", met: "yes", evidence: "Anglais (C1)" },
+            { criterionId: "sap", met: "yes", evidence: "SAP FI/CO" },
+            { criterionId: "years", met: "yes", evidence },
+          ],
+        }),
+        "m",
+        { texts },
+      );
+    const computed = read("16 ans d'expérience (2008-)");
+    // Met, and the sentence keeps its mark: it is the model's computation, not a quote.
+    expect(computed.requirements[3]).toEqual({
+      criterionId: "years",
+      met: "yes",
+      evidence: "16 ans d'expérience (2008-)",
+      evidenceUnverified: true,
+    });
+    expect(computed.decision).toBe("fit");
+    // Without a sentence, the deterministic evidence is shown.
+    expect(read(null).requirements[3]).toEqual({ criterionId: "years", met: "yes", evidence: "16" });
+    // Without the confirmation, the same sentence is a claim: met in part.
+    const unconfirmed = enforceAssessment(
+      [...criteria, years],
+      [{ criterionId: "years", verdict: "not_stated", evidence: null }],
+      answer({
+        requirements: [
+          { criterionId: "skill", met: "yes", evidence: "Contrôleur de gestion chez X (2018-2024)" },
+          { criterionId: "lang", met: "yes", evidence: "Anglais (C1)" },
+          { criterionId: "sap", met: "yes", evidence: "SAP FI/CO" },
+          { criterionId: "years", met: "yes", evidence: "16 ans d'expérience (2008-)" },
+        ],
+      }),
+      "m",
+      { texts },
+    );
+    expect(unconfirmed.requirements[3]?.met).toBe("partial");
+    expect(unconfirmed.decision).toBe("borderline");
   });
 
   it("leaves a yes alone when the deterministic pass found nothing or has no evidence", () => {
@@ -1586,6 +1643,33 @@ describe("applyChallenge", () => {
       doubt.reason,
     ]);
     expect(applyChallenge(assessed("fit", 85), doubt).concerns).toEqual([doubt.reason]);
+  });
+
+  it("keeps a profile retained on a doubt the team weighs, and sends it back on the métier or a required requirement", () => {
+    for (const kind of ["seniority", "contradiction", "context"]) {
+      const after = applyChallenge(retained, { ...doubt, kind });
+      expect(after.decision).toBe("fit");
+      expect(after.score).toBe(85);
+      expect(after.concerns).toEqual(["Pas de management", doubt.reason]);
+      expect(after.challenge).toEqual({
+        verdict: "doubt",
+        kind,
+        reason: doubt.reason,
+        evidence: doubt.evidence,
+      });
+    }
+    for (const kind of ["metier", "requirement"]) {
+      const after = applyChallenge(retained, { ...doubt, kind });
+      expect(after.decision).toBe("borderline");
+      expect(after.score).toBe(CHALLENGE_DOUBT_SCORE_CAP);
+      expect(after.challenge?.kind).toBe(kind);
+    }
+    // A kind it does not know reads as unclassed: sent back, stored without a kind.
+    const odd = applyChallenge(retained, { ...doubt, kind: "vibes" });
+    expect(odd.decision).toBe("borderline");
+    expect(odd.challenge).toEqual({ verdict: "doubt", reason: doubt.reason, evidence: doubt.evidence });
+    expect(DEMOTING_CHALLENGE_KINDS.has("metier")).toBe(true);
+    expect(CHALLENGE_KINDS).toEqual(["metier", "requirement", "seniority", "contradiction", "context"]);
   });
 
   it("never raises: a borderline stays borderline, a no_fit stays no_fit", () => {

@@ -11,6 +11,7 @@
 export type {
   Assessment,
   AssessmentChallenge,
+  ChallengeKind,
   AssessmentDecision,
   AssessmentDimension,
   AssessmentProfile,
@@ -148,6 +149,9 @@ export {
   BORDERLINE_MIN_SCORE,
   bucketResults,
   CHALLENGE_DOUBT_SCORE_CAP,
+  CHALLENGE_KINDS,
+  DEMOTING_CHALLENGE_KINDS,
+  isChallengeKind,
   compareTiered,
   CONCERNS_MAX,
   decisionOf,

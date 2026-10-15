@@ -44,6 +44,7 @@ import type {
   Assessment,
   AssessmentChallenge,
   AssessmentDecision,
+  ChallengeKind,
   AssessmentDimension,
   AssessmentTier,
   BriefCriterion,
@@ -84,7 +85,7 @@ export const ROLE_NO_SCORE_CAP = 25;
 export const ROLE_PARTIAL_SCORE_CAP = 65;
 /** The role at "unknown" (no experience to read) caps the score here and the decision at borderline. */
 export const ROLE_UNKNOWN_SCORE_CAP = 60;
-/** A second opinion's doubt with evidence caps the score here (and the decision at borderline). */
+/** A second opinion's doubt with evidence on the métier or a required requirement caps the score here (and the decision at borderline). */
 export const CHALLENGE_DOUBT_SCORE_CAP = 69;
 
 /** One dimension as the model answers it, before any rule applies. */
@@ -110,9 +111,37 @@ export interface ModelAssessmentAnswer {
 /** The second opinion as the schema lets it through. */
 export interface ModelChallengeAnswer {
   verdict: string;
+  /** What a doubt is about (CHALLENGE_KINDS); anything else reads as unclassed. */
+  kind?: string | null | undefined;
   reason?: string | null | undefined;
   evidence?: string | null | undefined;
 }
+
+export const CHALLENGE_KINDS: readonly ChallengeKind[] = [
+  "metier",
+  "requirement",
+  "seniority",
+  "contradiction",
+  "context",
+];
+
+export function isChallengeKind(value: unknown): value is ChallengeKind {
+  return typeof value === "string" && (CHALLENGE_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * The doubts that send a retained profile back to the team before it is
+ * presented: another métier behind the titles, a required requirement the
+ * first reading marked met and the profile does not meet. A doubt on the
+ * seniority, a contradiction of the CV or the context joins the
+ * reservations, first, and the profile stays retained: the team weighs
+ * it. A doubt the second reading did not class counts as one on the
+ * métier.
+ */
+export const DEMOTING_CHALLENGE_KINDS: ReadonlySet<ChallengeKind> = new Set<ChallengeKind>([
+  "metier",
+  "requirement",
+]);
 
 /** What the rules read besides the model's answer. */
 export interface EnforceOptions {
@@ -408,7 +437,14 @@ function requirementOf(
   if (met === "unknown") evidence = null;
   const saidYes = met === "yes";
   let unverified = evidence !== null && texts !== undefined && !evidenceGrounded(evidence, texts);
-  if (saidYes && (!evidence || unverified)) met = "partial";
+  // A "yes" the deterministic pass confirms from the profile's own fields (the years the CV
+  // states, a listed skill, a degree of the family) stands even when the model's sentence is
+  // its own computation ("16 ans d'expérience (2008-)") rather than a quote: the fact is
+  // corroborated; the sentence keeps its mark when it is not one.
+  const corroborated =
+    saidYes && deterministic?.verdict === "match" && Boolean(deterministic.evidence);
+  if (corroborated && !evidence) evidence = clip(deterministic?.evidence, EVIDENCE_MAX);
+  if (saidYes && !corroborated && (!evidence || unverified)) met = "partial";
   if (met === "no" && unverified) {
     // The model's quote goes; what the deterministic pass may put in its place is the rules' own, not a claim.
     evidence = null;
@@ -681,9 +717,16 @@ export function applyChallenge(
     };
     return { ...assessment, ...counted, challenge };
   }
+  const kind = isChallengeKind(answer.kind) ? answer.kind : null;
   const concerns = [...(assessment.concerns ?? [])];
   if (!concerns.includes(reason)) concerns.push(reason);
-  const challenge: AssessmentChallenge = { verdict: "doubt", reason, evidence };
+  const challenge: AssessmentChallenge = kind
+    ? { verdict: "doubt", kind, reason, evidence }
+    : { verdict: "doubt", reason, evidence };
+  // A doubt the team weighs (the seniority, a contradiction, the context) keeps the profile retained.
+  if (kind !== null && !DEMOTING_CHALLENGE_KINDS.has(kind)) {
+    return { ...assessment, ...counted, concerns, challenge };
+  }
   return {
     ...assessment,
     ...counted,

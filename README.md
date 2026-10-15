@@ -721,8 +721,11 @@ goes and leaves the stage and the progress on the row, and
    `evidenceGrounded()` looks for the quote in them, case, accents and
    spacing apart: whole when short, else a window of twelve characters
    found verbatim, else 60 % of its tokens of four letters or more found
-   as words of one text. A `yes` without a quote, or with one found
-   nowhere, becomes `partial`, the quote kept and marked unverified
+   as words of one text. A `yes` the deterministic pass confirms from the
+   profile's own fields (the years the CV states, a listed skill, a
+   degree of the family) stands, its sentence still marked when it is the
+   model's computation rather than a quote; otherwise a `yes` without a
+   quote, or with one found nowhere, becomes `partial`, the quote kept and marked unverified
    ("quote not found in the CV" in the drawer); a `no` without a grounded
    quote becomes `unknown`, unless the deterministic pass found the
    requirement missing with evidence of its own, which is then shown; a
@@ -780,11 +783,15 @@ goes and leaves the stage and the progress on the row, and
    the profile does not meet, a context too far when the brief insists on
    it; silence is never a reason, nor is a reservation the first reading
    already lists. It answers `confirmed` (with one sentence on what the
-   profile rests on) or `doubt` with a reason and a quote.
-   `applyChallenge()` can only lower: a doubt whose quote is found in the
-   profile and whose reason names nothing forbidden sends the decision to
-   `borderline` (a `no_fit` is never raised), caps the score at 69,
-   appends the reason to the concerns and stores the challenge; a doubt
+   profile rests on) or `doubt` with a reason, a quote and what it is
+   about (`metier`, `requirement`, `seniority`, `contradiction`,
+   `context`). `applyChallenge()` can only lower: a doubt whose quote is
+   found in the profile and whose reason names nothing forbidden is
+   appended to the concerns and stored; on the métier or a required
+   requirement (or unclassed) it also sends the decision to `borderline`
+   (a `no_fit` is never raised) and caps the score at 69, while a doubt
+   on the seniority, a contradiction or the context leaves the profile
+   retained for the team to weigh; a doubt
    without a quote, or with one the profile does not hold, is an opinion
    and is stored as confirmed, changing nothing. The drawer puts the
    doubt first among the reservations ("Seconde lecture : …"). A call the

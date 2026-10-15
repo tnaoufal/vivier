@@ -115,8 +115,13 @@ export type AssessmentDimension = "role" | "seniority" | "context" | "trajectory
 export type AssessmentTier = "A" | "B" | "C";
 
 /** The second opinion on a retained profile: the reason not to present it, if any. */
+/** What a second opinion's doubt is about: another métier, a required requirement not met, the seniority, facts of the CV that do not add up, the context. */
+export type ChallengeKind = "metier" | "requirement" | "seniority" | "contradiction" | "context";
+
 export interface AssessmentChallenge {
   verdict: "confirmed" | "doubt";
+  /** What a doubt is about, as the second reading classed it; absent on a confirmation, and on a doubt it did not class or stored before the kinds. */
+  kind?: ChallengeKind;
   reason: string | null;
   evidence: string | null;
 }

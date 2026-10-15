@@ -215,6 +215,7 @@ describe("prompts", () => {
       "(a requirement marked required in brief.requirements)",
     );
     expect(challengeSystemPrompt()).not.toContain("brief.roleProfile.mustHaves");
+    expect(challengeSystemPrompt()).toContain('"kind":"metier|requirement|seniority|contradiction|context"');
   });
 
   it("judge the seniority on the level reached, never on a ceiling of years the brief did not state, and read a junior brief's internships as positions", () => {
