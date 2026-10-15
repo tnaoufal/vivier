@@ -322,6 +322,28 @@ describe("evaluateCriterion: education", () => {
       evaluateCriterion(criterion({ kind: "education", value: "DSCG" }), profile()).verdict,
     ).toBe("not_stated");
   });
+
+  it("reads a degree by its family in either language and ignores the filler of the requirement", () => {
+    const engineers = profile({
+      education: [
+        { degree: "CHEMICAL ENGINEERING GRADUATION", school: "EMI, Rabat", year: "2008" },
+        { degree: "Baccalauréat scientifique", school: "Lycée Pilote", year: "2003" },
+      ],
+    });
+    const ask = (value: string) => evaluateCriterion(criterion({ kind: "education", value }), engineers);
+    expect(ask("ingénieur ou équivalent").verdict).toBe("match");
+    expect(ask("Diplôme d'ingénieur").verdict).toBe("match");
+    // The field asked for is not named by the degree: met in part, never denied.
+    expect(ask("ingénieur chimie").verdict).toBe("partial");
+    expect(ask("master ou équivalent").verdict).toBe("missing");
+    const french = profile({
+      education: [{ degree: "Ingénieur d'État en électromécanique", school: "École des Mines", year: "2001" }],
+    });
+    expect(evaluateCriterion(criterion({ kind: "education", value: "engineer" }), french).verdict).toBe("match");
+    expect(evaluateCriterion(criterion({ kind: "education", value: "MSc" }), french).verdict).toBe("missing");
+    const masters = profile({ education: [{ degree: "MSc Chemistry", school: "KIT", year: "2010" }] });
+    expect(evaluateCriterion(criterion({ kind: "education", value: "master ou équivalent" }), masters).verdict).toBe("match");
+  });
 });
 
 describe("evaluateCriterion: role", () => {

@@ -726,8 +726,10 @@ goes and leaves the stage and the progress on the row, and
    ("quote not found in the CV" in the drawer); a `no` without a grounded
    quote becomes `unknown`, unless the deterministic pass found the
    requirement missing with evidence of its own, which is then shown; a
-   `yes` on a required criterion the deterministic pass contradicts
-   becomes `partial` with both readings; a dimension's score stands above
+   `yes` on a required skill, language, place or years the deterministic
+   pass contradicts becomes `partial` with both readings (a degree's
+   wording is too varied for that pass to deny one); a dimension's score
+   stands above
    neutral (50) only on a grounded quote. A note, an evidence, a strength,
    a concern, a question or a tiering line that names a protected
    characteristic or a career break (`forbiddenSentence()`: the core

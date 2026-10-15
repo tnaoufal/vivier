@@ -388,6 +388,14 @@ export function evidenceGrounded(evidence: string, texts: readonly string[]): bo
  *   Silence read as a lack is the one thing the prompt forbids, and a
  *   profile is never set aside with nothing to show for it.
  */
+/** The kinds whose deterministic reading may dispute a model's "yes": a degree's or a free requirement's wording is too varied to deny. */
+const DISPUTABLE_KINDS: ReadonlySet<BriefCriterion["kind"]> = new Set([
+  "skill",
+  "language",
+  "location",
+  "experience",
+]);
+
 function requirementOf(
   criterion: BriefCriterion,
   answer: ModelAssessmentAnswer["requirements"][number] | undefined,
@@ -414,6 +422,7 @@ function requirementOf(
   if (
     saidYes &&
     criterion.required &&
+    DISPUTABLE_KINDS.has(criterion.kind) &&
     deterministic?.verdict === "missing" &&
     deterministic.evidence
   ) {
