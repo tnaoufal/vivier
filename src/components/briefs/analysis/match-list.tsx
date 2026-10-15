@@ -95,6 +95,10 @@ export function MatchList({
             unconfirmed={
               provisional && result.assessment?.decision === "fit" && !result.assessment.challenge
             }
+            doubted={
+              result.assessment?.decision === "fit" &&
+              result.assessment.challenge?.verdict === "doubt"
+            }
             added={addedIds.has(result.candidateId)}
             canAdd={canAdd}
             onOpen={() => onOpen(index)}

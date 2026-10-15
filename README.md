@@ -906,10 +906,12 @@ no menu to reopen them. The matches tab, top to bottom:
   the import.
 - the **matches alone** (`fit`), one 64px row each, tier then score: the
   rank, the photo or the initials, the name and the position held today,
-  one line from `md` (the tiering's note, else the first sentence of the
-  reading), the tier letter (`TierPill`: A an ink disc, B an ink
-  outline, C a grey outline) or the quiet word "À confirmer" while the
-  second opinion has not seen the match, and beside the row the
+  one line from `md` (the second opinion's doubt when it kept the match,
+  else the tiering's note, else the first sentence of the reading), the
+  word "Doute" on a match the second opinion doubted without sending it
+  back, the tier letter (`TierPill`: A an ink disc, B an ink outline, C
+  a grey outline) or the quiet word "À confirmer" while the second
+  opinion has not seen the match, and beside the row the
   shortlist button (a check once added). No ring: the score lives in the
   drawer. Rows rise in as their batch lands and never again.
 - right under them, a quiet toggle, "N profils proches", unfolds the
@@ -955,13 +957,18 @@ no menu to reopen them. The matches tab, top to bottom:
 send as it is, and nothing else. A profile is a match only when the model
 read its métier as the role with a quote found in the CV and scored that
 dimension 70 or more (`ROLE_DIMENSION_FIT_MIN`), every required
-requirement is met with a quote found in the CV, the composite reaches
-75 (`FIT_MIN_SCORE`) and the second opinion raised no grounded doubt; the
-tiering orders the matches (A before B) and sends a match it puts at C
-to the near profiles. Everything the rules can only hold back is a near
-profile (an adjacent métier, a métier under 70, a composite between 45
-and 74, a must-have not stated or met in part, a doubt with evidence, a
-tier C), and a role at `no`, a must-have at `no` or a composite under 45
+requirement is met with a quote found in the CV (a requirement on years
+alone, by the years the profile states; one the model itself read as met
+in part, with a quote, at most), the composite reaches 75
+(`FIT_MIN_SCORE`) and the second opinion raised no grounded doubt on the
+métier or a required requirement (a doubt on the seniority, a
+contradiction or the context stays on the match's row, "Doute", for the
+team to weigh); the tiering orders the matches (A before B) and sends a
+match it puts at C to the near profiles. Everything the rules can only
+hold back is a near profile (an adjacent métier, a métier under 70, a
+composite between 45 and 74, a must-have not stated, two met in part or
+one the rules could not ground, a doubt with evidence on the métier or a
+required requirement, a tier C), and a role at `no`, a must-have at `no` or a composite under 45
 is set aside, counted and listed only on demand. So a pool with no
 match reads "0 correspondance" once every stage ran, with how many
 profiles were analysed and the requirement most often missing; while

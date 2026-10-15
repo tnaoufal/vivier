@@ -3,7 +3,9 @@
  * here: every requirement of the brief gets a row, the evidence and the
  * summary are clipped, every quote is checked against the texts the
  * model was given (a "yes" whose quote is not found there reads as
- * "partial" and is marked unverified; a dimension's score stands above
+ * "partial" and is marked unverified, unless it answers a requirement on
+ * years alone the years the profile states confirm: those years are then
+ * shown, never the model's computation; a dimension's score stands above
  * neutral only on a quote that is found), the five dimensions a senior
  * recruiter scores (métier, seniority, context, trajectory,
  * achievements) are clipped and guarded, the score is the composite of
@@ -21,9 +23,11 @@
  * characteristic or a period without a position is withheld, and the
  * assessment says how many were, so the reading shown is never taken
  * for complete. The second opinion (applyChallenge) can only lower: a
- * doubt with a quoted evidence found in the profile sends a retained
- * profile to "to check"; a doubt without one is an opinion and changes
- * nothing. Pure: no model, no data access; every rule is stated once
+ * doubt with a quoted evidence found in the profile on the métier or a
+ * required requirement (or unclassed) sends a retained profile to "to
+ * check"; one on the seniority, a contradiction or the context joins
+ * its reservations, first, and leaves it retained for the team to
+ * weigh; a doubt without a quote is an opinion and changes nothing. Pure: no model, no data access; every rule is stated once
  * and tested in assessment.test.ts. The rest of the module reads
  * assessed results for the panel: the groups the page shows (to
  * present, to dig into, set aside, not analysed), the requirement most
@@ -403,7 +407,11 @@ export function evidenceGrounded(evidence: string, texts: readonly string[]): bo
  *   quote is not a met requirement), and so does a "yes" whose evidence
  *   is found nowhere in what the model was given, the quote kept and
  *   marked unverified so the team reads it as the model's claim; any
- *   other row with such a quote is marked the same;
+ *   other row with such a quote is marked the same; except a "yes" on a
+ *   requirement on years alone ("8 ans d'expérience minimum") the years
+ *   the profile states confirm: it stays "yes" and shows those years
+ *   (the model's "16 ans d'expérience (2008-)" is its computation, not a
+ *   quote, and is never shown as one);
  * - a "yes" on a required criterion the deterministic pass found missing
  *   with evidence (a language absent from a stated list, years clearly
  *   below the threshold, a location that contradicts) becomes "partial"
@@ -417,6 +425,33 @@ export function evidenceGrounded(evidence: string, texts: readonly string[]): bo
  *   Silence read as a lack is the one thing the prompt forbids, and a
  *   profile is never set aside with nothing to show for it.
  */
+/**
+ * The words a requirement on years carries besides its number when it
+ * asks for years alone ("8 ans d'expérience minimum"): any other word
+ * scopes the years to a field ("5 ans en contrôle de gestion"), which the
+ * profile's total does not speak to.
+ */
+const YEARS_ALONE_WORDS: ReadonlySet<string> = new Set([
+  "a", "an", "ans", "annee", "annees", "year", "years", "yrs", "y", "d", "de", "of",
+  "experience", "experiences", "professionnelle", "professionnelles", "professional",
+  "minimum", "min", "au", "moins", "at", "least", "plus", "total", "totale", "overall",
+]);
+
+/**
+ * True when the deterministic pass may stand in for a quote behind a
+ * "yes": the years the profile states (a bare number) meeting a
+ * requirement on years alone. Every other kind can quote the profile's
+ * own words, and its deterministic match is by words, which never
+ * proves a claim (a title is not a métier, "java" is in "JavaScript").
+ */
+function corroborates(criterion: BriefCriterion, deterministic: CriterionResult | undefined): boolean {
+  if (criterion.kind !== "experience" || deterministic?.verdict !== "match") return false;
+  if (!/^\d+(?:[.,]\d+)?$/.test(deterministic.evidence ?? "")) return false;
+  return normalise(criterion.label)
+    .split(/[^\p{L}]+/u)
+    .every((word) => !word || YEARS_ALONE_WORDS.has(word));
+}
+
 /** The kinds whose deterministic reading may dispute a model's "yes": a degree's or a free requirement's wording is too varied to deny. */
 const DISPUTABLE_KINDS: ReadonlySet<BriefCriterion["kind"]> = new Set([
   "skill",
@@ -437,13 +472,13 @@ function requirementOf(
   if (met === "unknown") evidence = null;
   const saidYes = met === "yes";
   let unverified = evidence !== null && texts !== undefined && !evidenceGrounded(evidence, texts);
-  // A "yes" the deterministic pass confirms from the profile's own fields (the years the CV
-  // states, a listed skill, a degree of the family) stands even when the model's sentence is
-  // its own computation ("16 ans d'expérience (2008-)") rather than a quote: the fact is
-  // corroborated; the sentence keeps its mark when it is not one.
-  const corroborated =
-    saidYes && deterministic?.verdict === "match" && Boolean(deterministic.evidence);
-  if (corroborated && !evidence) evidence = clip(deterministic?.evidence, EVIDENCE_MAX);
+  // A "yes" on years alone the years the profile states confirm stands: those years are shown,
+  // never the model's own computation ("16 ans d'expérience (2008-)"), which is not a quote.
+  const corroborated = saidYes && corroborates(criterion, deterministic);
+  if (corroborated) {
+    evidence = clip(deterministic?.evidence, EVIDENCE_MAX);
+    unverified = false;
+  }
   if (saidYes && !corroborated && (!evidence || unverified)) met = "partial";
   if (met === "no" && unverified) {
     // The model's quote goes; what the deterministic pass may put in its place is the rules' own, not a claim.
@@ -683,9 +718,11 @@ export function enforceAssessment(
  * The assessment after the second opinion: a doubt WITH a quoted
  * evidence found in what the model was given (when `texts` is known)
  * and a reason that names neither a protected characteristic nor a
- * career break sends the decision to borderline (never raises a
- * no_fit), caps the score at 69, appends the reason to the concerns
- * (the card shows it under its own heading) and stores the challenge;
+ * career break is appended to the concerns (the card shows it first)
+ * and stored with its kind; on the métier or a required requirement, or
+ * unclassed, it also sends the decision to borderline (never raises a
+ * no_fit) and caps the score at 69, while one on the seniority, a
+ * contradiction or the context keeps the decision and the score;
  * anything else (confirmed, or a doubt without evidence, or with a
  * quote the profile does not hold: an opinion is not a fact) is stored
  * as confirmed and changes nothing else. A reason or an evidence the

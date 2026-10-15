@@ -378,6 +378,12 @@ export function synthesisLine(result: Pick<MatchResult, "assessment">): string |
   return sentence(assessment.rankNote) ?? sentence(firstSentence(assessment.summary));
 }
 
+/** The second opinion's doubt, when it doubted: the first thing any row of the profile says, a match's too. */
+export function doubtLine(result: Pick<MatchResult, "assessment">): string | null {
+  const challenge = result.assessment?.challenge;
+  return challenge?.verdict === "doubt" ? sentence(challenge.reason) : null;
+}
+
 /**
  * The one line a near profile's row shows: its main reservation, the
  * second opinion's doubt first, then the first reservation the reading
@@ -386,9 +392,7 @@ export function synthesisLine(result: Pick<MatchResult, "assessment">): string |
 export function reservationLine(result: Pick<MatchResult, "assessment">): string | null {
   const assessment = result.assessment;
   if (!assessment) return null;
-  const challenge = assessment.challenge;
-  const doubt = challenge?.verdict === "doubt" ? sentence(challenge.reason) : null;
-  return doubt ?? sentence(assessment.concerns?.[0]) ?? synthesisLine(result);
+  return doubtLine(result) ?? sentence(assessment.concerns?.[0]) ?? synthesisLine(result);
 }
 
 /**

@@ -21,6 +21,7 @@ import { CircleAlert, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
+  doubtLine,
   requirementTally,
   reservationLine,
   screenLine,
@@ -58,6 +59,11 @@ export function MatchesTab({
   onShowShortlist: () => void;
 }) {
   const { t, locale } = useI18n();
+  // A match the second opinion doubted (on the seniority, a contradiction, the context) says so first.
+  const matchLine = (result: MatchResult): string | null => {
+    const doubt = doubtLine(result);
+    return doubt ? t("briefs.drawer.doubt", { reason: doubt }) : synthesisLine(result);
+  };
   const nearId = useId();
   const nearToggleId = useId();
   const [nearOpen, setNearOpen] = useState(false);
@@ -133,7 +139,7 @@ export function MatchesTab({
         <MatchList
           listKey={`${view.id}:main`}
           results={main}
-          lineOf={textOnly ? tally : synthesisLine}
+          lineOf={textOnly ? tally : matchLine}
           candidateOf={analysis.candidateOf}
           addedIds={analysis.addedIds}
           canAdd={canAdd}

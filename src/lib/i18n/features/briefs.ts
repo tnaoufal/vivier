@@ -139,6 +139,7 @@ const fr = {
   "briefs.match.tally": "{met} / {total} exigences",
   "briefs.match.tally.one": "{met} / 1 exigence",
   "briefs.match.unconfirmed": "À confirmer",
+  "briefs.match.doubt": "Doute",
 
   // the drawer of a match
   "briefs.drawer.previous": "Profil précédent",
@@ -335,6 +336,7 @@ const en = {
   "briefs.match.tally": "{met} / {total} requirements",
   "briefs.match.tally.one": "{met} / 1 requirement",
   "briefs.match.unconfirmed": "To confirm",
+  "briefs.match.doubt": "Doubt",
 
   "briefs.drawer.previous": "Previous profile",
   "briefs.drawer.next": "Next profile",

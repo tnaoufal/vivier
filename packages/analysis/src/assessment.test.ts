@@ -505,7 +505,7 @@ describe("enforceAssessment", () => {
     expect(assessment.decision).toBe("fit");
   });
 
-  it("keeps a yes the deterministic pass confirms, even when the model's sentence is its own computation", () => {
+  it("keeps a yes on years alone the profile's years confirm, showing those years, never the model's computation", () => {
     const years: BriefCriterion = {
       id: "years",
       kind: "experience",
@@ -514,50 +514,79 @@ describe("enforceAssessment", () => {
       required: true,
       weight: 3,
     };
-    const verdicts: CriterionResult[] = [{ criterionId: "years", verdict: "match", evidence: "16" }];
-    const read = (evidence: string | null) =>
+    const confirmed: CriterionResult[] = [{ criterionId: "years", verdict: "match", evidence: "16" }];
+    const read = (
+      criterion: BriefCriterion,
+      verdicts: CriterionResult[],
+      evidence: string | null,
+    ) =>
       enforceAssessment(
-        [...criteria, years],
+        [...criteria, criterion],
         verdicts,
         answer({
           requirements: [
             { criterionId: "skill", met: "yes", evidence: "Contrôleur de gestion chez X (2018-2024)" },
             { criterionId: "lang", met: "yes", evidence: "Anglais (C1)" },
             { criterionId: "sap", met: "yes", evidence: "SAP FI/CO" },
-            { criterionId: "years", met: "yes", evidence },
+            { criterionId: criterion.id, met: "yes", evidence },
           ],
         }),
         "m",
         { texts },
       );
-    const computed = read("16 ans d'expérience (2008-)");
-    // Met, and the sentence keeps its mark: it is the model's computation, not a quote.
-    expect(computed.requirements[3]).toEqual({
+    const computed = read(years, confirmed, "16 ans d'expérience (2008-)");
+    expect(computed.requirements[3]).toEqual({ criterionId: "years", met: "yes", evidence: "16" });
+    expect(computed.decision).toBe("fit");
+    expect(read(years, confirmed, null).requirements[3]).toEqual({
       criterionId: "years",
       met: "yes",
-      evidence: "16 ans d'expérience (2008-)",
-      evidenceUnverified: true,
+      evidence: "16",
     });
-    expect(computed.decision).toBe("fit");
-    // Without a sentence, the deterministic evidence is shown.
-    expect(read(null).requirements[3]).toEqual({ criterionId: "years", met: "yes", evidence: "16" });
-    // Without the confirmation, the same sentence is a claim: met in part.
-    const unconfirmed = enforceAssessment(
-      [...criteria, years],
+    // Without the confirmation, the same sentence is a claim: met in part, marked.
+    const unconfirmed = read(
+      years,
       [{ criterionId: "years", verdict: "not_stated", evidence: null }],
+      "16 ans d'expérience (2008-)",
+    );
+    expect(unconfirmed.requirements[3]?.met).toBe("partial");
+    expect(unconfirmed.requirements[3]?.evidenceUnverified).toBe(true);
+    expect(unconfirmed.decision).toBe("borderline");
+    // Years scoped to a field: the profile's total does not speak to them.
+    const scoped = read(
+      { ...years, label: "5 ans en contrôle de gestion", value: "5" },
+      [{ criterionId: "years", verdict: "match", evidence: "13" }],
+      "13 ans dont contrôle de gestion",
+    );
+    expect(scoped.requirements[3]?.met).toBe("partial");
+    expect(scoped.decision).toBe("borderline");
+  });
+
+  it("never lets a match by words stand in for a quote: a skill, a place, a title", () => {
+    const java: BriefCriterion = {
+      id: "java",
+      kind: "skill",
+      label: "Java",
+      value: "java",
+      required: true,
+      weight: 3,
+    };
+    const assessment = enforceAssessment(
+      [...criteria, java],
+      [{ criterionId: "java", verdict: "match", evidence: "JavaScript" }],
       answer({
         requirements: [
           { criterionId: "skill", met: "yes", evidence: "Contrôleur de gestion chez X (2018-2024)" },
           { criterionId: "lang", met: "yes", evidence: "Anglais (C1)" },
           { criterionId: "sap", met: "yes", evidence: "SAP FI/CO" },
-          { criterionId: "years", met: "yes", evidence: "16 ans d'expérience (2008-)" },
+          { criterionId: "java", met: "yes", evidence: "Spring Boot, Hibernate, microservices Java 17" },
         ],
       }),
       "m",
       { texts },
     );
-    expect(unconfirmed.requirements[3]?.met).toBe("partial");
-    expect(unconfirmed.decision).toBe("borderline");
+    expect(assessment.requirements[3]?.met).toBe("partial");
+    expect(assessment.requirements[3]?.evidenceUnverified).toBe(true);
+    expect(assessment.decision).toBe("borderline");
   });
 
   it("leaves a yes alone when the deterministic pass found nothing or has no evidence", () => {
