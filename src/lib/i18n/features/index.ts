@@ -10,8 +10,9 @@ import { shell } from "./shell";
 import { shortlists } from "./shortlists";
 import { similar } from "./similar";
 import { team } from "./team";
+import { threads } from "./threads";
 
-const files = [shell, team, candidates, briefs, shortlists, shares, similar] as const;
+const files = [shell, team, candidates, briefs, shortlists, shares, similar, threads] as const;
 
 type Keys<T> = T extends { fr: infer F } ? keyof F : never;
 export type FeatureMessageKey = Keys<(typeof files)[number]> & string;
