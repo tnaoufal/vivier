@@ -1011,7 +1011,9 @@ describe("challengePayload and challengeSystemPrompt", () => {
 
   it("asks for the strongest reason not to present, a doubt only with evidence, never a protected characteristic or a career break", () => {
     const system = challengeSystemPrompt();
-    expect(system).toContain('{"verdict":"confirmed|doubt","reason":"...","evidence":"..."}');
+    expect(system).toContain(
+      '{"verdict":"confirmed|doubt","kind":"metier|requirement|seniority|contradiction|context","reason":"...","evidence":"..."}',
+    );
     expect(system).toContain("strongest reason NOT to present");
     expect(system).toContain("métier mismatch hidden behind titles");
     expect(system).toContain("seniority mismatch");
