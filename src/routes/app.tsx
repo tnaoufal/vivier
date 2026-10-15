@@ -1,8 +1,9 @@
 /**
  * The signed-in area. Without a session the sign-in page takes over;
- * without an organisation the onboarding form does. Every child page
- * renders inside the shell with the organisation context loaded; the
- * shell animates each page change.
+ * without a space the onboarding does (a personal space in one click,
+ * or a team). Every child page renders inside the shell (the rail and
+ * the content column) with the space's context loaded; nothing animates
+ * a page change: the rail stays and the new page takes the column.
  */
 import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";

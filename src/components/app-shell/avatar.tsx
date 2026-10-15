@@ -1,6 +1,7 @@
 /**
- * A person: a grey 100 disc of initials in the ink, or their photo when
- * the organisation shows photos and one was read from the CV
+ * A person: a grey 300 disc (`input`, the photo's placeholder: it stays
+ * a disc on the selected row's grey) of initials in the ink, or their
+ * photo when the organisation shows photos and one was read from the CV
  * (`photoUrl`, a signed URL). Every photo is shown in greyscale (the
  * `photo` utility): identification stays, colour goes. The initials stay
  * under the photo until it has loaded, then the photo fades in; a photo
@@ -8,7 +9,8 @@
  * interface only: it never reaches a model. `profile` is the
  * square-rounded variant of a candidate sheet. On its own the avatar is
  * an image named after the person; next to the visible name it is
- * `decorative`, so a screen reader does not read the name twice.
+ * `decorative`, so a screen reader does not read the name twice. A
+ * muted `Row` fades it through its `data-slot`.
  */
 import { useState } from "react";
 
@@ -72,8 +74,9 @@ export function Avatar({
   const url = photoUrl && photoUrl !== failedUrl ? photoUrl : null;
   return (
     <span
+      data-slot="avatar"
       className={cn(
-        "relative inline-flex shrink-0 select-none items-center justify-center overflow-hidden bg-muted font-semibold text-ink",
+        "relative inline-flex shrink-0 select-none items-center justify-center overflow-hidden bg-input font-semibold text-ink",
         variant === "profile" ? PROFILE_RADII[size] : "rounded-full",
         SIZES[size],
         className,

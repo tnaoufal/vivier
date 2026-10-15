@@ -1,6 +1,6 @@
 # Architecture
 
-What runs where, how the four main flows cross the pieces, which trust
+What runs where, how the main flows cross the pieces, which trust
 boundary each piece sits behind, and what every secret unlocks. The
 README says what the product does; this page says how the parts hold
 together. Paths are relative to the repository root.
@@ -39,6 +39,21 @@ together. Paths are relative to the repository root.
 | Processor | `services/processor/src`               | one Node process on Railway, service role                      | the service role key, the model key, the OCR key, the shared secret                     |
 | Resend    | `src/lib/email/email.server.ts`        | called by the Worker only                                      | nothing of ours beyond the emails sent                                                  |
 | Model     | `src/lib/model/model.server.ts`, `services/processor/src/model.ts` | called by the processor (the analysis, the structuring) and the Worker (a dossier draft) only | the text it is sent (CV text, briefs; for the triage and the screening a card per profile without name, contacts, place, link, summary or CV text; for the full reading and the second opinion a profile without name, e-mail or phone; for the tiering sheets of scores and sentences, without name or CV text) for the duration of the call; never the photo |
+
+In the browser every signed-in page is one plane (`docs/DESIGN.md`,
+"Layout"). The app shell (`src/components/app-shell/app-shell.tsx`) is
+the 64px rail (`rail.tsx`: the four sections, the theme switch, the
+person's menu with the spaces) beside the content column; a page is a
+`Workspace` (`workspace.tsx`: a 56px header with the way back, the
+title, the figures and the one filled action, then `Pane`s side by
+side, each scrolling inside itself) whose lists are `Row`s (`row.tsx`,
+the arrow keys moving the selection through `useListKeys`), with the
+team's thread as the right pane (`ThreadPane`,
+`src/components/thread/thread-pane.tsx`). Below `lg` the rail's items
+open from the header's menu, the panes stack and the page scrolls. A
+pane reads under RLS and follows its rows through realtime
+(`src/lib/data/realtime.ts`); what it may do is decided by the
+policies and the server functions, never by the pane.
 
 ## Flows
 
@@ -88,7 +103,8 @@ notifyProcessor(ids) ─▶ Worker ─▶ requireMember, rate limit ─▶ POST 
                                  documents processed      ◀─────  page_count, text_chars, methods, document_kind, processed_at
                                  trigger: activity document.processed | rejected | failed | needs_ocr
 Realtime (documents) ◀────────── change
-list banner (failed, set aside) and profile page refresh
+the pool's processing line (ProcessingBanner: the wave, the failed, the set aside) and the open
+profile's sheet (useCandidate) read again
 ```
 
 A member may send a `failed`, `needs_ocr` or `rejected` document back to
@@ -113,19 +129,21 @@ runSearch({token, org,
                              no title and no text: INPUT:invalid
                            the brief's newest search:
                              queued or running: answered as it is (never doubled)
-                             stopped or failed on the same reading of the
-                               brief (role_profile.sourceHash unchanged, the
-                               same criteria): patched queued, stop_requested
-                               false, error null, started_at and finished_at
-                               null (the claim stamps a fresh start: the pace
-                               the band shows is this run's)             ─▶ searches   (it resumes where it was)
+                             stopped, failed, or done with full readings that
+                               failed (assess_failed), on the same reading of
+                               the brief (role_profile.sourceHash unchanged,
+                               the same criteria): patched queued,
+                               stop_requested false, error null, started_at
+                               and finished_at null (the claim stamps a fresh
+                               start: the duration the state block shows is
+                               this run's)                               ─▶ searches   (it resumes where it was)
                              else: insert {method triage, status queued,
                                criteria, results [], pool_size 0, ran_by} ─▶ searches
                            POST /analyses/<id> (bearer, 8 s; best effort:                         ──▶ enqueue (202)
                              a failed poke is logged, the scan picks the row up)
                            return {searchId, createdAt, status}
-the band follows the row: realtime on searches (brief_id) and a read every 10 s while queued or running;
-closing the tab changes nothing
+the state block follows the row: realtime on searches (brief_id) and a read every 10 s while queued or
+running; closing the tab changes nothing
                                                                      claim (status running, runner,  ◀── at boot, every 30 s and on a poke:
                                                                        started_at, heartbeat_at)        queued rows, and running rows whose
                                                                                                         heartbeat is older than 120 s
@@ -172,19 +190,20 @@ closing the tab changes nothing
                                                                        failed is skipped and counted: error assess_failed:<n> on a done row
                                                                      SIGTERM: the batches in flight finish, the row stays running, the
                                                                        next boot claims it as stale
-the band (bandStateOf, presentation.ts): queued "Démarrage…" and "Interrompre" │ running: the stage's name,
-  "640 / 1 093", the time left (etaOf: the pace since started_at over progressOf()'s span), the bar │
-  stopped: "N profils restent à analyser" (stoppedLineOf: the profiles the stage had left, else the stage with
-  its own count, "Classement · 2 / 4") and "Reprendre" (runSearch: the same row) │ failed: one line from the
-  code (brief_changed, model_unavailable, else a generic one) and "Relancer" │ done: "12 profils
-  correspondent", the figures (analysed, kept by the triage, read in full, set aside), the matches, the near
-  profiles (borderline, then the screened rows with "score · reason"), the profiles set aside on demand
+the state block (AnalysisState; bandStateOf, presentation.ts), one status region: queued "En attente" over an
+  indeterminate bar │ running: the stage's figure ("640 / 1 093 analysés" while profiles are read, else the
+  stage's own count), the bar (progressOf(): each stage owns a span of it) and the stage's word │ both with
+  "Interrompre" │ stopped: "Interrompue · 640 / 1 093" and "Reprendre" (runSearch: the same row) │ failed:
+  "Échec" and one line from the code (brief_changed, model_unavailable, else a generic one) and "Réessayer" │
+  done: "12 correspondances", then "1 093 analysés · 4 min" (runDurationMs(): from started_at to
+  finished_at), and "Reprendre" when full readings failed; under it, the profiles in four groups (see below)
 readSearch (RLS)   ─────────────────────────────────────────────────▶ searches.results: read when the status changes, and every 20 s
                                                                      while assessing, challenging or ranking (the matches land as read)
 listScreened (RLS) ─────────────────────────────────────────────────▶ search_triage: yes/close with a score, not in the results,
-                                                                     score desc, 50 a page
+                                                                     score desc, 50 a page (the near profiles after the borderline ones)
 listSetAside (RLS) ─────────────────────────────────────────────────▶ search_triage: no and unknown with their reasons, keyset pages of 50
-readTriageState (RLS, once the job ended) ──────────────────────────▶ search_triage: five counts, the band's figures
+                                                                     (the profiles set aside, read once their group is opened)
+readTriageState (RLS, once the job ended) ──────────────────────────▶ search_triage: five counts (how many analysed, how many set aside)
 stopAnalysis({…, searchId}) ─▶ requireMember; a row still queued: status stopped at once (the patch holds
                                while it is queued, as the claim's does); a running one: stop_requested = true
                                                                       ─▶ searches (the runner stops at its next step)
@@ -193,8 +212,30 @@ readAnyway({…, searchId,
                            a row set aside or unread: verdict close,
                              forced true, no reason; a kept row: forced ─▶ search_triage
                            a run done or stopped: queued again + poke  ─▶ searches (the promotion takes every forced row)
-"add to shortlist" ──────▶ (browser, RLS) shortlists (first use) + shortlist_items with the match snapshot
+"+", Retenir, Écarter ───▶ (browser, RLS) shortlists (first use) + shortlist_items with the match snapshot,
+  (a row, the reading)     to examine (addWithStatus); a decision, on a match as on an item ("Réexaminer"
+                           too), is an update of the status the trigger stamps with decided_by and
+                           decided_at; a candidate already on the shortlist keeps the decision it has
 ```
+
+The brief page (`src/routes/app/briefs/$briefId.tsx`) shows the
+analysis in three panes. The list pane holds the brief folded, then the
+state block (`AnalysisState`, read off the row and nothing else), then
+the four groups as a segmented control, the chosen one as a list of rows
+(`GroupRows`, a `ProfileRow` each on the plane's `Row`): the matches
+(`fit`), the near profiles (`borderline`, then the rows of
+`listScreened()`), the shortlist (its items, `useBoard()`) and the
+profiles set aside (`useSetAside()`: the full reading's `no_fit`, then
+the pages of `listSetAside()`). The detail pane is the reading of the
+selected profile (`ProfileReading`: what the CV states, the tier, the
+score and "Lecture du modèle", the requirements with their evidence,
+the dimensions, the strengths, the reservations, the interview points,
+the triage's verdict); the right pane is the brief's thread, or a
+shortlisted candidate's. The URL keeps the group and the profile
+(`?g=`, `?c=`). The shortlist's writes are the browser's own under RLS
+(the shortlist at first use, an item with its match, its status); the
+analysis's go through the Worker (`runSearch`, `stopAnalysis`,
+`readAnyway`).
 
 The funnel is bounded, so a run on 1 100 profiles ends in about four
 to five minutes whatever the model does with one batch: the triage
@@ -207,13 +248,14 @@ running rows); "Reprendre" queues the same row again. A row stored
 before the job existed reads `done` (the column's default), so an
 earlier analysis reads as it always did.
 
-`search_candidates()` and `similar_candidates()` (the "similar profiles"
-drawer of a profile page, which the browser calls directly) are SECURITY
-INVOKER: even called with the service role, the Worker filters by the
-organisation it verified, and the browser can call them only for the
-organisations it belongs to. `start_triage()`, `record_triage()`,
-`merge_search_results()` (migration `20261015090000`), `record_screen()`
-and `bump_triage_attempts()` (migration `20261015150000`) are SECURITY
+`search_candidates()` and `similar_candidates()` (the close profiles of
+a profile's sheet, its "Profils proches" block and drawer, which the
+browser calls directly) are SECURITY INVOKER: even called with the
+service role, the Worker filters by the organisation it verified, and
+the browser can call them only for the organisations it belongs to.
+`start_triage()`, `record_triage()`, `merge_search_results()`
+(migration `20261015090000`), `record_screen()` and
+`bump_triage_attempts()` (migration `20261015150000`) are SECURITY
 INVOKER too and executable by the service role alone; members read
 `search_triage` and `searches` under RLS and write none of it (the
 Worker's server functions patch `status`, `stop_requested` and the
@@ -288,26 +330,61 @@ title and its equivalent titles without what a job ad adds: "H/F",
 the job. The screening gives each kept card a score against the brief's
 reading and a reason of twelve words; the **promotion** reads the
 thirty best (`promotable()`: every forced row, then `PROMOTE_MAX` by
-score, yes before close), and the rest are the near profiles the page
-lists under its toggle with their score and reason. A profile set aside
-keeps its verdict and reason in `search_triage`; the page counts it in
-the band's figures, and that figure opens on demand the list of every
-profile set aside (`listSetAside()`, keyset pages under RLS: `no` with
-the model's reason, `unknown` as "Non lus" when the model could not
-read it) where, as on a screened row, a member may bring one back to be
-read in full (`readAnyway()`: its row becomes `close` and `forced`, the
-run is queued again when it had ended, and the promotion always takes
-a forced row). A run reads the pool as it was when its snapshot was
+score, yes before close), and the rest are near profiles: the page's
+"Proches" group lists them after the `borderline` ones, best first,
+their score and reason in the reading. A profile set aside keeps its
+verdict and reason in `search_triage`; the page counts it in its
+"Écartés" group, which lists every profile set aside on demand
+(`listSetAside()`, keyset pages under RLS: `no` with the model's
+reason, `unknown` as "Non lus" when the model could not read it) where,
+as on a screened row, a member may bring one back to be read in full
+(`readAnyway()`: its row becomes `close` and `forced`, the run is
+queued again when it had ended, and the promotion always takes a
+forced row). A run reads the pool as it was when its snapshot was
 taken; "Relancer" on a finished analysis starts a new one on the pool
 as it is now. The detail of the prompts and the rules is in the README
 ("Briefs and search").
+
+### Spaces: one person, or a team
+
+```
+Browser (signed in)                           Supabase
+──────────────────────                        ──────────────────────────────────────────────────
+the onboarding, no space yet:
+  "Je travaille seul" ─────────────────────▶ rpc create_organization(the person's name, slug,
+                                              locale, 'personal'), SECURITY DEFINER: the
+                                              organisation with its kind, and the person as its owner
+  "Je crée une équipe" (or "Nouvelle
+    équipe" in the person's menu) ─────────▶ rpc create_organization(name, slug, locale, 'team')
+/invite/<token>, as the address invited ───▶ rpc accept_invitation(token): the membership; a
+                                              personal space that now counts two members
+                                              becomes kind 'team'
+Realtime (organizations, id=eq.<current>) ◀─ change: the spaces and their members read again
+```
+
+A space is an organisation (`organizations.kind`, `team` or `personal`,
+migration `20261016090000`). The browser never writes the kind (no
+column grant): `create_organization()` sets it, one signature of four
+arguments (the three-argument one is dropped, so PostgREST sees one
+candidate), and `accept_invitation()` turns a personal space into a
+team when a second member joins. Roles, plans, quotas, retention and
+every policy are the same for both kinds; `isPersonal()`
+(`src/lib/org/org-context.ts`) changes words (the rail's "Espace", the
+team page's "Espace personnel") and hides leaving, since the one member
+of a personal space is its owner. The current space's row is live
+(`organizations` is in the realtime publication; RLS sends a member
+their own organisation's changes only), so an open page follows a
+colleague joining, a rename or the photos switch. The person's menu on
+the rail lists the spaces, the personal one first; switching lands on
+the same section of the other space, or on its dashboard.
 
 ### Team thread: one dialogue per object
 
 ```
 Browser (member)                              Supabase
 ──────────────────────                        ──────────────────────────────────────────────────
-TeamThread({briefId} | {candidateId}
+ThreadPane, the right pane (a sheet below lg):
+  TeamThread({briefId} | {candidateId}
   | {shortlistItemId}), src/lib/threads
   listThread ──────────────────────────────▶ comments where <column> = id, the last 100, newest last
                                               (policy: members read); the authors' profiles in one lot
@@ -318,6 +395,7 @@ TeamThread({briefId} | {candidateId}
                                               trigger: activities comment.added
   deleteMessage ───────────────────────────▶ (policy: the author, or an administrator)
 Realtime (comments, <column>=eq.<id>) ◀───── change: the thread re-reads, debounced
+ThreadToggle: countThread ─────────────────▶ comments where <column> = id: a count, no row (live as above)
 Dashboard: listMyMentions ─────────────────▶ comments where mentions @> [me], newest first,
                                               the objects named (briefs, candidates, items in lots)
 Briefs list, dashboard: threadSummaries ───▶ comments where brief_id in (…): count, last author, excerpt
@@ -329,12 +407,24 @@ target columns were there from the start), and a deleted candidate,
 shortlist item or brief takes its messages with it (`ON DELETE
 CASCADE`).
 
+The thread is the plane's right pane (`ThreadPane`,
+`src/components/thread/thread-pane.tsx`) on the object the page shows:
+the brief on its page (in the Shortlist group, the selected
+candidate's item, a segmented control at the top of the pane switching
+back to the brief), the selected profile on the pool, the profile on
+its own page. The header's `ThreadToggle` opens and closes it; the
+choice is remembered per device (`localStorage`, `vivier-thread`), open
+by default from `xl`; below `lg` the thread is a sheet. The pane is
+mounted anew for each object, so no message, draft or pending delete
+of the one before shows under the new title.
+
 ### Share: a dossier to a hiring manager
 
 ```
 Browser (member)               Worker                                      Supabase / Resend
 ──────────────────             ─────────────────────────────────────       ───────────────────────────────
-one dialog, one click ("Partager"): the candidates ticked (the retained ones first), the
+"Partager la shortlist" (the brief page's header, in the Shortlist group, once someone is retained)
+opens one dialog, one click ("Partager"): the candidates ticked (the retained ones first), the
 addresses and a message (optional; off without an email sender), then in a row:
 draftShare({token, org,
   shortlistId, candidateIds,
@@ -359,11 +449,13 @@ createShare({token, org,
                                insert shares { token_hash = sha256(token), items, brief, expires_at }
                                insert activities share.created
                                return { link: SITE_URL/share/<token> } ─ shown once; the raw token is never stored
-                               (the browser keeps the link in sessionStorage, link-memory.ts, for the panel's copy button)
+                               (the browser keeps the link in sessionStorage, link-memory.ts, for the copy button
+                                 of the shares panel, "Partages (N)" in the brief page's menu)
 addresses given?       ──────▶ sendShare: requireMember, enforceRateLimit("email")
                                emailLayout(), sendRecorded()           ─▶ email_sends (queued → sent | failed), Resend
                                activities share.sent
-revokes                ──────▶ revokeShare: revoked_at = now(), activities share.revoked
+revokes (the panel's   ──────▶ revokeShare: revoked_at = now(), activities share.revoked
+  row menu)
 
 Hiring manager (no account)    Public share route (server)
 ──────────────────────────     ─────────────────────────────────────
@@ -422,10 +514,11 @@ pinned to no candidate is reached by neither pass: an administrator
 deletes it through the API (no page does yet).
 
 The same removal, on demand, is `eraseCandidate` (an administrator, from
-the profile page): the CVs and the photo first (a photo path outside the
-organisation's folder is never removed, since the service role bypasses
-the bucket's policies), then the row, then one log line naming who erased
-and how many files.
+the menu of a profile's sheet, on the pool or on the profile's page, the
+name typed to confirm): the CVs and the photo first (a photo path
+outside the organisation's folder is never removed, since the service
+role bypasses the bucket's policies), then the row, then one log line
+naming who erased and how many files.
 
 ## Trust boundaries
 
@@ -440,10 +533,11 @@ runs beyond the caller's reach.
    writes further: the browser cannot set `documents.error` or the processing
    result columns, `candidates.fingerprint` / `search_text` / `embedding` /
    `confidence` / `photo_path`, `organizations.plan` / `seat_limit` /
-   `cv_quota_month` (`organizations.show_photos` is granted on its own and
-   the `admins update` policy keeps it to administrators), cannot insert
-   `shares`, `email_sends`, `activities`, `ai_usage`,
-   `invitations` or `memberships`, and only moves a document back to
+   `cv_quota_month` / `kind` (`organizations.show_photos` is granted on its
+   own and the `admins update` policy keeps it to administrators; the kind
+   is written by `create_organization()` and `accept_invitation()` alone,
+   SECURITY DEFINER), cannot insert `shares`, `email_sends`, `activities`,
+   `ai_usage`, `invitations` or `memberships`, and only moves a document back to
    `queued` (from `failed`, `needs_ocr` or `rejected`). `candidates.phone_digits`
    is computed by the database and written by nobody; `shares.brief` and
    the assessment in `searches.results` (the full reading, the second
@@ -451,7 +545,8 @@ runs beyond the caller's reach.
    by the processor alone (a member inserts a shortlist item's match,
    never updates one; the processor fills only an unassessed one; the
    Worker patches `status`, `stop_requested` and `error` for a person's
-   "Lancer", "Interrompre" and "Lire quand même"); `briefs.role_profile`
+   "Analyser" (or "Relancer", "Reprendre", "Réessayer"), "Interrompre"
+   and "Lire quand même"); `briefs.role_profile`
    and `briefs.criteria` are the processor's one reading of the brief
    (guarded, `guardRoleProfile()`; the `UPDATE` grant members hold on
    `role_profile` is unused: no page writes it, members write the title,

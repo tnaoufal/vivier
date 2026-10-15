@@ -7,7 +7,7 @@ helpers every feature uses, so features look alike.
 
 ```
 src/routes/            file-based routes (TanStack Start); see routes/README.md
-src/routes/app/        signed-in pages, rendered inside the app shell with an organisation loaded
+src/routes/app/        signed-in pages, each a `Workspace` inside the app shell, with a space loaded
 src/lib/<feature>/     the feature's data access (`*.ts`), server functions (`*.functions.ts`),
                        server-only code (`*.server.ts`) and pure logic with tests (`*.test.ts`)
 src/components/<feature>/  the feature's components
@@ -73,10 +73,10 @@ renders progress, and can be stopped and resumed from what is stored. An
 analysis is not one: the processor runs it as a job
 (`services/processor/src/analysis`), the page follows its row
 (`useAnalysis`, realtime on `searches`), and the browser never calls a
-model for it. The team's thread on an object is
-`TeamThread` / `ThreadPanel` (`src/components/thread`) on a
-`ThreadTarget` (`{ briefId } | { candidateId } | { shortlistItemId }`);
-its reads and writes live in `src/lib/threads`, never in a page.
+model for it. The team's thread on an object is `TeamThread` in a
+`ThreadPane` (`src/components/thread`) on a `ThreadTarget`
+(`{ briefId } | { candidateId } | { shortlistItemId }`); its reads and
+writes live in `src/lib/threads`, never in a page.
 
 Errors from supabase-js are objects with `code` and `message`; show
 `t("common.error")` (or a specific sentence for a known code) with
@@ -154,13 +154,18 @@ Dates: `formatDate`, `formatDateTime`, `formatRelative` from `@/lib/i18n`.
 shadcn/ui primitives in `src/components/ui` (button, dialog,
 dropdown-menu, input, label, popover, select, separator, sheet, skeleton,
 sonner, tabs, textarea, tooltip). App-shell pieces in
-`src/components/app-shell`: `PageHeader`, `Section`, `EmptyState`,
-`InfoTip`, `Pill` (tones: neutral, positive, caution, negative, primary;
-`dot` for a leading mark), `FilterChip`, `LocaleChips`, `ProgressBar`,
-`Meter`, `Timeline`, `RequirementList`, `Avatar`, `ConfirmDialog`. A verdict or a decision is
-always a pill or a mark with an icon and a text alternative, never colour
-alone (`docs/DESIGN.md`). Utilities: `sheet` (a bordered card),
-`sheet-row`, `sheet-link` (a card that leads somewhere), `label-caps`,
+`src/components/app-shell`: the plane's `Workspace`, `Pane`, `PaneTitle`
+and `PHONE_ICON` (`workspace.tsx`), `Row`, `RowText` and `useListKeys`
+(`row.tsx`), the `Rail`; then `Section`, `EmptyState` (`quiet` inside a
+pane), `InfoTip`, `Pill` (tones: neutral, positive, caution, negative,
+primary; `dot` for a leading mark), `FilterChip`, `LocaleChips`,
+`ProgressBar`, `Meter`, `Timeline`, `RequirementList`, `Avatar`,
+`ConfirmDialog`, and `PageHeader` for the pages outside the plane. The
+thread's pane, its toggle and its flag are `ThreadPane`, `ThreadToggle`
+and `useThreadPane` (`src/components/thread/thread-pane.tsx`). A verdict
+or a decision is always a pill or a mark with an icon and a text
+alternative, never colour alone (`docs/DESIGN.md`). Utilities: `sheet`
+(a bordered card, outside the plane only), `sheet-row`, `label-caps`,
 `stat-number`, `font-display`, `skeleton`, `surface-float`,
 `surface-dialog`; `share-sheet` for the public dossier only. Icons from
 `lucide-react`.
@@ -169,11 +174,38 @@ Tailwind v4 tokens: `bg-background`, `text-ink`, `text-muted-foreground`,
 three monochrome tones, the ink, grey 700 and grey 500: never alone,
 always with an icon or a word), `bg-primary`.
 
-Layout rules: a page starts with `PageHeader`; lists are `sheet`s with
-rows; forms use `Label` + `Input`/`Textarea`; destructive actions go
-through `ConfirmDialog`; every async button is disabled while busy; every
-empty list shows an `EmptyState` with the action that fills it. Phone
-width first: no fixed widths, wrap, `sm:` for two columns.
+Layout rules. Every signed-in page is a `Workspace` and its panes
+(`docs/DESIGN.md`, "Layout"): the header carries the title, the page's
+figures in `meta`, the one filled button, the `ThreadToggle` when the
+page has a thread, and an `Ellipsis` menu for the rest; under it, one
+to three `Pane`s (a `list` or `wide` list, the `fill` detail) and the
+`ThreadPane`. From `lg` the page never scrolls as a whole: each pane
+scrolls inside itself. Never a `PageHeader` and never a `sheet` on a
+signed-in page or in a block of its panes: panes and rows are divided by
+lines (`src/lib/design/classes.test.ts` checks the pages and the thread
+and activity blocks).
+
+A list is an `ol` of `Row`s: `as="button"` when the row selects a detail
+beside it, `as="link"` with a path from a helper when it leads to a
+page, `RowText` for the name and its one line, the row's own buttons in
+`trailing` (beside the control, never inside), `useListKeys` on the
+`ol`. The selected row lives in the URL (`?c=`) and carries
+`aria-current`; from `lg` the first row is selected when the URL names
+none, below `lg` a tap opens the detail in a full `Sheet` or on its
+page.
+
+The thread pane: one per page, on the object the page shows (the
+brief, the selected candidate, the selected shortlisted candidate):
+`useThreadPane()` gives the flag, the header's `ThreadToggle` flips it,
+`ThreadPane` renders the 320px pane from `lg` and a `Sheet` below; a
+page that switches the thread's object passes a `Segmented` as its
+children. Never a thread at the bottom of a page.
+
+Forms use `Label` + `Input`/`Textarea`; destructive actions go through
+`ConfirmDialog`; every async button is disabled while busy; every empty
+list shows an `EmptyState` with the action that fills it (`quiet` inside
+a pane). Phone width first: no fixed widths but the panes' from `lg`,
+wrap, a header action shrinks to its icon below `sm` (`PHONE_ICON`).
 
 ## Tests
 
@@ -185,8 +217,9 @@ Supabase in tests: inject functions or fake clients.
 ## What a feature must not touch
 
 `package.json` / `bun.lock` (no new dependency), `src/lib/db/types.ts` and
-the migration (ask for a change instead), `src/components/app-shell/app-shell.tsx`
-(the nav is fixed), another feature's directories.
+the migration (ask for a change instead), `src/components/app-shell/app-shell.tsx`,
+`rail.tsx` and `workspace.tsx` (the frame and the rail's four sections
+are fixed), another feature's directories.
 
 ## Why `src/lib/platform` and not `src/lib/server`
 

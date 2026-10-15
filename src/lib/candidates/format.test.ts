@@ -21,9 +21,10 @@ import {
   languagesLine,
   languagesSummary,
   listLine,
-  metaLine,
   monthIndex,
   parseYearsMin,
+  sheetFacts,
+  sheetLine,
   topSkills,
   yearsLabel,
 } from "./format";
@@ -241,18 +242,64 @@ describe("currentPosition", () => {
   });
 });
 
-describe("metaLine", () => {
-  it("joins what the CV states, the seniority first, and nothing else", () => {
+describe("sheetLine", () => {
+  const at = (company: string) => `chez ${company}`;
+  const held = {
+    title: "Directrice juridique",
+    company: "Label'Vie",
+    start: "2019-01",
+    end: null,
+    description: null,
+  };
+
+  it("reads the position with its company, then the years and the place", () => {
     expect(
-      metaLine("fr", { location: "Paris", years_experience: 6, availability: "Janvier" }),
-    ).toBe("6 ans · Paris · Janvier");
-    expect(metaLine("en", { location: " Lyon ", years_experience: null, availability: null })).toBe(
-      "Lyon",
+      sheetLine(
+        "fr",
+        { headline: "Juriste", location: "Casablanca", years_experience: 19, experiences: [held] },
+        at,
+      ),
+    ).toBe("Directrice juridique chez Label'Vie · 19 ans · Casablanca");
+  });
+
+  it("names no company the CV does not state, and nothing it does not say", () => {
+    expect(
+      sheetLine(
+        "en",
+        {
+          headline: " Product designer ",
+          location: null,
+          years_experience: 2,
+          experiences: [{ ...held, company: "" }],
+        },
+        (company) => `at ${company}`,
+      ),
+    ).toBe("Directrice juridique · 2 years");
+    expect(
+      sheetLine("en", { headline: null, location: " Lyon ", years_experience: null }, at),
+    ).toBe("Lyon");
+    expect(sheetLine("fr", { headline: null, location: null, years_experience: null }, at)).toBe(
+      "",
     );
-    expect(metaLine("en", { location: null, years_experience: 1, availability: " " })).toBe(
-      "1 year",
+  });
+});
+
+describe("sheetFacts", () => {
+  it("reads the languages with their level, then the availability", () => {
+    expect(
+      sheetFacts({
+        availability: " Disponible sous 1 mois ",
+        languages: [
+          { name: "Français", level: "C2" },
+          { name: "Anglais", level: "C1" },
+        ],
+      }),
+    ).toBe("Français C2 · Anglais C1 · Disponible sous 1 mois");
+    expect(sheetFacts({ availability: null, languages: [{ name: "Arabe", level: null }] })).toBe(
+      "Arabe",
     );
-    expect(metaLine("fr", { location: null, years_experience: null, availability: null })).toBe("");
+    expect(sheetFacts({ availability: "Janvier", languages: [] })).toBe("Janvier");
+    expect(sheetFacts({ availability: " ", languages: null })).toBe("");
   });
 });
 

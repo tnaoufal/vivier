@@ -1,8 +1,9 @@
 /**
- * Above the list while the service reads or left something aside: the
- * wave's progress on one line (the figure, the bar, the rate; said
- * finished for a moment once nothing is pending, so the bar reaches its
- * end before the banner goes), then what the wave leaves aside: the CVs
+ * At the top of the list pane while the service reads or left something
+ * aside, compact (no sheet: a line under it): the wave's progress on
+ * one line (the figure, the bar, the rate; said finished for a moment
+ * once nothing is pending, so the bar reaches its end before the banner
+ * goes), then what the wave leaves aside: the CVs
  * refused at the organisation's monthly quota (not broken: waiting; one
  * figure, and for a member one button that re-queues as many as the
  * month has room for, oldest first) and the documents the service
@@ -198,7 +199,7 @@ export function ProcessingBanner({
   const hidden = others.data ? setAside - others.data.length : 0;
 
   return (
-    <section className="sheet fade-in mb-6 p-4 text-sm sm:px-6">
+    <section className="fade-in border-b border-line px-3 py-3 text-sm">
       <p className="sr-only" role="status">
         {announcement.map((part) => (
           <span key={part.key}>{part.text} </span>
@@ -244,11 +245,11 @@ export function ProcessingBanner({
         </div>
       ) : null}
       {open && setAside > 0 ? (
-        <div className="fade-in mt-3 border-t border-border pt-1">
+        <div className="fade-in mt-3 border-t border-line pt-1">
           {others.loading && !others.data ? (
             <>
               <p className="sr-only">{t("common.loading")}</p>
-              <SkeletonRows rows={2} avatar={false} className="-mx-4 sm:-mx-6" />
+              <SkeletonRows rows={2} avatar={false} className="-mx-3 [&>li]:px-3 sm:[&>li]:px-3" />
             </>
           ) : null}
           {others.error ? (
@@ -267,7 +268,7 @@ export function ProcessingBanner({
               </Button>
             </div>
           ) : null}
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-line">
             {(others.data ?? []).map((document: DocumentRow) => (
               <li key={document.id} className="flex flex-wrap items-center gap-3 py-3">
                 <div className="min-w-0 flex-1">

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { OrganizationRow } from "@/lib/db/types";
-import { initialsOf, memberName, pickOrg, readShowPhotos } from "./org-context";
+import { initialsOf, isPersonal, memberName, pickOrg, readShowPhotos } from "./org-context";
 
 const org = (id: string): OrganizationRow => ({
   id,
@@ -13,6 +13,7 @@ const org = (id: string): OrganizationRow => ({
   seat_limit: 3,
   cv_quota_month: 200,
   show_photos: true,
+  kind: "team",
   created_by: null,
   created_at: "",
   updated_at: "",
@@ -54,5 +55,18 @@ describe("readShowPhotos", () => {
     expect(readShowPhotos(null)).toBe(true);
     expect(readShowPhotos(undefined)).toBe(true);
     expect(readShowPhotos({ show_photos: undefined as unknown as boolean })).toBe(true);
+  });
+});
+
+describe("isPersonal", () => {
+  it("reads the kind of the space", () => {
+    expect(isPersonal({ ...org("a"), kind: "personal" })).toBe(true);
+    expect(isPersonal(org("a"))).toBe(false);
+  });
+
+  it("reads as a team without an organisation or without the column", () => {
+    expect(isPersonal(null)).toBe(false);
+    expect(isPersonal(undefined)).toBe(false);
+    expect(isPersonal({ kind: undefined as unknown as "team" })).toBe(false);
   });
 });

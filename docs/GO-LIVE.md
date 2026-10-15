@@ -7,7 +7,7 @@ provider accounts. Work it in one block before the first real CV.
 
 - [ ] Create the project `vivier_prod` in `eu-west-1` (or Frankfurt); note the
       project ref, the URL and the publishable key.
-- [ ] Apply the nine files of `supabase/migrations` in order (`supabase link`
+- [ ] Apply the ten files of `supabase/migrations` in order (`supabase link`
       then `supabase db push`, or the SQL editor): `20261013090000_vivier_init`,
       then evolution 2: `20261013180000_vivier_assessment` (status `rejected`,
       `documents.document_kind`, `similar_candidates()`),
@@ -42,39 +42,68 @@ provider accounts. Work it in one block before the first real CV.
       executable by the service role alone; the usage kind `screen`;
       `candidates.photo_checked_at` and the photo pass's index; the new
       columns are read by members under the existing policies and written
-      by the processor and the Worker's server functions alone).
-      The evolution 2, 3, 6 and 7 files can be re-run; `vivier_init` and the
-      photos and triage files create policies and stop on a second run
-      (`policy … already exists`), so mark them applied rather than running
-      them again. The dev project `vivier_dev` (ref `qtujdeolcdvlzwvpqpuv`,
-      eu-west-1, free tier) carries the first eight (checked on its schema on 2026-10-13: `document_kind`,
+      by the processor and the Worker's server functions alone), then
+      evolution 7 part B: `20261016090000_vivier_spaces` (`organizations.kind`,
+      `team` or `personal`, with no `UPDATE` grant; `create_organization()`
+      takes the kind as a fourth argument, `p_kind` (`team` by default), and
+      the three-argument one is dropped, so PostgREST sees one signature;
+      `accept_invitation()` makes a personal space a team when a second
+      member joins; `organizations` joins the `supabase_realtime`
+      publication).
+      The evolution 2, 3, 6 and 7 files (part B's too) can be re-run;
+      `vivier_init` and the photos and triage files create policies and stop
+      on a second run (`policy … already exists`), so mark them applied
+      rather than running them again. The dev project `vivier_dev`
+      (ref `qtujdeolcdvlzwvpqpuv`, eu-west-1, free tier) carries all ten (checked on its schema on 2026-10-13: `document_kind`,
       `shares.brief`, `phone_digits`, `similar_candidates()`,
       `searches.pool_size` exist and the quota function excludes `rejected`;
       `briefs.role_profile` and `20261014130000` applied on 2026-10-14;
       `20261015090000` checked on 2026-10-14: the table, the three functions
       granted to the service role only, the three counts and both checks;
       `20261015120000` applied on 2026-10-15: `seniority_band()` and the
-      `similar_candidates()` that answers `years_experience`).
+      `similar_candidates()` that answers `years_experience`;
+      `20261015150000` and `20261016090000` applied on 2026-10-15 and
+      checked on its schema the same day: the checks of the two items below
+      hold, and every function the evolution 5 to 7 files define has the
+      file's body, comments aside).
       Its `supabase_migrations.schema_migrations` does not match the files:
       it lists `20261013090000` (`vivier_init`), then `20261014124056`
       (`vivier_photos`) and evolution 5 in two parts, `20261014150558`
-      (`vivier_triage`) and `20261014162202` (`vivier_search_counts`),
-      recorded under the time they were applied; evolutions 2 and 3 were
-      applied outside the CLI and are not listed. Before a `db push`, run
-      `supabase migration repair --status reverted 20261014124056
-      20261014150558 20261014162202` (the push refuses remote versions it
-      has no file for), then `supabase migration repair --status applied
-      20261013180000 20261013190000 20261013200000 20261014090000
-      20261014130000 20261015090000 20261015120000` (add `20261015150000` to
-      that list once it too was applied by hand). Reset the dev database
-      password in the dashboard before using it from a machine.
+      (`vivier_triage`) and `20261014162202` (`vivier_search_counts`), then
+      `20261014182710` (`vivier_triage_first_wins`) and `20261014191732`
+      (`vivier_merge_keeps_assessment`), whose functions the triage file now
+      holds, then `20261015090903` (`vivier_similar_seniority`),
+      `20261015132417` (`vivier_analysis_jobs`) and `20261015201251`
+      (`vivier_spaces`), each recorded under the time it was applied (read
+      on 2026-10-15); evolutions 2 and 3 were applied outside the CLI and
+      are not listed. Before a `db push`, run `supabase migration repair
+      --status reverted 20261014124056 20261014150558 20261014162202
+      20261014182710 20261014191732 20261015090903 20261015132417
+      20261015201251` (the push refuses remote versions it has no file
+      for), then `supabase migration repair --status applied 20261013180000
+      20261013190000 20261013200000 20261014090000 20261014130000
+      20261015090000 20261015120000 20261015150000 20261016090000`.
+      Reset the dev database password in the dashboard before using it from
+      a machine.
 - [ ] Apply `20261015150000_vivier_analysis_jobs` on `vivier_dev` (the SQL
       editor, or `db push` after the repair above), then check
       `searches.status` and `search_triage.score` exist and `record_screen()`
       is granted to the service role alone. The evolution 7 processor reads
       `searches.status` at every scan and the Worker's `runSearch` inserts
-      it: without the file, every claim and every "Lancer l'analyse" fail.
-      Record the date here as for the earlier files.
+      it: without the file, every claim and every "Analyser" fail.
+      Record the date here as for the earlier files. Done on 2026-10-15
+      (recorded above).
+- [ ] Apply `20261016090000_vivier_spaces` on `vivier_dev`, then on the
+      production project, before the Worker of evolution 7 part B serves;
+      check `organizations.kind` exists (every existing row `team`), that
+      `create_organization` has one signature (four arguments) and that
+      `organizations` is in the `supabase_realtime` publication. The new web
+      app calls `create_organization()` with the kind: without the file a
+      person with no space yet cannot create one ("Je travaille seul" and
+      "Je crée une équipe" both fail). Record the date here as for the
+      earlier files. On `vivier_dev`: done on 2026-10-15 (recorded above;
+      every check holds, and `kind` is not among the columns members may
+      update); the production project is still to do.
 - [ ] Default privileges for `anon` and `authenticated` are revoked by the
       migration: every later table or RPC meant for the browser needs its own
       `GRANT` (the migration shows the pattern).
@@ -87,7 +116,8 @@ provider accounts. Work it in one block before the first real CV.
       and evolution 4 the private bucket `photos` (2 MB, PNG and JPEG; read by
       members, deleted by admins, written by the processor alone).
 - [ ] Realtime: the migration added the collaborative tables to the
-      `supabase_realtime` publication; check Realtime is on for the project.
+      `supabase_realtime` publication (evolution 7 part B adds
+      `organizations`); check Realtime is on for the project.
 - [ ] Enable Point-in-Time Recovery (Pro plan) and read `docs/BACKUPS.md`.
 - [ ] Copy the service role key to the Cloudflare and Railway dashboards only.
 
@@ -103,16 +133,23 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Secrets: `SUPABASE_SERVICE_ROLE_KEY`, `PROCESSOR_SHARED_SECRET`,
       `LLM_API_KEY`, `RESEND_API_KEY`.
 - [ ] Check `/status` shows every part green without any value.
+- [ ] Redeploy the Worker for evolution 7 part B, once `20261016090000` is
+      applied (the merge to `main` deploys it through the Git integration;
+      no variable or secret changes). The plane, the rail and the spaces are
+      the web app's alone: the processor and `packages/analysis` do not
+      change, so Railway needs no deploy. Then check that a new account
+      offers "Je travaille seul" and that a personal space reads "Espace" on
+      the rail.
 - [ ] Rate limits: the `VIVIER_RATE_LIMITER` binding (`wrangler.jsonc`, 60
       calls a minute, mirrored by `RATE_LIMIT_POLICY` in
       `src/lib/platform/rate-limit.server.ts`) counts per scope, per address
       (an IPv6 by its /64) and per user, in each data centre; the `triage`
       and `assess` scopes count per user alone once the member is known,
       so recruiters behind one office address do not share a bucket. Since
-      evolution 7 an analysis spends `search` alone, once per click ("Lancer
-      l'analyse", "Reprendre", "Lire quand même"): its model calls are the
-      processor's, paced by `ANALYSIS_CONCURRENCY` and the provider's own
-      refusals (sent again after 2, 6, 15, 30 and 60 seconds, or the
+      evolution 7 an analysis spends `search` alone, once per click
+      ("Analyser", "Relancer", "Reprendre", "Lire quand même"): its model
+      calls are the processor's, paced by `ANALYSIS_CONCURRENCY` and the
+      provider's own refusals (sent again after 2, 6, 15, 30 and 60 seconds, or the
       `Retry-After` named, then the run fails), never by this binding; the
       `triage` and `assess` scopes stay declared and unused. If teams report
       `RATE:limited` on other actions, raise `simple.limit` in
@@ -136,10 +173,10 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Redeploy the processor for evolution 7, after the migration and before
       the Worker: the analysis runs there now, the web app only queues
       `searches` rows, and a processor built before this evolution never
-      claims them (the band waits on "Démarrage…"). The image builds the
-      shared package `packages/analysis` and ships its `dist/`; add
-      `packages/analysis/**` to the service's watch paths. After the deploy
-      the `listening` log line shows `analysisConcurrency`, `analysisMaxRuns`
+      claims them (the brief's state block waits on "En attente"). The
+      image builds the shared package `packages/analysis` and ships its
+      `dist/`; add `packages/analysis/**` to the service's watch paths.
+      After the deploy the `listening` log line shows `analysisConcurrency`, `analysisMaxRuns`
       and `analysisPollIntervalMs`, and the first analysis logs
       `analysis_claimed`, one `analysis_step` line per stage and
       `analysis_done`; `GET /metrics` counts `analysesRunning`.
@@ -221,10 +258,10 @@ provider accounts. Work it in one block before the first real CV.
       the share dialog only offers the link to copy. Share emails set Reply-To
       to the sender's confirmed address (`EMAIL_REPLY_TO` is the fallback).
 - [ ] Without `LLM_API_KEY` on the processor no analysis runs: the run
-      fails at its claim (`model_unavailable`) and the band says "Modèle
-      indisponible" with "Relancer"; the Worker's key serves `/status`, the
-      brief page's capability and the dossier draft's option only. With a
-      key on the processor, the one reading of a brief (`brief`), the triage
+      fails at its claim (`model_unavailable`) and the brief's state block
+      says "Échec · Modèle indisponible" with "Réessayer"; the Worker's key
+      serves `/status`, the brief page's capability and the dossier
+      draft's option only. With a key on the processor, the one reading of a brief (`brief`), the triage
       (`triage`), the screening (`screen`) and the three passes (`assess`)
       record `ai_usage` rows for the organisation (`summary`, a dossier draft
       reworded by the model, is an option of `draftShare` the one-step dialog
@@ -258,8 +295,8 @@ provider accounts. Work it in one block before the first real CV.
 - [ ] Until then every organisation is on the trial quota of 200 CV a month
       (`organizations.cv_quota_month`, raised per organisation by the owner in
       the database); a CV the processor refused at the cap waits as "en attente
-      de quota" and is re-queued from the talent pool's banner once the quota
-      allows.
+      de quota" and is re-queued from the processing line of the talent
+      pool's list once the quota allows.
 
 ## Repository
 

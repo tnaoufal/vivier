@@ -10,36 +10,41 @@ import { Check, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
 
+import { Block, type BlockHeading } from "./block";
 import { Chip, ChipEditor } from "./chip-editor";
 
-export function TagsCard({
+export function TagsBlock({
   tags,
   canEdit,
+  as,
   onChange,
 }: {
   tags: string[];
   canEdit: boolean;
+  as: BlockHeading;
   onChange: (values: string[]) => Promise<void>;
 }) {
   const t = useT();
   const [editing, setEditing] = useState(false);
   return (
-    <section className="sheet p-6">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-ink">{t("candidates.field.tags")}</h2>
-        {canEdit ? (
+    <Block
+      as={as}
+      title={t("candidates.field.tags")}
+      action={
+        canEdit ? (
           <Button
             type="button"
-            size="icon"
+            size="icon-sm"
             variant="ghost"
             icon={editing ? <Check /> : <Pencil />}
             onClick={() => setEditing((value) => !value)}
             aria-label={editing ? t("candidates.skills.done") : t("candidates.tags.edit")}
             aria-pressed={editing}
-            className="-my-2 text-muted-foreground hover:text-ink"
+            className="text-muted-foreground hover:text-ink"
           />
-        ) : null}
-      </div>
+        ) : null
+      }
+    >
       {editing ? (
         <ChipEditor
           values={tags}
@@ -58,6 +63,6 @@ export function TagsCard({
       ) : (
         <p className="text-sm text-muted-foreground">{t("common.none")}</p>
       )}
-    </section>
+    </Block>
   );
 }

@@ -210,10 +210,11 @@ Two situations:
    Everyone signs in again (sessions are not in the dump; passwords and
    Google links are).
 6. **Verify end to end**: sign in, open a profile and its CV (the signed
-   URL answers: Storage is back), run a search for a brief (the
-   `embedding` columns restored: the method reads `hybrid` when a model is
-   set up), open a shortlist board, `/status` all green, counts per table
-   against the manifest.
+   URL answers: Storage is back), its close profiles ("Tout voir" under
+   "Profils proches": "Sens du parcours" beside each when the profiles
+   had vectors, so the `embedding` columns are back), a brief with its
+   analysis and its "Shortlist" group, `/status` all green, counts per
+   table against the manifest.
 7. **Record** the drill in `docs/GO-LIVE.md`, then delete the drill
    project (or keep it as a standby if the cost is accepted). For a real
    restore, update the backup secrets to the new project's connection

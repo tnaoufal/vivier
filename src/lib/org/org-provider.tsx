@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useAuth } from "@/lib/auth/auth-context";
 import { loadSupabase } from "@/lib/auth/supabase-client";
+import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import type { MembershipRow, OrganizationRow, OrgRole, ProfileRow } from "@/lib/db/types";
 import { roleAtLeast } from "@/lib/db/types";
 
@@ -26,18 +27,21 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [members, setMembers] = useState<Map<string, ProfileRow & { role: OrgRole }>>(new Map());
   const [loading, setLoading] = useState(true);
+  // The last read of the members wins: a slower answer for a space left meanwhile never lands.
+  const membersRead = useRef(0);
 
-  const loadMemberships = useCallback(async () => {
+  /** Reads the spaces and picks the current one; answers its id (null when none was read). */
+  const loadMemberships = useCallback(async (): Promise<string | null> => {
     if (!userId) {
       setMemberships([]);
       setCurrentId(null);
       setLoading(false);
-      return;
+      return null;
     }
     const supabase = await loadSupabase();
     if (!supabase) {
       setLoading(false);
-      return;
+      return null;
     }
     const { data, error } = await supabase
       .from("memberships")
@@ -47,16 +51,17 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     if (error) {
       console.error(error);
       setLoading(false);
-      return;
+      return null;
     }
     const rows = (data ?? []) as unknown as MembershipWithOrg[];
     const list: OrgMembership[] = rows
       .filter((row) => row.organizations)
       .map((row) => ({ org: row.organizations as OrganizationRow, role: row.role }));
     setMemberships(list);
-    const picked = pickOrg(list, storedOrgId());
-    setCurrentId(picked?.org.id ?? null);
+    const picked = pickOrg(list, storedOrgId())?.org.id ?? null;
+    setCurrentId(picked);
     setLoading(false);
+    return picked;
   }, [userId]);
 
   useEffect(() => {
@@ -65,6 +70,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   }, [loadMemberships]);
 
   const loadMembers = useCallback(async (orgId: string) => {
+    const read = ++membersRead.current;
     const supabase = await loadSupabase();
     if (!supabase) return;
     // memberships.user_id points at auth.users, so PostgREST cannot embed
@@ -94,13 +100,36 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         if (profile) map.set(row.user_id, { ...profile, role: row.role });
       }
     }
-    setMembers(map);
+    if (read === membersRead.current) setMembers(map);
   }, []);
 
   useEffect(() => {
     if (currentId) void loadMembers(currentId);
     else setMembers(new Map());
   }, [currentId, loadMembers]);
+
+  // The current space's row, live (organizations is in the realtime
+  // publication; RLS sends a member their own organisation's changes
+  // only): a colleague who accepts an invitation turns a personal space
+  // into a team, an administrator elsewhere renames it or hides the
+  // photos, the owner deletes it. The spaces are read again, then the
+  // members, the colleague who just joined among them, while the space is
+  // still the current one.
+  useEffect(() => {
+    if (!currentId) return undefined;
+    let active = true;
+    const reload = debounce(() => {
+      if (!active) return;
+      void loadMemberships().then((picked) => {
+        if (active && picked === currentId) void loadMembers(currentId);
+      });
+    }, 400);
+    const stop = subscribeToTable("organizations", `id=eq.${currentId}`, reload);
+    return () => {
+      active = false;
+      stop();
+    };
+  }, [currentId, loadMembers, loadMemberships]);
 
   const current = useMemo(
     () => memberships.find((m) => m.org.id === currentId) ?? null,

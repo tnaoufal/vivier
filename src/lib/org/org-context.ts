@@ -66,7 +66,10 @@ export function rememberOrgId(orgId: string): void {
 }
 
 /** Picks the organisation to show: the remembered one when still a member, else the first. */
-export function pickOrg(memberships: OrgMembership[], remembered: string | null): OrgMembership | null {
+export function pickOrg(
+  memberships: OrgMembership[],
+  remembered: string | null,
+): OrgMembership | null {
   if (!memberships.length) return null;
   return memberships.find((m) => m.org.id === remembered) ?? memberships[0] ?? null;
 }
@@ -78,9 +81,20 @@ export function pickOrg(memberships: OrgMembership[], remembered: string | null)
  * The photo identifies a person in the interface only; it never reaches
  * a model, whatever this says.
  */
-export function readShowPhotos(org: Pick<OrganizationRow, "show_photos"> | null | undefined): boolean {
+export function readShowPhotos(
+  org: Pick<OrganizationRow, "show_photos"> | null | undefined,
+): boolean {
   if (!org) return true;
   return org.show_photos !== false;
+}
+
+/**
+ * A space of one person (organizations.kind), named "Espace personnel"
+ * and created in one click; anything else, a row read before the column
+ * existed included, is a team.
+ */
+export function isPersonal(org: Pick<OrganizationRow, "kind"> | null | undefined): boolean {
+  return org?.kind === "personal";
 }
 
 /** The display name of a member, falling back to the email, then a placeholder. */

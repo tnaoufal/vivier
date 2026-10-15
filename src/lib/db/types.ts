@@ -70,6 +70,9 @@ export function roleAtLeast(role: OrgRole | null | undefined, min: OrgRole): boo
 
 export type Plan = "trial" | "team" | "business";
 
+/** A team, or the personal space of a person working alone: created in one click from their name, it becomes a team the moment a colleague joins (accept_invitation). */
+export type OrgKind = "team" | "personal";
+
 export interface ProfileRow {
   id: string;
   email: string | null;
@@ -90,6 +93,8 @@ export interface OrganizationRow {
   cv_quota_month: number;
   /** Candidates' photos are shown in the interface; a team that practises anonymous CVs turns it off. */
   show_photos: boolean;
+  /** Set by create_organization(), flipped to "team" by accept_invitation(); never written by the browser. */
+  kind: OrgKind;
   created_by: string | null;
   created_at: string;
   updated_at: string;

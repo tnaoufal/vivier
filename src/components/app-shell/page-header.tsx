@@ -1,10 +1,10 @@
 /**
- * The top of every app page: an optional eyebrow, the title in the
- * display face (30/36, 24/32 on phones), one sentence under it, an
+ * The top of a page outside the plane (the legal pages, the status
+ * page, a form of the public frame): an optional eyebrow, the title in
+ * the display face (30/36, 24/32 on phones), one sentence under it, an
  * optional row of meta (pills, a date), the actions on the right (under
- * the title on a phone). 32px of air below it. `sticky` is the slim
- * variant of a long page: it stays under the top edge with a blur, the
- * title at 20/28 and the description folded away.
+ * the title on a phone). 32px of air below it. A signed-in page is a
+ * `Workspace` and has no PageHeader.
  */
 import type { ReactNode } from "react";
 
@@ -16,7 +16,6 @@ export function PageHeader({
   actions,
   eyebrow,
   meta,
-  sticky = false,
   className,
 }: {
   title: ReactNode;
@@ -25,29 +24,8 @@ export function PageHeader({
   eyebrow?: ReactNode;
   /** A row under the title: pills, a date, a count. */
   meta?: ReactNode;
-  /** The slim variant that stays at the top of a long page. */
-  sticky?: boolean;
   className?: string;
 }) {
-  if (sticky) {
-    return (
-      <header
-        className={cn(
-          "sticky top-16 z-sticky -mx-4 mb-6 flex items-center justify-between gap-4 border-b border-border bg-background/85 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8 lg:top-0 lg:-mx-10 lg:px-10",
-          className,
-        )}
-      >
-        <div className="min-w-0 flex-1">
-          {eyebrow ? <div className="label-caps truncate">{eyebrow}</div> : null}
-          <h1 className="truncate font-display text-xl text-ink">{title}</h1>
-          {meta ? <div className="mt-1 flex flex-wrap items-center gap-2">{meta}</div> : null}
-        </div>
-        {actions ? (
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>
-        ) : null}
-      </header>
-    );
-  }
   return (
     <header
       className={cn(
