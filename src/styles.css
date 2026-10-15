@@ -81,7 +81,7 @@
  *
  * The @theme inline block maps CSS custom properties to Tailwind utility
  * classes (--color-primary -> bg-primary, text-primary; --text-body ->
- * text-body; --shadow-raised -> shadow-raised). :root holds the light
+ * text-body; --shadow-float -> shadow-float). :root holds the light
  * palette, .dark the dark one; every token exists in both (tested). Light
  * is the product default (HR teams work in daylight, on documents); the
  * rail's switch and the pre-hydration script keep the saved choice.
@@ -137,9 +137,7 @@
   --radius-2xl: 1rem;
   --radius-3xl: 1rem;
 
-  /* Elevation: a hairline (kept for the few who ask for it), a soft shadow under what floats, a deeper one under a dialog. */
-  --shadow-hairline: var(--elev-hairline);
-  --shadow-raised: var(--elev-raised);
+  /* Elevation: a soft shadow under what floats, a deeper one under a dialog. */
   --shadow-float: var(--elev-float);
   --shadow-dialog: var(--elev-dialog);
 
@@ -315,8 +313,6 @@
   --inverse-muted-foreground: #a8a8a8;
   /* The veil under a dialog or a drawer: the ink at 40 percent. */
   --scrim: rgba(10, 10, 10, 0.4);
-  --elev-hairline: 0 1px 0 rgba(0, 0, 0, 0.06);
-  --elev-raised: 0 2px 8px rgba(0, 0, 0, 0.08);
   --elev-float: 0 8px 24px rgba(0, 0, 0, 0.1);
   --elev-dialog: 0 16px 48px rgba(0, 0, 0, 0.12);
 }
@@ -362,8 +358,6 @@
   --inverse-muted-foreground: #5f5f5f;
   /* A veil darkens in both themes: a paper veil would wash the page out. */
   --scrim: rgba(0, 0, 0, 0.7);
-  --elev-hairline: 0 1px 0 rgba(0, 0, 0, 0.4);
-  --elev-raised: 0 2px 8px rgba(0, 0, 0, 0.5);
   --elev-float: 0 8px 24px rgba(0, 0, 0, 0.6);
   --elev-dialog: 0 16px 48px rgba(0, 0, 0, 0.7);
 }
@@ -506,28 +500,6 @@
 }
 
 /*
- * A linking surface that is not a sheet (a board card, a tile drawn by a
- * feature) rises 1px and its shadow with it; `sheet-link` below carries
- * the same lift for sheets, so the two are never combined.
- */
-@utility lift {
-  transition-property: translate, box-shadow, border-color, background-color;
-  transition-duration: var(--duration-base);
-  transition-timing-function: var(--ease-out-soft);
-  &:hover,
-  &:focus-visible {
-    translate: 0 -1px;
-    box-shadow: var(--elev-raised);
-  }
-  &:focus-visible {
-    outline: none;
-    box-shadow:
-      var(--elev-raised),
-      0 0 0 2px var(--color-ring);
-  }
-}
-
-/*
  * A row or a card arriving: it rises 6px while fading in, once, when it
  * mounts. `--i` (set by `stagger` on a parent, or inline) delays it by
  * --i times --stagger so a list unfolds instead of popping.
@@ -535,11 +507,6 @@
 @utility rise-in {
   animation: rise-in var(--duration-slower) var(--ease-out-soft) backwards;
   animation-delay: calc(var(--i, 0) * var(--stagger));
-}
-
-/* The outlet on a route change: the new page fades in and rises 6px over 180ms. */
-@utility page-enter {
-  animation: rise-in var(--duration-base) var(--ease-out-soft) both;
 }
 
 @utility fade-in {
@@ -697,33 +664,6 @@
   &:is(a):focus-visible {
     outline: none;
     box-shadow: inset 0 0 0 2px var(--color-ring);
-  }
-}
-
-/*
- * The tint and lift of a card that leads somewhere, on hover and keyboard
- * focus (the border darkens a step); keyboard focus adds the 2px ink ring
- * outside the card (a row that is a link draws it inset, see `sheet-row`),
- * so a tile is never focused without a visible mark.
- */
-@utility sheet-link {
-  transition:
-    background-color var(--duration-fast) var(--ease-out-soft),
-    border-color var(--duration-fast) var(--ease-out-soft),
-    box-shadow var(--duration-base) var(--ease-out-soft),
-    translate var(--duration-base) var(--ease-out-soft);
-  &:hover,
-  &:focus-visible {
-    background-color: color-mix(in oklab, var(--color-muted) 40%, var(--color-card));
-    border-color: color-mix(in oklab, var(--color-ink) 20%, var(--color-border));
-    box-shadow: var(--elev-raised);
-    translate: 0 -1px;
-  }
-  &:focus-visible {
-    outline: none;
-    box-shadow:
-      var(--elev-raised),
-      0 0 0 2px var(--color-ring);
   }
 }
 

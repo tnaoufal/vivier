@@ -39,12 +39,10 @@ import {
   nearOf,
   SET_ASIDE_PAGE,
   setAsideOf,
-  stoppedLineOf,
   TEXT_RANKING_MAX,
   type BandRow,
   type BandState,
   type Funnel,
-  type StoppedLine,
 } from "@/lib/briefs/presentation";
 import {
   ensureShortlist,
@@ -146,8 +144,6 @@ export interface AnalysisController {
   running: boolean;
   band: BandState;
   funnel: Funnel;
-  /** What a stopped run still has to do, as the band's line says it: the profiles its stage had left, else the stage with its own count. */
-  stoppedLine: StoppedLine;
   matches: MatchResult[];
   near: MatchResult[];
   /** The near profiles the screening scored but nobody read, listed after the near ones read in full. */
@@ -712,7 +708,6 @@ export function useAnalysis({
     running: starting || live,
     band,
     funnel,
-    stoppedLine: latest ? stoppedLineOf(latest) : { kind: "unfinished" },
     matches,
     near,
     screened: {

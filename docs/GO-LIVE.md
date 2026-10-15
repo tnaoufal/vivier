@@ -45,34 +45,44 @@ provider accounts. Work it in one block before the first real CV.
       by the processor and the Worker's server functions alone), then
       evolution 7 part B: `20261016090000_vivier_spaces` (`organizations.kind`,
       `team` or `personal`, with no `UPDATE` grant; `create_organization()`
-      takes the kind as a fourth argument and the three-argument one is
-      dropped, so PostgREST sees one signature; `accept_invitation()` makes a
-      personal space a team when a second member joins; `organizations` joins
-      the `supabase_realtime` publication).
+      takes the kind as a fourth argument, `p_kind` (`team` by default), and
+      the three-argument one is dropped, so PostgREST sees one signature;
+      `accept_invitation()` makes a personal space a team when a second
+      member joins; `organizations` joins the `supabase_realtime`
+      publication).
       The evolution 2, 3, 6 and 7 files (part B's too) can be re-run;
       `vivier_init` and the photos and triage files create policies and stop
       on a second run (`policy … already exists`), so mark them applied
       rather than running them again. The dev project `vivier_dev`
-      (ref `qtujdeolcdvlzwvpqpuv`, eu-west-1, free tier) carries the first eight (checked on its schema on 2026-10-13: `document_kind`,
+      (ref `qtujdeolcdvlzwvpqpuv`, eu-west-1, free tier) carries all ten (checked on its schema on 2026-10-13: `document_kind`,
       `shares.brief`, `phone_digits`, `similar_candidates()`,
       `searches.pool_size` exist and the quota function excludes `rejected`;
       `briefs.role_profile` and `20261014130000` applied on 2026-10-14;
       `20261015090000` checked on 2026-10-14: the table, the three functions
       granted to the service role only, the three counts and both checks;
       `20261015120000` applied on 2026-10-15: `seniority_band()` and the
-      `similar_candidates()` that answers `years_experience`).
+      `similar_candidates()` that answers `years_experience`;
+      `20261015150000` and `20261016090000` applied on 2026-10-15 and
+      checked on its schema the same day: the checks of the two items below
+      hold, and every function the evolution 5 to 7 files define has the
+      file's body, comments aside).
       Its `supabase_migrations.schema_migrations` does not match the files:
       it lists `20261013090000` (`vivier_init`), then `20261014124056`
       (`vivier_photos`) and evolution 5 in two parts, `20261014150558`
-      (`vivier_triage`) and `20261014162202` (`vivier_search_counts`),
-      recorded under the time they were applied; evolutions 2 and 3 were
-      applied outside the CLI and are not listed. Before a `db push`, run
-      `supabase migration repair --status reverted 20261014124056
-      20261014150558 20261014162202` (the push refuses remote versions it
-      has no file for), then `supabase migration repair --status applied
-      20261013180000 20261013190000 20261013200000 20261014090000
-      20261014130000 20261015090000 20261015120000` (add `20261015150000` and
-      `20261016090000` to that list once they too were applied by hand).
+      (`vivier_triage`) and `20261014162202` (`vivier_search_counts`), then
+      `20261014182710` (`vivier_triage_first_wins`) and `20261014191732`
+      (`vivier_merge_keeps_assessment`), whose functions the triage file now
+      holds, then `20261015090903` (`vivier_similar_seniority`),
+      `20261015132417` (`vivier_analysis_jobs`) and `20261015201251`
+      (`vivier_spaces`), each recorded under the time it was applied (read
+      on 2026-10-15); evolutions 2 and 3 were applied outside the CLI and
+      are not listed. Before a `db push`, run `supabase migration repair
+      --status reverted 20261014124056 20261014150558 20261014162202
+      20261014182710 20261014191732 20261015090903 20261015132417
+      20261015201251` (the push refuses remote versions it has no file
+      for), then `supabase migration repair --status applied 20261013180000
+      20261013190000 20261013200000 20261014090000 20261014130000
+      20261015090000 20261015120000 20261015150000 20261016090000`.
       Reset the dev database password in the dashboard before using it from
       a machine.
 - [ ] Apply `20261015150000_vivier_analysis_jobs` on `vivier_dev` (the SQL
@@ -81,7 +91,8 @@ provider accounts. Work it in one block before the first real CV.
       is granted to the service role alone. The evolution 7 processor reads
       `searches.status` at every scan and the Worker's `runSearch` inserts
       it: without the file, every claim and every "Analyser" fail.
-      Record the date here as for the earlier files.
+      Record the date here as for the earlier files. Done on 2026-10-15
+      (recorded above).
 - [ ] Apply `20261016090000_vivier_spaces` on `vivier_dev`, then on the
       production project, before the Worker of evolution 7 part B serves;
       check `organizations.kind` exists (every existing row `team`), that
@@ -90,7 +101,9 @@ provider accounts. Work it in one block before the first real CV.
       app calls `create_organization()` with the kind: without the file a
       person with no space yet cannot create one ("Je travaille seul" and
       "Je crée une équipe" both fail). Record the date here as for the
-      earlier files.
+      earlier files. On `vivier_dev`: done on 2026-10-15 (recorded above;
+      every check holds, and `kind` is not among the columns members may
+      update); the production project is still to do.
 - [ ] Default privileges for `anon` and `authenticated` are revoked by the
       migration: every later table or RPC meant for the browser needs its own
       `GRANT` (the migration shows the pattern).

@@ -12,16 +12,12 @@ import type {
 import {
   analysisOfRow,
   appendPage,
-  arrivalIndexes,
   bandStateOf,
   BRIEF_FILTERS,
   briefChangedSince,
   cardAnalysisOf,
   digestResults,
-  ETA_MIN_ELAPSED_MS,
-  etaOf,
   failureLineOf,
-  figuresLine,
   filterBriefs,
   firstSentence,
   funnelOf,
@@ -30,19 +26,15 @@ import {
   nearOf,
   requirementTally,
   doubtLine,
-  reservationLine,
   retainedByBrief,
   screenLine,
   SET_ASIDE_PAGE,
   setAsideOf,
   setAsideReason,
   stageKey,
-  stoppedLineOf,
-  synthesisLine,
   withAnalysis,
   withTriageProgress,
   type BandRow,
-  type Funnel,
   type LatestAnalysis,
 } from "./presentation";
 import { briefSourceHash } from "./role-profile";
@@ -550,35 +542,6 @@ describe("briefChangedSince", () => {
   });
 });
 
-describe("arrivalIndexes", () => {
-  it("gives the first list its turns in order", () => {
-    const turns = arrivalIndexes(new Map(), ["a", "b", "c"]);
-    expect([...turns.entries()]).toEqual([
-      ["a", 0],
-      ["b", 1],
-      ["c", 2],
-    ]);
-  });
-
-  it("keeps the turn of a known key and counts the new ones from zero", () => {
-    const first = arrivalIndexes(new Map(), ["a", "b"]);
-    const next = arrivalIndexes(first, ["c", "a", "d", "b"]);
-    expect(next.get("a")).toBe(0);
-    expect(next.get("b")).toBe(1);
-    expect(next.get("c")).toBe(0);
-    expect(next.get("d")).toBe(1);
-  });
-
-  it("forgets a key no longer listed and reads a repeated key once", () => {
-    const first = arrivalIndexes(new Map(), ["a", "b"]);
-    const next = arrivalIndexes(first, ["b", "b", "c"]);
-    expect(next.has("a")).toBe(false);
-    expect(next.get("b")).toBe(1);
-    expect(next.get("c")).toBe(0);
-    expect(next.size).toBe(2);
-  });
-});
-
 function tiered(
   id: string,
   decision: Assessment["decision"],
@@ -674,39 +637,6 @@ describe("funnelOf", () => {
   });
 });
 
-describe("figuresLine", () => {
-  const funnel: Funnel = { analysed: 1091, kept: 84, assessed: 30, matches: 12, setAside: 1010 };
-
-  it("says the profiles analysed, kept by the triage, read in full and set aside, each once, never the matches", () => {
-    expect(figuresLine(funnel, true)).toEqual([
-      { key: "analysed", count: 1091 },
-      { key: "kept", count: 84 },
-      { key: "assessed", count: 30 },
-      { key: "setAside", count: 1010 },
-    ]);
-  });
-
-  it("leaves out the profiles read in full once every kept profile was, and the set-aside figure when there is none", () => {
-    expect(figuresLine({ ...funnel, assessed: 84, setAside: 0 }, true)).toEqual([
-      { key: "analysed", count: 1091 },
-      { key: "kept", count: 84 },
-    ]);
-  });
-
-  it("never counts the triage's kept profiles for an analysis without one", () => {
-    expect(
-      figuresLine({ analysed: 120, kept: 120, assessed: 96, matches: 3, setAside: 7 }, false),
-    ).toEqual([
-      { key: "analysed", count: 120 },
-      { key: "assessed", count: 96 },
-      { key: "setAside", count: 7 },
-    ]);
-    expect(
-      figuresLine({ analysed: 5, kept: 5, assessed: 5, matches: 2, setAside: 0 }, false),
-    ).toEqual([{ key: "analysed", count: 5 }]);
-  });
-});
-
 describe("firstSentence", () => {
   it("stops at the first full stop followed by a space", () => {
     expect(firstSentence("  Huit ans en contrôle de gestion. Puis un poste de DAF.  ")).toBe(
@@ -727,44 +657,12 @@ describe("firstSentence", () => {
   });
 });
 
-describe("synthesisLine and reservationLine", () => {
-  it("prefers the tiering's note, then the summary's first sentence", () => {
-    expect(
-      synthesisLine(tiered("a", "fit", 90, { rankNote: "  Le plus proche du poste.  " })),
-    ).toBe("Le plus proche du poste.");
-    expect(
-      synthesisLine(tiered("a", "fit", 90, { rankNote: " ", summary: "Six ans. Puis autre." })),
-    ).toBe("Six ans.");
-    expect(synthesisLine(tiered("a", "fit", 90, { rankNote: null, summary: "" }))).toBeNull();
-  });
-
-  it("answers null for a profile no model read", () => {
-    expect(synthesisLine(result("x"))).toBeNull();
-    expect(reservationLine(result("x"))).toBeNull();
-  });
-
-  it("names the main reservation: the second opinion's doubt, then the first concern", () => {
-    const doubt = tiered("a", "borderline", 60, {
-      concerns: ["Pas de management"],
-      challenge: { verdict: "doubt", reason: "Postes très courts", evidence: null },
-    });
-    expect(reservationLine(doubt)).toBe("Postes très courts");
-    const concern = tiered("a", "borderline", 60, {
-      concerns: ["  Pas de management "],
-      challenge: { verdict: "confirmed", reason: "ignored", evidence: null },
-    });
-    expect(reservationLine(concern)).toBe("Pas de management");
-    expect(reservationLine(tiered("a", "borderline", 60, { summary: "Un profil voisin." }))).toBe(
-      "Un profil voisin.",
-    );
-  });
-
+describe("doubtLine", () => {
   it("reads the second opinion's doubt on a match it kept, nothing on a confirmation", () => {
     const kept = tiered("a", "fit", 82, {
       challenge: { verdict: "doubt", kind: "context", reason: "  Pétrochimie plutôt que chimie ", evidence: "e" },
     });
     expect(doubtLine(kept)).toBe("Pétrochimie plutôt que chimie");
-    expect(reservationLine(kept)).toBe("Pétrochimie plutôt que chimie");
     expect(
       doubtLine(tiered("a", "fit", 82, { challenge: { verdict: "confirmed", reason: "r", evidence: null } })),
     ).toBeNull();
@@ -844,91 +742,6 @@ describe("stageKey", () => {
   it("names the sentence of a stage", () => {
     expect(stageKey("triage")).toBe("briefs.analysis.stage.triage");
     expect(stageKey("final")).toBe("briefs.analysis.stage.final");
-  });
-});
-
-describe("etaOf", () => {
-  const startedAt = "2026-10-15T10:00:00Z";
-  const start = Date.parse(startedAt);
-
-  it("answers null without a start, before anything settled, or too soon", () => {
-    expect(etaOf(null, 40, 100, start + 60_000)).toBeNull();
-    expect(etaOf("not a date", 40, 100, start + 60_000)).toBeNull();
-    expect(etaOf(startedAt, 0, 100, start + 60_000)).toBeNull();
-    expect(etaOf(startedAt, 40, 100, start + ETA_MIN_ELAPSED_MS - 1)).toBeNull();
-    expect(etaOf(startedAt, 5, 0, start + 60_000)).toBeNull();
-  });
-
-  it("projects the pace seen since the start onto what is left", () => {
-    expect(etaOf(startedAt, 40, 100, start + 20_000)).toBe(30_000);
-    expect(etaOf(startedAt, 640, 1093, start + 120_000)).toBe(Math.round((120_000 * 453) / 640));
-  });
-
-  it("answers 0 once nothing is left", () => {
-    expect(etaOf(startedAt, 100, 100, start + 1)).toBe(0);
-    expect(etaOf(startedAt, 120, 100, start + 1)).toBe(0);
-  });
-});
-
-describe("stoppedLineOf", () => {
-  it("counts the profiles a stage that reads profiles had left, never below zero", () => {
-    expect(stoppedLineOf({ stage: "triage", progress_done: 453, progress_total: 1093 })).toEqual({
-      kind: "profiles",
-      count: 640,
-    });
-    expect(stoppedLineOf({ stage: "screening", progress_done: 100, progress_total: 644 })).toEqual({
-      kind: "profiles",
-      count: 544,
-    });
-    expect(stoppedLineOf({ stage: "assessing", progress_done: -5, progress_total: 10 })).toEqual({
-      kind: "profiles",
-      count: 10,
-    });
-    expect(
-      stoppedLineOf({ stage: "triage", progress_done: Number.NaN, progress_total: 3 }),
-    ).toEqual({
-      kind: "profiles",
-      count: 3,
-    });
-  });
-
-  it("names the stage with its own count when its items are not profiles, or once every profile was read", () => {
-    expect(stoppedLineOf({ stage: "ranking", progress_done: 2, progress_total: 4 })).toEqual({
-      kind: "stage",
-      stage: "ranking",
-      done: 2,
-      total: 4,
-    });
-    expect(stoppedLineOf({ stage: "challenging", progress_done: 3, progress_total: 5 })).toEqual({
-      kind: "stage",
-      stage: "challenging",
-      done: 3,
-      total: 5,
-    });
-    expect(stoppedLineOf({ stage: "triage", progress_done: 1093, progress_total: 1093 })).toEqual({
-      kind: "stage",
-      stage: "triage",
-      done: 1093,
-      total: 1093,
-    });
-    expect(stoppedLineOf({ stage: "final", progress_done: 2, progress_total: 1 })).toEqual({
-      kind: "stage",
-      stage: "final",
-      done: 1,
-      total: 1,
-    });
-  });
-
-  it("says unfinished alone without a stage or without items", () => {
-    expect(stoppedLineOf({ stage: null, progress_done: 0, progress_total: 0 })).toEqual({
-      kind: "unfinished",
-    });
-    expect(stoppedLineOf({ stage: "promotion", progress_done: 0, progress_total: 0 })).toEqual({
-      kind: "unfinished",
-    });
-    expect(stoppedLineOf({ stage: "triage", progress_done: 10, progress_total: 0 })).toEqual({
-      kind: "unfinished",
-    });
   });
 });
 

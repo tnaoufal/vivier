@@ -4,12 +4,9 @@ import type { Assessment, BriefCriterion, MatchResult } from "@/lib/db/types";
 
 import {
   assessedScore,
-  cardLine,
   criteriaOf,
-  hasReading,
   modelReading,
   recruiterReadingOf,
-  requirementRowsOf,
   tierOf,
 } from "./requirements";
 
@@ -46,74 +43,7 @@ const assessment: Assessment = {
 
 const assessed: MatchResult = { ...deterministic, assessment };
 
-describe("requirementRowsOf", () => {
-  it("answers no rows without a match", () => {
-    expect(requirementRowsOf(criteria, null, "?")).toEqual([]);
-    expect(requirementRowsOf(criteria, undefined, "?")).toEqual([]);
-  });
-
-  it("maps the deterministic verdicts when no model answered, in the brief's order", () => {
-    const rows = requirementRowsOf(criteria, deterministic, "Critère retiré");
-    expect(rows.map((row) => [row.id, row.met, row.evidence])).toEqual([
-      ["k1", "yes", "React depuis 2019"],
-      ["k2", "partial", "B2"],
-      ["k3", "unknown", null],
-      ["k9", "no", null],
-    ]);
-    expect(rows[0]?.label).toBe("React");
-    expect(rows[0]?.required).toBe(true);
-    expect(rows[3]?.label).toBe("Critère retiré");
-    expect(rows[3]?.required).toBe(false);
-  });
-
-  it("prefers the assessment's answer and falls back to the verdict for a criterion it skipped", () => {
-    const rows = requirementRowsOf(criteria, assessed, "Critère retiré");
-    expect(rows.map((row) => [row.id, row.met, row.evidence])).toEqual([
-      ["k1", "partial", "React, sans version citée"],
-      ["k2", "no", null],
-      ["k3", "unknown", null],
-      ["k9", "no", null],
-    ]);
-  });
-
-  it("reads a value the schema does not know as not stated, and blank evidence as none", () => {
-    const odd = {
-      verdicts: [{ criterionId: "k3", verdict: "maybe", evidence: "   " }],
-      assessment: {
-        decision: "fit",
-        score: 90,
-        summary: "",
-        requirements: [{ criterionId: "k1", met: "sure", evidence: "  " }],
-        model: "m",
-      },
-    } as unknown as MatchResult;
-    const rows = requirementRowsOf(criteria, odd, "?");
-    expect(rows.map((row) => [row.id, row.met, row.evidence])).toEqual([
-      ["k1", "unknown", null],
-      ["k2", "unknown", null],
-      ["k3", "unknown", null],
-    ]);
-  });
-
-  it("falls back to the verdicts when a stored assessment's requirements are not a list", () => {
-    const drifted = {
-      ...deterministic,
-      assessment: { ...assessment, requirements: {} },
-    } as unknown as MatchResult;
-    expect(
-      requirementRowsOf(criteria, drifted, "Critère retiré").map((row) => [
-        row.id,
-        row.met,
-        row.evidence,
-      ]),
-    ).toEqual([
-      ["k1", "yes", "React depuis 2019"],
-      ["k2", "partial", "B2"],
-      ["k3", "unknown", null],
-      ["k9", "no", null],
-    ]);
-  });
-
+describe("criteriaOf", () => {
   it("follows the criteria the match carries, as they were when the analysis ran, before the brief's current ones", () => {
     const snapshot: MatchResult = {
       ...assessed,
@@ -130,28 +60,10 @@ describe("requirementRowsOf", () => {
       ],
     };
     expect(criteriaOf(criteria, snapshot).map((criterion) => criterion.id)).toEqual(["k2", "k9"]);
-    const rows = requirementRowsOf(criteria, snapshot, "Critère retiré");
-    expect(rows.map((row) => [row.id, row.label, row.met, row.required])).toEqual([
-      ["k2", "Anglais C1 (à l'analyse)", "no", true],
-      ["k9", "Docker", "no", false],
-      // What the match still says about a criterion its snapshot does not hold is kept, never dropped.
-      ["k1", "Critère retiré", "partial", false],
-    ]);
     // A snapshot the parser cannot read, or an empty one, falls back on the brief's criteria.
     expect(criteriaOf(criteria, { criteria: [] })).toBe(criteria);
     expect(criteriaOf(criteria, { criteria: "nope" } as unknown as MatchResult)).toBe(criteria);
     expect(criteriaOf(criteria, deterministic)).toBe(criteria);
-  });
-
-  it("keeps the first answer when the match repeats a criterion", () => {
-    const twice: MatchResult = {
-      ...deterministic,
-      verdicts: [
-        { criterionId: "k1", verdict: "missing", evidence: null },
-        { criterionId: "k1", verdict: "match", evidence: "later" },
-      ],
-    };
-    expect(requirementRowsOf(criteria, twice, "?")[0]?.met).toBe("no");
   });
 });
 
@@ -288,7 +200,7 @@ describe("recruiterReadingOf", () => {
     expect(silent?.concerns).toEqual([]);
   });
 
-  it("reads an assessment made before the reading as empty lists, which the drawer shows nothing of", () => {
+  it("reads an assessment made before the reading as empty lists", () => {
     const older = recruiterReadingOf(assessed);
     expect(older).toEqual({
       tier: null,
@@ -298,12 +210,6 @@ describe("recruiterReadingOf", () => {
       questions: [],
       dimensions: [],
     });
-    expect(hasReading(older)).toBe(false);
-    expect(hasReading(null)).toBe(false);
-    expect(hasReading(recruiterReadingOf(read))).toBe(true);
-    expect(
-      hasReading(recruiterReadingOf({ assessment: { ...assessment, rankNote: "Seul retenu." } })),
-    ).toBe(true);
   });
 
   it("guards a stored column that drifted from the schema", () => {
@@ -351,26 +257,5 @@ describe("recruiterReadingOf", () => {
       challenge: true,
     });
     expect(result?.questions).toHaveLength(8);
-  });
-});
-
-describe("cardLine", () => {
-  it("is the rank note first, then the main reservation", () => {
-    expect(cardLine(read)).toBe("Deuxième sur React, derrière le profil lead.");
-    expect(cardLine({ assessment: { ...reading, rankNote: null } })).toBe("Anglais B2 seulement");
-    expect(cardLine({ assessment: { ...reading, rankNote: "  " } })).toBe("Anglais B2 seulement");
-  });
-
-  it("falls back on the counter-reading's doubt when it is the only reservation", () => {
-    expect(cardLine({ assessment: { ...reading, rankNote: null, concerns: [] } })).toBe(
-      "Les trois derniers postes sont en agence",
-    );
-  });
-
-  it("is null when the assessment says neither, or without an assessment", () => {
-    expect(cardLine(assessed)).toBeNull();
-    expect(cardLine(deterministic)).toBeNull();
-    expect(cardLine(null)).toBeNull();
-    expect(cardLine(undefined)).toBeNull();
   });
 });

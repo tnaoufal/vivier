@@ -45,7 +45,8 @@ export function FilterChip({
       aria-expanded={toggles ? expanded : undefined}
       aria-controls={toggles ? controls : undefined}
       className={cn(
-        "press inline-flex h-10 max-w-full shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-4 text-meta font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+        // The ring stands 2px off the chip: on an active chip's ink, an ink ring would not show.
+        "press inline-flex h-10 max-w-full shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-4 text-meta font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
         active
           ? "border-ink bg-ink text-background"
           : "border-input bg-card text-muted-foreground hover:bg-accent hover:text-ink",

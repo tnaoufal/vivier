@@ -152,11 +152,11 @@ the call sites and draws like `caution`.
 
 ### Elevation, radii, layers
 
-| Scale   | Steps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shadows | `shadow-hairline` 0 1px 0 black at 6 percent (kept; no component uses it since the sheet lost it), `shadow-raised` 0 2px 8px at 8 percent (the lift of a card that leads somewhere; unused since the plane), `shadow-float` 0 8px 24px at 10 percent (menus, popovers, toasts, the thread pane laid over the detail), `shadow-dialog` 0 16px 48px at 12 percent (dialogs, drawers); every floating surface also has a 1px border, and no button has a shadow; dark deepens the alphas |
-| Radii   | `rounded-sm` 6 (menu items, tooltips, small discs), `rounded-md` 8 (menus and popovers, the brand square), `rounded-lg` 12 (sheets, textareas, toasts), `rounded-xl` 16 (dialogs, drawers), `rounded-full` (buttons, pills, fields); nothing rounder than 16 but the pill                                                                                                                                                                                                             |
-| Layers  | `z-sticky` 20 (the Workspace header below `lg`, the thread pane laid over the detail between `lg` and `xl`), `z-overlay` 40 (the scrim), `z-modal` 50 (dialog, drawer), `z-popover` 60 (menus above a drawer), `z-toast` 70                                                                                                                                                                                                                                                           |
+| Scale   | Steps                                                                                                                                                                                                                                                                     |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shadows | `shadow-float` 0 8px 24px at 10 percent (menus, popovers, toasts, the thread pane laid over the detail), `shadow-dialog` 0 16px 48px at 12 percent (dialogs, drawers); every floating surface also has a 1px border, and no button has a shadow; dark deepens the alphas  |
+| Radii   | `rounded-sm` 6 (menu items, tooltips, small discs), `rounded-md` 8 (menus and popovers, the brand square), `rounded-lg` 12 (sheets, textareas, toasts), `rounded-xl` 16 (dialogs, drawers), `rounded-full` (buttons, pills, fields); nothing rounder than 16 but the pill |
+| Layers  | `z-sticky` 20 (the Workspace header below `lg`, the thread pane laid over the detail between `lg` and `xl`), `z-overlay` 40 (the scrim), `z-modal` 50 (dialog, drawer), `z-popover` 60 (menus above a drawer), `z-toast` 70                                               |
 
 ### Type
 
@@ -492,9 +492,8 @@ between rows, a tint on hover when it leads somewhere), `label-caps`,
 greyscale); motion: `press`, `rise-in`, `fade-in`, `stagger`, `shine` (a
 grey sheen), `animate-indeterminate` (a bar whose size is unknown),
 `duration-*`; layers: `z-*`; `share-sheet` for the public dossier only
-(paper and ink on any theme). `sheet-link`, `lift` and `page-enter` are
-still in the file, and no page uses them since the plane. Hiding a
-control in print is Tailwind's `print:hidden`.
+(paper and ink on any theme). Hiding a control in print is Tailwind's
+`print:hidden`.
 
 ## Motion: what moves and why
 

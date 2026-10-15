@@ -114,10 +114,11 @@ evolution 6 (`seniority_band()`, and `similar_candidates()` answering the
 neighbour's years, seniority first), `20261015150000` evolution 7 (the
 job's columns of `searches`, the screening's columns of `search_triage`
 with `record_screen()` and `bump_triage_attempts()`, the usage kind
-`screen`, `candidates.photo_checked_at`) and `20261016090000` evolution 7
-part B (`organizations.kind`, `create_organization()` with the kind,
-`accept_invitation()` turning a personal space into a team, the
-organisation's row in the realtime publication). Then enable
+`screen`, `candidates.photo_checked_at`) and `20261016090000_vivier_spaces`
+evolution 7 part B (`organizations.kind`, `create_organization()` taking
+the kind as a fourth argument, `p_kind`, in place of the three-argument
+function, `accept_invitation()` turning a personal space into a team,
+the organisation's row in the realtime publication). Then enable
 Email and Google in Auth and add `http://localhost:5173/**` to the
 redirect allow list. Nothing is set up by hand in the dashboard beyond
 Auth and the secrets.
@@ -1405,8 +1406,11 @@ process started, the documents set aside among them.
   brief's state block would wait on "En attente".
 - **Database**: migrations are applied to the Supabase project before the
   code that needs them is deployed. Evolution 7 part B is the Worker and
-  one migration: `20261016090000` first, then the Worker; the processor
-  does not change.
+  one migration: `20261016090000_vivier_spaces` must be applied before the
+  new Worker serves (the onboarding and "Nouvelle équipe" call
+  `create_organization()` with the kind, the four-argument signature only
+  that file creates: without it nobody can create a space), then the
+  Worker; the processor does not change.
 
 ## Validation
 
