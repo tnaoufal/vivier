@@ -134,6 +134,7 @@ describe("prompts", () => {
       "a quote that is not found in the profile does not count as evidence",
     );
     expect(assessment).toContain("dated experiences");
+    expect(assessment).toContain("whatever the field");
     expect(assessment).toContain("No praise");
     expect(assessment).toContain("protected characteristic");
     expect(assessment).toContain("The team reviews your reading and decides");
