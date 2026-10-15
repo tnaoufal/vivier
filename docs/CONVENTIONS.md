@@ -21,6 +21,26 @@ and nothing else of note. Dynamic params: `const { briefId } = Route.useParams()
 Navigation: `<Link to="/app/briefs/$briefId" params={{ briefId }}>` and
 `useNavigate()`. Do not edit `src/routeTree.gen.ts` (generated).
 
+## The shared analysis package
+
+The pure part of the analysis (the deterministic matching, the criteria
+and the role profile, the prompts and the payloads, the assessment and
+its rules, the triage, the screening, the funnel's rules, the run's
+state machine) lives in `packages/analysis` (`@vivier/analysis`), used
+by the web app through a path alias (straight from `packages/analysis/src`,
+in `tsconfig.json`, `vite.config.ts` and `vitest.config.ts`) and by the
+processor through a `file:` dependency (its `npm run build:analysis`
+compiles the package into `packages/analysis/dist`, which is gitignored).
+The package has zero dependencies: no zod, no React, no i18n, no `@/`
+import, and no DOM or Node global (it carries no typings for them);
+relative imports inside it end in `.js`. Each app keeps its own zod
+schemas for the model's answers and for the stored JSON it reads
+(`parseCriteria`, `parseRoleProfile`, `readBriefAnswer` stay in
+`src/lib/briefs`, which re-exports the package so every web import keeps
+its path). A pure function that used a parsed value takes the parsed
+value. Tests sit next to the package's modules and run with the web
+app's vitest.
+
 ## Reading and writing data from the browser
 
 supabase-js under RLS, through `loadSupabase()` / `requireSupabase()`

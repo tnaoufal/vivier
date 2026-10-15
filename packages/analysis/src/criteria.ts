@@ -69,14 +69,67 @@ export function toWeight(value: unknown): Weight {
  * forbids using any of it whatever the text carries.
  */
 const PROTECTED_CORE = [
-  "age", "ages", "aged", "date de naissance", "birth", "born", "sexe", "sex", "gender", "femme", "homme",
-  "female", "male", "origine", "origines", "origin", "origins", "ethnic", "ethnie", "ethnique", "race",
-  "racial", "nationalite", "nationality", "religion", "religieux", "religieuse", "religious", "confession",
-  "handicap", "handicape", "handicapee", "disability", "disabled", "enceinte", "grossesse", "pregnancy",
-  "pregnant", "marital", "marie", "mariee", "married", "syndicat", "syndical", "syndicale", "syndique",
-  "trade union", "orientation sexuelle", "sexual orientation",
+  "age",
+  "ages",
+  "aged",
+  "date de naissance",
+  "birth",
+  "born",
+  "sexe",
+  "sex",
+  "gender",
+  "femme",
+  "homme",
+  "female",
+  "male",
+  "origine",
+  "origines",
+  "origin",
+  "origins",
+  "ethnic",
+  "ethnie",
+  "ethnique",
+  "race",
+  "racial",
+  "nationalite",
+  "nationality",
+  "religion",
+  "religieux",
+  "religieuse",
+  "religious",
+  "confession",
+  "handicap",
+  "handicape",
+  "handicapee",
+  "disability",
+  "disabled",
+  "enceinte",
+  "grossesse",
+  "pregnancy",
+  "pregnant",
+  "marital",
+  "marie",
+  "mariee",
+  "married",
+  "syndicat",
+  "syndical",
+  "syndicale",
+  "syndique",
+  "trade union",
+  "orientation sexuelle",
+  "sexual orientation",
 ];
-const PROTECTED_WIDER = ["famille", "familiale", "family", "enfants", "children", "politique", "political", "photo", "photographie"];
+const PROTECTED_WIDER = [
+  "famille",
+  "familiale",
+  "family",
+  "enfants",
+  "children",
+  "politique",
+  "political",
+  "photo",
+  "photographie",
+];
 
 function wordsPattern(words: readonly string[]): RegExp {
   return new RegExp(`(?<![\\p{L}])(${words.join("|")})(?![\\p{L}])`, "u");
@@ -91,7 +144,11 @@ const PROTECTED_ROLE = wordsPattern(PROTECTED_CORE);
  * typed it (the editor says so under the row). A role is read on the
  * core list alone (see above); any other kind, or none given, on both.
  */
-export function protectedCriterion(label: string, value: string, kind: CriterionKind = "other"): boolean {
+export function protectedCriterion(
+  label: string,
+  value: string,
+  kind: CriterionKind = "other",
+): boolean {
   const pattern = kind === "role" ? PROTECTED_ROLE : PROTECTED;
   return pattern.test(fold(label)) || pattern.test(fold(value));
 }
@@ -119,7 +176,13 @@ export function withId(
 
 /** An empty row for the editor, of a kind. */
 export function emptyCriterion(kind: CriterionKind = "skill", id?: string): BriefCriterion {
-  const base: Omit<BriefCriterion, "id"> = { kind, label: "", value: "", required: false, weight: 2 };
+  const base: Omit<BriefCriterion, "id"> = {
+    kind,
+    label: "",
+    value: "",
+    required: false,
+    weight: 2,
+  };
   return id === undefined ? withId(base) : withId(base, id);
 }
 
@@ -206,16 +269,16 @@ export function sameCriteria(a: readonly BriefCriterion[], b: readonly BriefCrit
 }
 
 /** True when the list already holds a criterion with the same kind and value (case and accents apart). */
-export function hasSimilar(criteria: readonly BriefCriterion[], candidate: Pick<BriefCriterion, "kind" | "value">): boolean {
+export function hasSimilar(
+  criteria: readonly BriefCriterion[],
+  candidate: Pick<BriefCriterion, "kind" | "value">,
+): boolean {
   const key = fold(candidate.value);
-  return criteria.some((criterion) => criterion.kind === candidate.kind && fold(criterion.value) === key);
+  return criteria.some(
+    (criterion) => criterion.kind === candidate.kind && fold(criterion.value) === key,
+  );
 }
 
 function fold(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }

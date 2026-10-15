@@ -196,7 +196,13 @@ export type CandidateInsert = Pick<CandidateRow, "org_id" | "created_by"> &
     >
   >;
 
-export type DocumentStatus = "queued" | "processing" | "processed" | "needs_ocr" | "failed" | "rejected";
+export type DocumentStatus =
+  | "queued"
+  | "processing"
+  | "processed"
+  | "needs_ocr"
+  | "failed"
+  | "rejected";
 /** What the classifier decided before structuring; null when never classified. */
 export type DocumentKind = "cv" | "other";
 export type ExtractionMethod = "pdf-text" | "ocr" | "none";

@@ -15,7 +15,9 @@ describe("parseCriteria", () => {
       { id: "1", kind: "skill", label: "Dup", value: "dup", required: false, weight: 1 },
       "nope",
     ]);
-    expect(parsed).toEqual([{ id: "1", kind: "skill", label: "SAP", value: "sap", required: true, weight: 3 }]);
+    expect(parsed).toEqual([
+      { id: "1", kind: "skill", label: "SAP", value: "sap", required: true, weight: 3 },
+    ]);
   });
 
   it("answers an empty list for anything but an array", () => {
@@ -28,8 +30,22 @@ describe("parseCriteria", () => {
     const definition = "d".repeat(700);
     const parsed = parseCriteria([
       { id: "s", kind: "skill", label: "SAP", value: "sap", required: false, weight: 2 },
-      { id: "r1", kind: "role", label: "Business Developer", value: definition, required: true, weight: 3 },
-      { id: "r2", kind: "role", label: "Account manager", value: "autre", required: true, weight: 3 },
+      {
+        id: "r1",
+        kind: "role",
+        label: "Business Developer",
+        value: definition,
+        required: true,
+        weight: 3,
+      },
+      {
+        id: "r2",
+        kind: "role",
+        label: "Account manager",
+        value: "autre",
+        required: true,
+        weight: 3,
+      },
     ]);
     expect(parsed.map((criterion) => criterion.id)).toEqual(["s", "r1"]);
     expect(parsed[1]?.value).toHaveLength(VALUE_MAX);
@@ -39,8 +55,22 @@ describe("parseCriteria", () => {
   it("leaves out a stored row about a protected characteristic, and counts it for the server's log", () => {
     const stored = [
       { id: "1", kind: "skill", label: "SAP", value: "sap", required: true, weight: 3 },
-      { id: "2", kind: "other", label: "Âge", value: "moins de 35 ans", required: false, weight: 2 },
-      { id: "3", kind: "other", label: "Nationalité", value: "française", required: true, weight: 2 },
+      {
+        id: "2",
+        kind: "other",
+        label: "Âge",
+        value: "moins de 35 ans",
+        required: false,
+        weight: 2,
+      },
+      {
+        id: "3",
+        kind: "other",
+        label: "Nationalité",
+        value: "française",
+        required: true,
+        weight: 2,
+      },
       { id: "4", kind: "other", label: "", value: "enfants", required: false, weight: 2 },
     ];
     expect(parseCriteria(stored).map((criterion) => criterion.id)).toEqual(["1"]);
@@ -51,8 +81,22 @@ describe("parseCriteria", () => {
 
   it("keeps a stored role whose definition names the job's domain, and still drops any other kind on the same words", () => {
     const stored = [
-      { id: "r", kind: "role", label: "Business Developer", value: "Famille de métiers : commercial. Politique commerciale, prospection.", required: true, weight: 3 },
-      { id: "s", kind: "skill", label: "Politique commerciale", value: "politique commerciale", required: false, weight: 2 },
+      {
+        id: "r",
+        kind: "role",
+        label: "Business Developer",
+        value: "Famille de métiers : commercial. Politique commerciale, prospection.",
+        required: true,
+        weight: 3,
+      },
+      {
+        id: "s",
+        kind: "skill",
+        label: "Politique commerciale",
+        value: "politique commerciale",
+        required: false,
+        weight: 2,
+      },
     ];
     expect(parseCriteria(stored).map((criterion) => criterion.id)).toEqual(["r"]);
     expect(countProtected(stored)).toBe(1);
@@ -62,7 +106,16 @@ describe("parseCriteria", () => {
 describe("roleFromTitle, as the parser reads what it refuses", () => {
   it("drops a stored role that names a protected characteristic, and counts it", () => {
     // What the parser does with such a row, had it been saved (roleFromTitle itself answers null for it).
-    const stored = [{ id: "r", kind: "role", label: "Hôtesse d'accueil, nationalité française", value: "Hôtesse d'accueil, nationalité française", required: true, weight: 3 }];
+    const stored = [
+      {
+        id: "r",
+        kind: "role",
+        label: "Hôtesse d'accueil, nationalité française",
+        value: "Hôtesse d'accueil, nationalité française",
+        required: true,
+        weight: 3,
+      },
+    ];
     expect(parseCriteria(stored)).toEqual([]);
     expect(countProtected(stored)).toBe(1);
   });

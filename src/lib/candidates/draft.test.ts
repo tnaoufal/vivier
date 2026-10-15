@@ -16,7 +16,9 @@ const row: CandidateRow = {
   summary: null,
   skills: ["Excel"],
   languages: [{ name: "Anglais", level: "C1" }],
-  experiences: [{ title: "Contrôleuse", company: "Acme", start: "2019-03", end: null, description: null }],
+  experiences: [
+    { title: "Contrôleuse", company: "Acme", start: "2019-03", end: null, description: null },
+  ],
   education: [{ degree: "Master CCA", school: null, year: "2018" }],
   links: [{ label: "LinkedIn", url: "https://linkedin.com/in/ana" }],
   tags: [],
@@ -28,6 +30,7 @@ const row: CandidateRow = {
   status: "active",
   fingerprint: null,
   photo_path: null,
+  photo_checked_at: null,
   search_text: null,
   created_by: null,
   created_at: "2026-10-13T08:00:00Z",
@@ -39,7 +42,13 @@ describe("toDraft", () => {
     const draft = toDraft(row);
     expect(draft.phone).toBe("");
     expect(draft.years_experience).toBe("6.5");
-    expect(draft.experiences[0]).toEqual({ title: "Contrôleuse", company: "Acme", start: "2019-03", end: "", description: "" });
+    expect(draft.experiences[0]).toEqual({
+      title: "Contrôleuse",
+      company: "Acme",
+      start: "2019-03",
+      end: "",
+      description: "",
+    });
     expect(draft.education[0]).toEqual({ degree: "Master CCA", school: "", year: "2018" });
   });
 });
@@ -72,7 +81,20 @@ describe("toPatch", () => {
     expect(result.patch.links).toEqual([{ label: "LinkedIn", url: "https://linkedin.com/in/ana" }]);
     expect(result.patch.languages).toEqual([{ name: "Anglais", level: "C1" }]);
     expect(Object.keys(result.patch).sort()).toEqual(
-      ["availability", "education", "email", "experiences", "full_name", "headline", "languages", "links", "location", "phone", "summary", "years_experience"].sort(),
+      [
+        "availability",
+        "education",
+        "email",
+        "experiences",
+        "full_name",
+        "headline",
+        "languages",
+        "links",
+        "location",
+        "phone",
+        "summary",
+        "years_experience",
+      ].sort(),
     );
   });
 

@@ -50,7 +50,16 @@ export {
 
 const storedCriterion = z.object({
   id: z.string().min(1).max(64),
-  kind: z.enum(["role", "skill", "experience", "language", "location", "education", "availability", "other"]),
+  kind: z.enum([
+    "role",
+    "skill",
+    "experience",
+    "language",
+    "location",
+    "education",
+    "availability",
+    "other",
+  ]),
   label: z.string().max(LABEL_MAX * 4),
   value: z.string().max(VALUE_MAX * 4),
   required: z.boolean(),

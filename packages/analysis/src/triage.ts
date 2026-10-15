@@ -30,6 +30,8 @@ import type {
   TriageVerdict,
 } from "./types.js";
 
+export type { TriageProfile } from "./types.js";
+
 /** The most profiles one triage call reads. */
 export const TRIAGE_BATCH_MAX = 40;
 /** A verdict's reason is clipped here before it is stored (the prompt asks for fifteen words). */

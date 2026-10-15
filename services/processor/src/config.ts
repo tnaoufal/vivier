@@ -27,6 +27,18 @@ export const SHARED_SECRET_MIN_LENGTH = 32;
  */
 export const DEFAULT_CONCURRENCY = 4;
 
+/**
+ * Model calls one analysis keeps in flight (the triage's batches, the
+ * screening's, the readings): four drain a pool of a thousand profiles
+ * in a few minutes without tripping the model's rate limit;
+ * ANALYSIS_CONCURRENCY tunes it within 1..8.
+ */
+export const DEFAULT_ANALYSIS_CONCURRENCY = 4;
+/** Analyses run at once by one process; ANALYSIS_MAX_RUNS tunes it within 1..4. */
+export const DEFAULT_ANALYSIS_MAX_RUNS = 2;
+/** How often the queued and the stale analyses are looked for (a lost poke, a crash or a redeploy never loses a run). */
+export const DEFAULT_ANALYSIS_POLL_INTERVAL_MS = 30_000;
+
 export const DEFAULT_CHAT_MODEL = "mistral-small-latest";
 export const DEFAULT_EMBEDDING_MODEL = "mistral-embed";
 export const DEFAULT_OCR_MODEL = "mistral-ocr-latest";
@@ -42,6 +54,8 @@ export interface ModelConfig {
   apiKey: string;
   model: string;
   embeddingModel: string;
+  /** The chat model the analysis's calls go to (LLM_ANALYSIS_MODEL), the chat model unless set. */
+  analysisModel: string;
 }
 
 export interface OcrConfig {
@@ -66,6 +80,12 @@ export interface ProcessorConfig {
   maintenanceIntervalMs: number;
   /** Documents processed at once: 1..8 (default 4). */
   concurrency: number;
+  /** Model calls one analysis keeps in flight: 1..8 (default 4). */
+  analysisConcurrency: number;
+  /** Analyses run at once: 1..4 (default 2). */
+  analysisMaxRuns: number;
+  /** How often queued or stale analyses are claimed; 0 disables the scan (a poke still starts a run). */
+  analysisPollIntervalMs: number;
   /** Cap on the text kept per document (extracted_text and what the model reads from). */
   maxTextChars: number;
   /** What is off and why; logged once at start. */
@@ -154,13 +174,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProcessorConfi
       "",
     );
     const mistral = baseUrl.includes("mistral.ai");
+    const chatModel = value(env, "LLM_MODEL") ?? (mistral ? DEFAULT_CHAT_MODEL : "gpt-4o-mini");
     model = {
       baseUrl,
       apiKey: llmApiKey,
-      model: value(env, "LLM_MODEL") ?? (mistral ? DEFAULT_CHAT_MODEL : "gpt-4o-mini"),
+      model: chatModel,
       embeddingModel:
         value(env, "LLM_EMBEDDING_MODEL") ??
         (mistral ? DEFAULT_EMBEDDING_MODEL : "text-embedding-3-small"),
+      analysisModel: value(env, "LLM_ANALYSIS_MODEL") ?? chatModel,
     };
   } else {
     warnings.push(
@@ -196,6 +218,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProcessorConfi
       86_400_000,
     ),
     concurrency: clampedInt(value(env, "PROCESSOR_CONCURRENCY"), DEFAULT_CONCURRENCY, 1, 8),
+    analysisConcurrency: clampedInt(
+      value(env, "ANALYSIS_CONCURRENCY"),
+      DEFAULT_ANALYSIS_CONCURRENCY,
+      1,
+      8,
+    ),
+    analysisMaxRuns: clampedInt(value(env, "ANALYSIS_MAX_RUNS"), DEFAULT_ANALYSIS_MAX_RUNS, 1, 4),
+    analysisPollIntervalMs: intervalMs(
+      value(env, "ANALYSIS_POLL_INTERVAL_MS"),
+      DEFAULT_ANALYSIS_POLL_INTERVAL_MS,
+      5_000,
+      3_600_000,
+    ),
     maxTextChars: clampedInt(value(env, "MAX_TEXT_CHARS"), 200_000, 10_000, 2_000_000),
     warnings,
   };

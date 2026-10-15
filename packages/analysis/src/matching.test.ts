@@ -19,7 +19,9 @@ import {
   type MatchProfile,
 } from "./matching.js";
 
-function criterion(partial: Partial<BriefCriterion> & Pick<BriefCriterion, "kind" | "value">): BriefCriterion {
+function criterion(
+  partial: Partial<BriefCriterion> & Pick<BriefCriterion, "kind" | "value">,
+): BriefCriterion {
   return {
     id: partial.id ?? `c-${partial.kind}-${partial.value}`,
     kind: partial.kind,
@@ -131,7 +133,10 @@ describe("languages", () => {
 
 describe("evaluateCriterion: skill", () => {
   it("matches a skill by substring", () => {
-    const verdict = evaluateCriterion(criterion({ kind: "skill", value: "Excel" }), profile({ skills: ["Microsoft Excel", "SAP"] }));
+    const verdict = evaluateCriterion(
+      criterion({ kind: "skill", value: "Excel" }),
+      profile({ skills: ["Microsoft Excel", "SAP"] }),
+    );
     expect(verdict.verdict).toBe("match");
     expect(verdict.evidence).toBe("Microsoft Excel");
   });
@@ -155,10 +160,15 @@ describe("evaluateCriterion: skill", () => {
   });
 
   it("answers not_stated when nothing appears: a skill the CV does not name is not a lack", () => {
-    const absent = evaluateCriterion(criterion({ kind: "skill", value: "python" }), profile({ skills: ["SAP"], search_text: "SAP FI" }));
+    const absent = evaluateCriterion(
+      criterion({ kind: "skill", value: "python" }),
+      profile({ skills: ["SAP"], search_text: "SAP FI" }),
+    );
     expect(absent.verdict).toBe("not_stated");
     expect(absent.evidence).toBeNull();
-    expect(evaluateCriterion(criterion({ kind: "skill", value: "python" }), profile()).verdict).toBe("not_stated");
+    expect(
+      evaluateCriterion(criterion({ kind: "skill", value: "python" }), profile()).verdict,
+    ).toBe("not_stated");
   });
 });
 
@@ -166,39 +176,96 @@ describe("evaluateCriterion: language", () => {
   const english = (level: string | null) => profile({ languages: [{ name: "Anglais", level }] });
 
   it("matches a language without a required level", () => {
-    const verdict = evaluateCriterion(criterion({ kind: "language", value: "anglais" }), english("B1"));
+    const verdict = evaluateCriterion(
+      criterion({ kind: "language", value: "anglais" }),
+      english("B1"),
+    );
     expect(verdict.verdict).toBe("match");
     expect(verdict.evidence).toBe("Anglais (B1)");
   });
 
   it("compares the level in the value or the label", () => {
-    expect(evaluateCriterion(criterion({ kind: "language", value: "anglais C1" }), english("C2")).verdict).toBe("match");
-    expect(evaluateCriterion(criterion({ kind: "language", value: "anglais C1" }), english("B2")).verdict).toBe("partial");
-    expect(evaluateCriterion(criterion({ kind: "language", value: "anglais", label: "Anglais courant" }), english("B2")).verdict).toBe("match");
-    expect(evaluateCriterion(criterion({ kind: "language", value: "anglais", label: "Anglais courant" }), english("B1")).verdict).toBe("partial");
-    expect(evaluateCriterion(criterion({ kind: "language", value: "anglais bilingue" }), english("courant")).verdict).toBe("partial");
-    expect(evaluateCriterion(criterion({ kind: "language", value: "anglais bilingue" }), english("native")).verdict).toBe("match");
+    expect(
+      evaluateCriterion(criterion({ kind: "language", value: "anglais C1" }), english("C2"))
+        .verdict,
+    ).toBe("match");
+    expect(
+      evaluateCriterion(criterion({ kind: "language", value: "anglais C1" }), english("B2"))
+        .verdict,
+    ).toBe("partial");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "language", value: "anglais", label: "Anglais courant" }),
+        english("B2"),
+      ).verdict,
+    ).toBe("match");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "language", value: "anglais", label: "Anglais courant" }),
+        english("B1"),
+      ).verdict,
+    ).toBe("partial");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "language", value: "anglais bilingue" }),
+        english("courant"),
+      ).verdict,
+    ).toBe("partial");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "language", value: "anglais bilingue" }),
+        english("native"),
+      ).verdict,
+    ).toBe("match");
   });
 
   it("answers partial when the level is unknown, missing when the language is absent, not_stated when none is listed", () => {
-    expect(evaluateCriterion(criterion({ kind: "language", value: "anglais B2" }), english(null)).verdict).toBe("partial");
+    expect(
+      evaluateCriterion(criterion({ kind: "language", value: "anglais B2" }), english(null))
+        .verdict,
+    ).toBe("partial");
     const absent = evaluateCriterion(
       criterion({ kind: "language", value: "allemand" }),
-      profile({ languages: [{ name: "Anglais", level: "C1" }, { name: "Espagnol", level: null }] }),
+      profile({
+        languages: [
+          { name: "Anglais", level: "C1" },
+          { name: "Espagnol", level: null },
+        ],
+      }),
     );
     expect(absent.verdict).toBe("missing");
     // The languages listed are the evidence: the assessment shows them when the model reads the language in anyway.
     expect(absent.evidence).toBe("Anglais (C1), Espagnol");
-    expect(evaluateCriterion(criterion({ kind: "language", value: "allemand" }), profile()).verdict).toBe("not_stated");
+    expect(
+      evaluateCriterion(criterion({ kind: "language", value: "allemand" }), profile()).verdict,
+    ).toBe("not_stated");
   });
 });
 
 describe("evaluateCriterion: location", () => {
   it("matches in either direction", () => {
-    expect(evaluateCriterion(criterion({ kind: "location", value: "Lyon" }), profile({ location: "Lyon, France" })).verdict).toBe("match");
-    expect(evaluateCriterion(criterion({ kind: "location", value: "Lyon ou Paris" }), profile({ location: "Paris" })).verdict).toBe("match");
-    expect(evaluateCriterion(criterion({ kind: "location", value: "Lyon" }), profile({ location: "Lille" })).verdict).toBe("missing");
-    expect(evaluateCriterion(criterion({ kind: "location", value: "Lyon" }), profile({ location: null })).verdict).toBe("not_stated");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "location", value: "Lyon" }),
+        profile({ location: "Lyon, France" }),
+      ).verdict,
+    ).toBe("match");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "location", value: "Lyon ou Paris" }),
+        profile({ location: "Paris" }),
+      ).verdict,
+    ).toBe("match");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "location", value: "Lyon" }),
+        profile({ location: "Lille" }),
+      ).verdict,
+    ).toBe("missing");
+    expect(
+      evaluateCriterion(criterion({ kind: "location", value: "Lyon" }), profile({ location: null }))
+        .verdict,
+    ).toBe("not_stated");
   });
 });
 
@@ -214,29 +281,57 @@ describe("evaluateCriterion: experience", () => {
   });
 
   it("reads the years out of a sentence and falls back to the text when there is no number", () => {
-    expect(evaluateCriterion(criterion({ kind: "experience", value: "au moins 3 ans" }), profile({ years_experience: 3 })).verdict).toBe("match");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "experience", value: "au moins 3 ans" }),
+        profile({ years_experience: 3 }),
+      ).verdict,
+    ).toBe("match");
     const free = criterion({ kind: "experience", value: "expérience en audit" });
-    expect(evaluateCriterion(free, profile({ years_experience: 10, search_text: "Expérience en audit" })).verdict).toBe("match");
-    expect(evaluateCriterion(free, profile({ years_experience: 10, search_text: "Contrôle" })).verdict).toBe("not_stated");
+    expect(
+      evaluateCriterion(free, profile({ years_experience: 10, search_text: "Expérience en audit" }))
+        .verdict,
+    ).toBe("match");
+    expect(
+      evaluateCriterion(free, profile({ years_experience: 10, search_text: "Contrôle" })).verdict,
+    ).toBe("not_stated");
   });
 });
 
 describe("evaluateCriterion: education", () => {
-  const degrees = profile({ education: [{ degree: "Master 2 Contrôle de gestion et finance", school: "IAE Lyon", year: "2015" }] });
+  const degrees = profile({
+    education: [
+      { degree: "Master 2 Contrôle de gestion et finance", school: "IAE Lyon", year: "2015" },
+    ],
+  });
 
   it("matches a degree or a school; an absent degree is missing with the degrees listed as evidence", () => {
-    expect(evaluateCriterion(criterion({ kind: "education", value: "IAE" }), degrees).verdict).toBe("match");
-    expect(evaluateCriterion(criterion({ kind: "education", value: "master finance" }), degrees).verdict).toBe("match");
-    expect(evaluateCriterion(criterion({ kind: "education", value: "master audit" }), degrees).verdict).toBe("partial");
+    expect(evaluateCriterion(criterion({ kind: "education", value: "IAE" }), degrees).verdict).toBe(
+      "match",
+    );
+    expect(
+      evaluateCriterion(criterion({ kind: "education", value: "master finance" }), degrees).verdict,
+    ).toBe("match");
+    expect(
+      evaluateCriterion(criterion({ kind: "education", value: "master audit" }), degrees).verdict,
+    ).toBe("partial");
     const absent = evaluateCriterion(criterion({ kind: "education", value: "DSCG" }), degrees);
     expect(absent.verdict).toBe("missing");
     expect(absent.evidence).toBe("Master 2 Contrôle de gestion et finance, IAE Lyon");
-    expect(evaluateCriterion(criterion({ kind: "education", value: "DSCG" }), profile()).verdict).toBe("not_stated");
+    expect(
+      evaluateCriterion(criterion({ kind: "education", value: "DSCG" }), profile()).verdict,
+    ).toBe("not_stated");
   });
 });
 
 describe("evaluateCriterion: role", () => {
-  const role = criterion({ kind: "role", label: "Business Developer", value: "Commercial chargé de conquérir de nouveaux comptes…", required: true, weight: 3 });
+  const role = criterion({
+    kind: "role",
+    label: "Business Developer",
+    value: "Commercial chargé de conquérir de nouveaux comptes…",
+    required: true,
+    weight: 3,
+  });
 
   it("keeps the words of the job's name worth finding, once each, without function words", () => {
     expect(roleWords("Chef de projet digital (H/F)")).toEqual(["chef", "projet", "digital"]);
@@ -246,32 +341,65 @@ describe("evaluateCriterion: role", () => {
   });
 
   it("matches when every word of the name sits in the headline or in the title of an experience, with that title as evidence", () => {
-    const byHeadline = evaluateCriterion(role, profile({ headline: "Senior business developer, SaaS" }));
+    const byHeadline = evaluateCriterion(
+      role,
+      profile({ headline: "Senior business developer, SaaS" }),
+    );
     expect(byHeadline.verdict).toBe("match");
     expect(byHeadline.evidence).toBe("Senior business developer, SaaS");
-    const byTitle = evaluateCriterion(role, profile({ headline: "Directeur commercial", experiences: [experience("Directeur SAV"), experience("Business Developer")] }));
+    const byTitle = evaluateCriterion(
+      role,
+      profile({
+        headline: "Directeur commercial",
+        experiences: [experience("Directeur SAV"), experience("Business Developer")],
+      }),
+    );
     expect(byTitle.verdict).toBe("match");
     expect(byTitle.evidence).toBe("Business Developer");
     // Whole words only: a word of the name inside a longer word is not found.
-    expect(evaluateCriterion(role, profile({ headline: "Businessman" })).verdict).toBe("not_stated");
+    expect(evaluateCriterion(role, profile({ headline: "Businessman" })).verdict).toBe(
+      "not_stated",
+    );
   });
 
   it("answers partial with the closest title when half of the words appear", () => {
-    const verdict = evaluateCriterion(role, profile({ experiences: [experience("Directeur SAV"), experience("Développeur business unit")] }));
+    const verdict = evaluateCriterion(
+      role,
+      profile({
+        experiences: [experience("Directeur SAV"), experience("Développeur business unit")],
+      }),
+    );
     expect(verdict.verdict).toBe("partial");
     expect(verdict.evidence).toBe("Développeur business unit");
     const three = criterion({ kind: "role", label: "Chef de projet digital", value: "x" });
-    expect(evaluateCriterion(three, profile({ headline: "Chef de produit" })).verdict).toBe("not_stated");
-    expect(evaluateCriterion(three, profile({ headline: "Chef de projet" })).verdict).toBe("partial");
+    expect(evaluateCriterion(three, profile({ headline: "Chef de produit" })).verdict).toBe(
+      "not_stated",
+    );
+    expect(evaluateCriterion(three, profile({ headline: "Chef de projet" })).verdict).toBe(
+      "partial",
+    );
   });
 
   it("never answers missing: a different title is no proof of a different métier, and no title at all is not stated", () => {
-    const other = evaluateCriterion(role, profile({ headline: "Directeur SAV", experiences: [experience("Responsable service après-vente")] }));
+    const other = evaluateCriterion(
+      role,
+      profile({
+        headline: "Directeur SAV",
+        experiences: [experience("Responsable service après-vente")],
+      }),
+    );
     expect(other.verdict).toBe("not_stated");
     expect(other.evidence).toBeNull();
     expect(evaluateCriterion(role, profile()).verdict).toBe("not_stated");
-    expect(evaluateCriterion(role, profile({ experiences: [experience("  ")] })).verdict).toBe("not_stated");
-    expect(evaluateCriterion(criterion({ kind: "role", label: "de", value: "x" }), profile({ headline: "Business Developer" })).verdict).toBe("not_stated");
+    expect(evaluateCriterion(role, profile({ experiences: [experience("  ")] })).verdict).toBe(
+      "not_stated",
+    );
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "role", label: "de", value: "x" }),
+        profile({ headline: "Business Developer" }),
+      ).verdict,
+    ).toBe("not_stated");
   });
 
   it("counts in the score like any criterion and never blocks on its own", () => {
@@ -279,21 +407,47 @@ describe("evaluateCriterion: role", () => {
     expect(result.verdicts[0]?.verdict).toBe("not_stated");
     expect(result.blocked).toBe(false);
     expect(result.coverage).toBe(0);
-    expect(scoreCandidate([role], profile({ headline: "Business developer" }), none).score).toBe(100);
+    expect(scoreCandidate([role], profile({ headline: "Business developer" }), none).score).toBe(
+      100,
+    );
   });
 });
 
 describe("evaluateCriterion: availability and other", () => {
   it("reads availability", () => {
-    expect(evaluateCriterion(criterion({ kind: "availability", value: "immédiate" }), profile({ availability: "Disponibilité immédiate" })).verdict).toBe("match");
-    expect(evaluateCriterion(criterion({ kind: "availability", value: "immédiate" }), profile({ availability: "3 mois" })).verdict).toBe("missing");
-    expect(evaluateCriterion(criterion({ kind: "availability", value: "immédiate" }), profile()).verdict).toBe("not_stated");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "availability", value: "immédiate" }),
+        profile({ availability: "Disponibilité immédiate" }),
+      ).verdict,
+    ).toBe("match");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "availability", value: "immédiate" }),
+        profile({ availability: "3 mois" }),
+      ).verdict,
+    ).toBe("missing");
+    expect(
+      evaluateCriterion(criterion({ kind: "availability", value: "immédiate" }), profile()).verdict,
+    ).toBe("not_stated");
   });
 
   it("never judges a free criterion absent", () => {
-    expect(evaluateCriterion(criterion({ kind: "other", value: "permis B" }), profile({ search_text: "Permis B, véhicule" })).verdict).toBe("match");
-    expect(evaluateCriterion(criterion({ kind: "other", value: "permis B" }), profile({ search_text: "Rien" })).verdict).toBe("not_stated");
-    expect(evaluateCriterion(criterion({ kind: "other", value: "permis B" }), profile()).verdict).toBe("not_stated");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "other", value: "permis B" }),
+        profile({ search_text: "Permis B, véhicule" }),
+      ).verdict,
+    ).toBe("match");
+    expect(
+      evaluateCriterion(
+        criterion({ kind: "other", value: "permis B" }),
+        profile({ search_text: "Rien" }),
+      ).verdict,
+    ).toBe("not_stated");
+    expect(
+      evaluateCriterion(criterion({ kind: "other", value: "permis B" }), profile()).verdict,
+    ).toBe("not_stated");
   });
 });
 
@@ -308,7 +462,11 @@ describe("scoreCandidate", () => {
   it("weighs match 1, partial 0.5, missing 0 over the evaluable criteria", () => {
     const result = scoreCandidate(
       criteria,
-      profile({ skills: ["SAP FI"], languages: [{ name: "Anglais", level: "B2" }], location: "Paris" }),
+      profile({
+        skills: ["SAP FI"],
+        languages: [{ name: "Anglais", level: "B2" }],
+        location: "Paris",
+      }),
       { textRank: 1, vectorRank: null },
     );
     // sap match (3), anglais partial (2 × 0.5), Lyon missing (1), experience not stated
@@ -322,12 +480,22 @@ describe("scoreCandidate", () => {
   });
 
   it("blocks when a required criterion is missing, never when the CV only says nothing", () => {
-    const required = [criterion({ id: "lang", kind: "language", value: "anglais", required: true, weight: 2 })];
-    const result = scoreCandidate(required, profile({ languages: [{ name: "Espagnol", level: "C1" }] }), none);
+    const required = [
+      criterion({ id: "lang", kind: "language", value: "anglais", required: true, weight: 2 }),
+    ];
+    const result = scoreCandidate(
+      required,
+      profile({ languages: [{ name: "Espagnol", level: "C1" }] }),
+      none,
+    );
     expect(result.blocked).toBe(true);
     expect(result.verdicts[0]?.verdict).toBe("missing");
     // The required skill is absent from the CV's text: not stated, so nothing blocks.
-    const silent = scoreCandidate(criteria, profile({ skills: ["Oracle"], search_text: "Oracle" }), none);
+    const silent = scoreCandidate(
+      criteria,
+      profile({ skills: ["Oracle"], search_text: "Oracle" }),
+      none,
+    );
     expect(silent.blocked).toBe(false);
     expect(silent.verdicts[0]?.verdict).toBe("not_stated");
   });
@@ -365,7 +533,12 @@ describe("rankResults", () => {
       match({ candidateId: "high-thin", score: 80, coverage: 0.5 }),
       match({ candidateId: "high-full", score: 80, coverage: 1 }),
     ]);
-    expect(ranked.map((result) => result.candidateId)).toEqual(["high-full", "high-thin", "low", "blocked-high"]);
+    expect(ranked.map((result) => result.candidateId)).toEqual([
+      "high-full",
+      "high-thin",
+      "low",
+      "blocked-high",
+    ]);
   });
 
   it("falls back to the retrieval order: text rank, then vector rank, nulls last", () => {
@@ -376,7 +549,13 @@ describe("rankResults", () => {
       match({ candidateId: "text-1", retrieval: { textRank: 1, vectorRank: 9 } }),
       match({ candidateId: "vector-1", retrieval: { textRank: null, vectorRank: 1 } }),
     ]);
-    expect(ranked.map((result) => result.candidateId)).toEqual(["text-1", "text-3", "vector-1", "vector-2", "none"]);
+    expect(ranked.map((result) => result.candidateId)).toEqual([
+      "text-1",
+      "text-3",
+      "vector-1",
+      "vector-2",
+      "none",
+    ]);
   });
 
   it("does not change the input and is stable", () => {

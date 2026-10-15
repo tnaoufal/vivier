@@ -31,7 +31,27 @@ import {
   type Profile,
   type StructuredAnswer,
 } from "../src/structure.js";
-import type { AiUsageKind, CandidateRow, DocumentRow, OrganizationLimits } from "../src/types.js";
+import type {
+  AiUsageKind,
+  BriefJobPatch,
+  BriefJobRow,
+  CandidateRow,
+  CardProfile,
+  DocumentRow,
+  FullProfile,
+  MatchResult,
+  OrganizationLimits,
+  PhotoCandidateRow,
+  ProfileColumns,
+  ScreenWrite,
+  SearchJobPatch,
+  SearchJobRow,
+  ShortlistItemJobRow,
+  TriageCounts,
+  TriageFilter,
+  TriageRow,
+  TriageWrite,
+} from "../src/types.js";
 import { usageRecorderOf } from "../src/usage.js";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -87,14 +107,34 @@ class FakeDb implements Db {
   readonly objects = new Map<string, Buffer>();
   /** What was written to the `photos` bucket, by key. */
   readonly photos = new Map<string, { bytes: Uint8Array; contentType: string }>();
-  readonly usage: Array<{ orgId: string; kind: AiUsageKind; model: string | null; tokensIn: number; tokensOut: number }> = [];
+  readonly usage: Array<{
+    orgId: string;
+    kind: AiUsageKind;
+    model: string | null;
+    tokensIn: number;
+    tokensOut: number;
+  }> = [];
   /** Keys removed from the `cvs` bucket. */
   readonly removed: string[] = [];
   /** Keys removed from the `photos` bucket. */
   readonly removedPhotos: string[] = [];
-  organization: OrganizationLimits = { id: ORG, plan: "trial", cv_quota_month: 200, retention_months: 24 };
+  organization: OrganizationLimits = {
+    id: ORG,
+    plan: "trial",
+    cv_quota_month: 200,
+    retention_months: 24,
+  };
   processedThisMonth = 0;
   expired: ExpiredCandidate[] = [];
+  /** The analysis as a job: the searches (their job columns), the briefs, the snapshot rows by `${searchId}:${candidateId}`, the results, the shortlists (by brief id) and their items. */
+  readonly searches = new Map<string, SearchJobRow>();
+  readonly briefs = new Map<string, BriefJobRow>();
+  readonly triage = new Map<string, TriageRow>();
+  readonly results = new Map<string, MatchResult[]>();
+  readonly shortlists = new Map<string, string>();
+  readonly shortlistItems = new Map<string, ShortlistItemJobRow>();
+  /** When the photo pass checked a candidate (candidates.photo_checked_at), by id. */
+  readonly photoChecked = new Map<string, string>();
   private counter = 0;
 
   addDocument(overrides: Partial<DocumentRow>, bytes: Buffer): DocumentRow {
@@ -173,14 +213,22 @@ class FakeDb implements Db {
     this.documents.set(id, Object.assign({}, current, stripUndefined(patch), { updated_at: NOW }));
   }
 
-  async findDocumentBySha256(orgId: string, sha256: string, excludeId: string): Promise<DocumentRow | null> {
+  async findDocumentBySha256(
+    orgId: string,
+    sha256: string,
+    excludeId: string,
+  ): Promise<DocumentRow | null> {
     return (
-      [...this.documents.values()].find((d) => d.org_id === orgId && d.sha256 === sha256 && d.id !== excludeId) ??
-      null
+      [...this.documents.values()].find(
+        (d) => d.org_id === orgId && d.sha256 === sha256 && d.id !== excludeId,
+      ) ?? null
     );
   }
 
-  async findCandidateByFingerprint(orgId: string, fingerprint: string): Promise<CandidateRow | null> {
+  async findCandidateByFingerprint(
+    orgId: string,
+    fingerprint: string,
+  ): Promise<CandidateRow | null> {
     return this.firstCandidate((c) => c.org_id === orgId && c.fingerprint === fingerprint);
   }
 
@@ -249,7 +297,9 @@ class FakeDb implements Db {
     const current = this.candidates.get(id);
     if (!current) throw new Error(`candidate ${id} missing`);
     const { embedding, ...rest } = patch;
-    const next: CandidateRow = Object.assign({}, current, stripUndefined(rest), { updated_at: NOW });
+    const next: CandidateRow = Object.assign({}, current, stripUndefined(rest), {
+      updated_at: NOW,
+    });
     next.phone_digits = phoneDigits(next.phone);
     this.candidates.set(id, next);
     if (embedding !== undefined) this.embeddings.set(id, embedding);
@@ -267,7 +317,9 @@ class FakeDb implements Db {
     return this.expired;
   }
 
-  async listDocumentsOfCandidate(candidateId: string): Promise<Array<{ id: string; storage_path: string }>> {
+  async listDocumentsOfCandidate(
+    candidateId: string,
+  ): Promise<Array<{ id: string; storage_path: string }>> {
     return [...this.documents.values()]
       .filter((d) => d.candidate_id === candidateId)
       .map((d) => ({ id: d.id, storage_path: d.storage_path }));
@@ -279,7 +331,13 @@ class FakeDb implements Db {
     for (const [key, d] of this.documents) if (d.candidate_id === id) this.documents.delete(key);
   }
 
-  async recordUsage(orgId: string, kind: AiUsageKind, model: string | null, tokensIn: number, tokensOut: number): Promise<void> {
+  async recordUsage(
+    orgId: string,
+    kind: AiUsageKind,
+    model: string | null,
+    tokensIn: number,
+    tokensOut: number,
+  ): Promise<void> {
     this.usage.push({ orgId, kind, model, tokensIn, tokensOut });
   }
 
@@ -289,7 +347,12 @@ class FakeDb implements Db {
     return bytes;
   }
 
-  async uploadObject(bucket: StorageBucket, path: string, bytes: Uint8Array, contentType: string): Promise<void> {
+  async uploadObject(
+    bucket: StorageBucket,
+    path: string,
+    bytes: Uint8Array,
+    contentType: string,
+  ): Promise<void> {
     if (bucket !== "photos") throw new Error(`unexpected upload to ${bucket}`);
     this.photos.set(path, { bytes, contentType });
   }
@@ -303,11 +366,324 @@ class FakeDb implements Db {
     this.removed.push(...paths);
     for (const path of paths) this.objects.delete(path);
   }
+
+  // --- the analysis as a job ---------------------------------------------
+
+  async claimAnalyses(runner: string, staleBefore: Date, limit: number): Promise<SearchJobRow[]> {
+    const cutoff = staleBefore.getTime();
+    const claimed: SearchJobRow[] = [];
+    const rows = [...this.searches.values()].sort((a, b) =>
+      a.created_at.localeCompare(b.created_at),
+    );
+    for (const row of rows) {
+      if (claimed.length >= limit) break;
+      const stale =
+        row.status === "running" &&
+        (row.heartbeat_at === null || Date.parse(row.heartbeat_at) < cutoff);
+      if (row.status !== "queued" && !stale) continue;
+      const next: SearchJobRow = {
+        ...row,
+        status: "running",
+        runner,
+        heartbeat_at: NOW,
+        started_at: row.started_at ?? NOW,
+      };
+      this.searches.set(row.id, next);
+      claimed.push(next);
+    }
+    return claimed;
+  }
+
+  async getSearch(id: string): Promise<SearchJobRow | null> {
+    return this.searches.get(id) ?? null;
+  }
+
+  async patchSearch(id: string, patch: SearchJobPatch): Promise<void> {
+    const current = this.searches.get(id);
+    if (!current) throw new Error(`search ${id} missing`);
+    this.searches.set(id, Object.assign({}, current, stripUndefined(patch)));
+  }
+
+  async getBrief(id: string): Promise<BriefJobRow | null> {
+    return this.briefs.get(id) ?? null;
+  }
+
+  async patchBrief(id: string, patch: BriefJobPatch): Promise<void> {
+    const current = this.briefs.get(id);
+    if (!current) throw new Error(`brief ${id} missing`);
+    this.briefs.set(id, Object.assign({}, current, stripUndefined(patch)));
+  }
+
+  async startTriage(orgId: string, searchId: string): Promise<number> {
+    const search = this.searches.get(searchId);
+    if (!search || search.org_id !== orgId) throw new Error("search not found");
+    let inserted = 0;
+    for (const candidate of this.candidates.values()) {
+      if (candidate.org_id !== orgId || candidate.status !== "active") continue;
+      const key = `${searchId}:${candidate.id}`;
+      if (this.triage.has(key)) continue;
+      this.triage.set(key, {
+        search_id: searchId,
+        org_id: orgId,
+        candidate_id: candidate.id,
+        verdict: null,
+        reason: null,
+        model: null,
+        read_at: null,
+        score: null,
+        score_reason: null,
+        scored_at: null,
+        forced: false,
+        attempts: 0,
+      });
+      inserted += 1;
+    }
+    this.searches.set(searchId, { ...search, pool_size: this.triageRows(searchId).length });
+    return inserted;
+  }
+
+  private triageRows(searchId: string): TriageRow[] {
+    return [...this.triage.values()]
+      .filter((row) => row.search_id === searchId)
+      .sort((a, b) => a.candidate_id.localeCompare(b.candidate_id));
+  }
+
+  async listTriage(searchId: string, filter: TriageFilter): Promise<TriageRow[]> {
+    let rows = this.triageRows(searchId);
+    const verdict = filter.verdict;
+    if (verdict === "pending") rows = rows.filter((row) => row.verdict === null);
+    else if (verdict === "kept")
+      rows = rows.filter((row) => row.verdict === "yes" || row.verdict === "close");
+    else if (verdict) rows = rows.filter((row) => row.verdict === verdict);
+    if (filter.unscored) rows = rows.filter((row) => row.scored_at === null);
+    const after = filter.after;
+    if (after !== undefined) rows = rows.filter((row) => row.candidate_id > after);
+    return rows.slice(0, Math.max(1, filter.limit));
+  }
+
+  async countTriage(searchId: string): Promise<TriageCounts> {
+    const rows = this.triageRows(searchId);
+    const of = (verdict: TriageRow["verdict"]) =>
+      rows.filter((row) => row.verdict === verdict).length;
+    return {
+      total: rows.length,
+      pending: of(null),
+      yes: of("yes"),
+      close: of("close"),
+      no: of("no"),
+      unknown: of("unknown"),
+      scored: rows.filter(
+        (row) => (row.verdict === "yes" || row.verdict === "close") && row.scored_at !== null,
+      ).length,
+    };
+  }
+
+  async recordTriage(
+    orgId: string,
+    searchId: string,
+    model: string | null,
+    rows: readonly TriageWrite[],
+  ): Promise<number> {
+    let updated = 0;
+    for (const write of rows) {
+      const key = `${searchId}:${write.candidate_id}`;
+      const row = this.triage.get(key);
+      if (!row || row.org_id !== orgId || row.verdict !== null) continue;
+      this.triage.set(key, {
+        ...row,
+        verdict: write.verdict,
+        reason: write.reason === null ? null : write.reason.slice(0, 300),
+        model,
+        read_at: NOW,
+      });
+      updated += 1;
+    }
+    return updated;
+  }
+
+  async recordScreen(
+    orgId: string,
+    searchId: string,
+    rows: readonly ScreenWrite[],
+  ): Promise<number> {
+    let updated = 0;
+    for (const write of rows) {
+      const key = `${searchId}:${write.candidate_id}`;
+      const row = this.triage.get(key);
+      if (!row || row.org_id !== orgId || row.score !== null || row.scored_at !== null) continue;
+      this.triage.set(key, {
+        ...row,
+        score: write.score,
+        score_reason: write.reason === null ? null : write.reason.slice(0, 300),
+        scored_at: NOW,
+      });
+      updated += 1;
+    }
+    return updated;
+  }
+
+  async bumpAttempts(searchId: string, candidateIds: readonly string[]): Promise<number> {
+    let updated = 0;
+    for (const candidateId of new Set(candidateIds)) {
+      const key = `${searchId}:${candidateId}`;
+      const row = this.triage.get(key);
+      if (!row) continue;
+      this.triage.set(key, { ...row, attempts: row.attempts + 1 });
+      updated += 1;
+    }
+    return updated;
+  }
+
+  async loadProfiles(
+    orgId: string,
+    ids: readonly string[],
+    columns: "card",
+  ): Promise<CardProfile[]>;
+  async loadProfiles(
+    orgId: string,
+    ids: readonly string[],
+    columns: "full",
+  ): Promise<FullProfile[]>;
+  async loadProfiles(
+    orgId: string,
+    ids: readonly string[],
+    columns: ProfileColumns,
+  ): Promise<CardProfile[] | FullProfile[]> {
+    const wanted = new Set(ids);
+    const rows = [...this.candidates.values()].filter(
+      (candidate) =>
+        candidate.org_id === orgId && candidate.status === "active" && wanted.has(candidate.id),
+    );
+    if (columns === "card") {
+      return rows.map((candidate) => ({
+        id: candidate.id,
+        org_id: candidate.org_id,
+        full_name: candidate.full_name,
+        location: candidate.location,
+        headline: candidate.headline,
+        years_experience: candidate.years_experience,
+        experiences: candidate.experiences,
+        education: candidate.education,
+        skills: candidate.skills,
+      }));
+    }
+    return rows.map((candidate) => ({
+      id: candidate.id,
+      org_id: candidate.org_id,
+      full_name: candidate.full_name,
+      headline: candidate.headline,
+      summary: candidate.summary,
+      skills: candidate.skills,
+      languages: candidate.languages,
+      location: candidate.location,
+      years_experience: candidate.years_experience,
+      availability: candidate.availability,
+      education: candidate.education,
+      experiences: candidate.experiences,
+      search_text: candidate.search_text,
+    }));
+  }
+
+  async mergeResults(
+    orgId: string,
+    searchId: string,
+    entries: readonly MatchResult[],
+  ): Promise<number> {
+    const search = this.searches.get(searchId);
+    if (!search || search.org_id !== orgId) throw new Error("search not found");
+    const merged = [...(this.results.get(searchId) ?? [])];
+    for (const entry of entries) {
+      const index = merged.findIndex((stored) => stored.candidateId === entry.candidateId);
+      const stored = merged[index];
+      if (!stored) merged.push(entry);
+      // An entry without an assessment never replaces one stored with it, as merge_search_results does.
+      else if (!(stored.assessment && !entry.assessment)) merged[index] = entry;
+    }
+    this.results.set(searchId, merged);
+    this.searches.set(searchId, {
+      ...search,
+      result_count: merged.length,
+      assessed_count: merged.filter((entry) => entry.assessment).length,
+      match_count: merged.filter((entry) => entry.assessment?.decision === "fit").length,
+      near_count: merged.filter((entry) => entry.assessment?.decision === "borderline").length,
+    });
+    return merged.length;
+  }
+
+  async getResults(searchId: string): Promise<MatchResult[]> {
+    return [...(this.results.get(searchId) ?? [])];
+  }
+
+  async listShortlistItemsFor(
+    orgId: string,
+    briefId: string,
+    candidateIds: readonly string[],
+  ): Promise<ShortlistItemJobRow[]> {
+    const shortlistId = this.shortlists.get(briefId);
+    if (!shortlistId) return [];
+    const wanted = new Set(candidateIds);
+    return [...this.shortlistItems.values()].filter(
+      (item) =>
+        item.org_id === orgId && item.shortlist_id === shortlistId && wanted.has(item.candidate_id),
+    );
+  }
+
+  async patchShortlistItemMatch(id: string, orgId: string, match: MatchResult): Promise<void> {
+    const item = this.shortlistItems.get(id);
+    if (!item || item.org_id !== orgId) throw new Error(`shortlist item ${id} missing`);
+    this.shortlistItems.set(id, { ...item, match });
+  }
+
+  // --- the photos ---------------------------------------------------------
+
+  async listCandidatesForPhoto(limit: number): Promise<PhotoCandidateRow[]> {
+    const out: PhotoCandidateRow[] = [];
+    for (const candidate of this.candidates.values()) {
+      if (out.length >= limit) break;
+      if (candidate.photo_path !== null || this.photoChecked.has(candidate.id)) continue;
+      const documents = [...this.documents.values()]
+        .filter((d) => d.candidate_id === candidate.id && d.status === "processed")
+        .sort((a, b) => (b.processed_at ?? "").localeCompare(a.processed_at ?? ""))
+        .map((d) => ({
+          id: d.id,
+          storage_path: d.storage_path,
+          status: d.status,
+          extraction_method: d.extraction_method,
+          processed_at: d.processed_at,
+        }));
+      if (!documents.length) continue;
+      out.push({ id: candidate.id, org_id: candidate.org_id, documents });
+    }
+    return out;
+  }
+
+  async markPhotoChecked(id: string): Promise<void> {
+    this.photoChecked.set(id, NOW);
+  }
+
+  async setPhotoPath(id: string, path: string): Promise<void> {
+    const current = this.candidates.get(id);
+    if (!current) throw new Error(`candidate ${id} missing`);
+    this.candidates.set(id, { ...current, photo_path: path });
+    this.photoChecked.set(id, NOW);
+  }
 }
 
 /** A flat image of one colour, `channels` samples a pixel. */
-function image(width: number, height: number, channels: 1 | 3 | 4 = 3, value = 128, key = "img"): PageImage {
-  return { key, width, height, channels, data: new Uint8Array(width * height * channels).fill(value) };
+function image(
+  width: number,
+  height: number,
+  channels: 1 | 3 | 4 = 3,
+  value = 128,
+  key = "img",
+): PageImage {
+  return {
+    key,
+    width,
+    height,
+    channels,
+    data: new Uint8Array(width * height * channels).fill(value),
+  };
 }
 
 /** `image` as the page draws it, `drawnWidth` points wide. */
@@ -321,7 +697,9 @@ function pageImages(...images: PageImage[]): PageImages {
 }
 
 /** A JPEG-looking file: the OCR answers bytes, the processor stores them as they are. */
-const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0xff, 0xd9]);
+const JPEG_BYTES = Buffer.from([
+  0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0xff, 0xd9,
+]);
 
 /** An image the OCR cut out: its box on the page, which is also its drawn width. */
 function ocrImage(width: number, height: number, bytes: Buffer = JPEG_BYTES): OcrImage {
@@ -487,7 +865,9 @@ describe("processDocument", () => {
     const updated = db.documents.get(doc.id);
     expect(updated?.extraction_method).toBe("ocr");
     expect(updated?.structuring_method).toBe("heuristic");
-    expect(db.usage).toEqual([{ orgId: ORG, kind: "ocr", model: "mistral-ocr-latest", tokensIn: 3, tokensOut: 0 }]);
+    expect(db.usage).toEqual([
+      { orgId: ORG, kind: "ocr", model: "mistral-ocr-latest", tokensIn: 3, tokensOut: 0 },
+    ]);
     expect(db.candidates.size).toBe(1);
   });
 
@@ -574,7 +954,10 @@ describe("processDocument", () => {
     expect(embeddingStatus()).toBe("mismatch");
 
     const fixed = db.addDocument({}, Buffer.from("pdf-three"));
-    await processDocument(fixed.id, depsFor(db, { structure: async () => modelAnswer(), embed: fakeEmbed }));
+    await processDocument(
+      fixed.id,
+      depsFor(db, { structure: async () => modelAnswer(), embed: fakeEmbed }),
+    );
     expect(embeddingStatus()).toBe("ok");
   });
 
@@ -587,7 +970,10 @@ describe("processDocument", () => {
       doc.id,
       depsFor(db, {
         structure: async () =>
-          modelAnswer({}, { kind: "other", reason: "A cover letter: no experiences, no education." }),
+          modelAnswer(
+            {},
+            { kind: "other", reason: "A cover letter: no experiences, no education." },
+          ),
         embed,
       }),
     );
@@ -648,9 +1034,9 @@ describe("processDocument", () => {
   it("merges a second export of the same person through the email, whatever its case", async () => {
     const db = new FakeDb();
     const first = db.addDocument({}, Buffer.from("export-one"));
-    expect(await processDocument(first.id, depsFor(db, { structure: async () => modelAnswer() }))).toBe(
-      "processed",
-    );
+    expect(
+      await processDocument(first.id, depsFor(db, { structure: async () => modelAnswer() })),
+    ).toBe("processed");
     const candidateId = db.documents.get(first.id)?.candidate_id ?? "";
     expect(db.candidates.get(candidateId)?.email).toBe("marie.dupont@example.com");
 
@@ -680,7 +1066,8 @@ describe("processDocument", () => {
       second.id,
       depsFor(db, {
         extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
-        structure: async () => modelAnswer({ full_name: "M. Dupont", email: null, phone: "06.12.34.56.78" }),
+        structure: async () =>
+          modelAnswer({ full_name: "M. Dupont", email: null, phone: "06.12.34.56.78" }),
       }),
     );
     expect(outcome).toBe("processed");
@@ -720,7 +1107,9 @@ describe("processDocument", () => {
     const nameOnly = db.addDocument({}, Buffer.from("name-only"));
     await processDocument(nameOnly.id, bare(null));
     expect(db.candidates.size).toBe(3);
-    expect(db.candidates.get(db.documents.get(nameOnly.id)?.candidate_id ?? "")?.fingerprint).toBeNull();
+    expect(
+      db.candidates.get(db.documents.get(nameOnly.id)?.candidate_id ?? "")?.fingerprint,
+    ).toBeNull();
   });
 
   it("merges into the pinned candidate before any contact detail", async () => {
@@ -730,7 +1119,8 @@ describe("processDocument", () => {
       other.id,
       depsFor(db, {
         extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
-        structure: async () => modelAnswer({ full_name: "Jean Martin", email: "jean.martin@example.com" }),
+        structure: async () =>
+          modelAnswer({ full_name: "Jean Martin", email: "jean.martin@example.com" }),
       }),
     );
     const otherId = db.documents.get(other.id)?.candidate_id ?? "";
@@ -819,9 +1209,9 @@ describe("processDocument", () => {
     if (row) row.status = "archived";
 
     const doc = db.addDocument({}, Buffer.from("fresh-cv"));
-    expect(await processDocument(doc.id, depsFor(db, { structure: async () => modelAnswer() }))).toBe(
-      "processed",
-    );
+    expect(
+      await processDocument(doc.id, depsFor(db, { structure: async () => modelAnswer() })),
+    ).toBe("processed");
     expect(db.candidates.size).toBe(1);
     expect(db.documents.get(doc.id)?.candidate_id).toBe(archivedId);
     expect(db.candidates.get(archivedId)?.status).toBe("active");
@@ -898,7 +1288,10 @@ describe("processDocument", () => {
     const db = new FakeDb();
     const first = db.addDocument({}, Buffer.from("export-one"));
     const portrait = async () => pageImages(image(300, 400));
-    await processDocument(first.id, depsFor(db, { structure: async () => modelAnswer(), pageImages: portrait }));
+    await processDocument(
+      first.id,
+      depsFor(db, { structure: async () => modelAnswer(), pageImages: portrait }),
+    );
     const candidateId = db.documents.get(first.id)?.candidate_id ?? "";
     const path = `${ORG}/${candidateId}.png`;
     const original = db.photos.get(path);
@@ -908,7 +1301,10 @@ describe("processDocument", () => {
     // the images of the new file are not even read.
     const second = db.addDocument({}, Buffer.from("export-two"));
     const images = vi.fn(async () => pageImages(image(400, 400, 3, 1)));
-    await processDocument(second.id, depsFor(db, { structure: async () => modelAnswer(), pageImages: images }));
+    await processDocument(
+      second.id,
+      depsFor(db, { structure: async () => modelAnswer(), pageImages: images }),
+    );
     expect(db.documents.get(second.id)?.candidate_id).toBe(candidateId);
     expect(images).not.toHaveBeenCalled();
     expect(db.photos.get(path)).toBe(original);
@@ -928,7 +1324,8 @@ describe("processDocument", () => {
       third.id,
       depsFor(db, {
         extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
-        structure: async () => modelAnswer({ full_name: "Jean Martin", email: "jean.martin@example.com" }),
+        structure: async () =>
+          modelAnswer({ full_name: "Jean Martin", email: "jean.martin@example.com" }),
         pageImages: portrait,
       }),
     );
@@ -940,7 +1337,8 @@ describe("processDocument", () => {
     const unreadable = db.addDocument({}, Buffer.from("unreadable-images"));
     const broken = depsFor(db, {
       extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
-      structure: async () => modelAnswer({ full_name: "Paul Durand", email: "paul.durand@example.com" }),
+      structure: async () =>
+        modelAnswer({ full_name: "Paul Durand", email: "paul.durand@example.com" }),
       pageImages: async () => {
         throw new Error("JPX images are not supported");
       },
@@ -958,7 +1356,8 @@ describe("processDocument", () => {
         refused.id,
         depsFor(db, {
           extractPdf: async () => ({ pageCount: 1, text: BARE_CV }),
-          structure: async () => modelAnswer({ full_name: "Anne Petit", email: "anne.petit@example.com" }),
+          structure: async () =>
+            modelAnswer({ full_name: "Anne Petit", email: "anne.petit@example.com" }),
           pageImages: portrait,
         }),
       ),
@@ -990,7 +1389,9 @@ describe("processDocument", () => {
     const path = `${ORG}/${candidateId}.jpg`;
     expect(db.candidates.get(candidateId)?.photo_path).toBe(path);
     expect(db.photos.get(path)?.contentType).toBe("image/jpeg");
-    expect(Buffer.from(db.photos.get(path)?.bytes ?? new Uint8Array(0)).equals(portrait)).toBe(true);
+    expect(Buffer.from(db.photos.get(path)?.bytes ?? new Uint8Array(0)).equals(portrait)).toBe(
+      true,
+    );
     // The PDF's own images are not read for a scanned file.
     expect(images).not.toHaveBeenCalled();
 
@@ -999,9 +1400,9 @@ describe("processDocument", () => {
       none.id,
       depsFor(db, {
         extractPdf: async () => ({ pageCount: 1, text: "" }),
-        ocr: async () =>
-          ocrAnswer({ pageWidth: 1654, images: [ocrImage(1200, 1100)] }, BARE_CV),
-        structure: async () => modelAnswer({ full_name: "Jean Martin", email: "jean.martin@example.com" }),
+        ocr: async () => ocrAnswer({ pageWidth: 1654, images: [ocrImage(1200, 1100)] }, BARE_CV),
+        structure: async () =>
+          modelAnswer({ full_name: "Jean Martin", email: "jean.martin@example.com" }),
       }),
     );
     const jeanId = db.documents.get(none.id)?.candidate_id ?? "";
@@ -1028,7 +1429,9 @@ describe("processDocument", () => {
     const doc = db.addDocument({ status: "processing", attempts: 1 }, Buffer.from("pdf"));
     expect(await processDocument(doc.id, depsFor(db))).toBe("skipped");
     expect(db.documents.get(doc.id)?.attempts).toBe(1);
-    expect(await processDocument("55555555-5555-4555-8555-555555555555", depsFor(db))).toBe("skipped");
+    expect(await processDocument("55555555-5555-4555-8555-555555555555", depsFor(db))).toBe(
+      "skipped",
+    );
   });
 });
 
@@ -1058,7 +1461,10 @@ describe("runMaintenance", () => {
   it("removes the photo with the files when the candidate has one", async () => {
     const db = new FakeDb();
     const doc = db.addDocument({}, Buffer.from("pdf-one"));
-    await processDocument(doc.id, depsFor(db, { pageImages: async () => pageImages(image(300, 400)) }));
+    await processDocument(
+      doc.id,
+      depsFor(db, { pageImages: async () => pageImages(image(300, 400)) }),
+    );
     const candidateId = db.documents.get(doc.id)?.candidate_id ?? "";
     const path = `${ORG}/${candidateId}.png`;
     expect(db.photos.has(path)).toBe(true);
@@ -1123,13 +1529,20 @@ describe("runMaintenance", () => {
     expect(db.embeddings.get(empty)).toBeNull();
     expect(db.embeddings.get(archived)).toBeNull();
     expect(db.embeddings.get(already)).toBe("[1,2]");
-    expect(db.usage).toEqual([{ orgId: ORG, kind: "embed", model: "mistral-embed", tokensIn: 80, tokensOut: 0 }]);
+    expect(db.usage).toEqual([
+      { orgId: ORG, kind: "embed", model: "mistral-embed", tokensIn: 80, tokensOut: 0 },
+    ]);
   });
 
   it("pages past the candidates with nothing to embed to reach the ones below them", async () => {
     const db = new FakeDb();
     for (let i = 0; i < REEMBED_BATCH + 50; i++) {
-      await db.insertCandidate({ org_id: ORG, created_by: USER, source: "upload", full_name: `Personne ${i}` });
+      await db.insertCandidate({
+        org_id: ORG,
+        created_by: USER,
+        source: "upload",
+        full_name: `Personne ${i}`,
+      });
     }
     const below = await db.insertCandidate({
       org_id: ORG,
@@ -1139,7 +1552,11 @@ describe("runMaintenance", () => {
     });
     const embed = vi.fn(fakeEmbed);
     const report = await runMaintenance(maintenanceDeps(db, { embed }));
-    expect(report).toMatchObject({ reembedded: 1, reembedFailed: 0, reembedSkipped: REEMBED_BATCH + 50 });
+    expect(report).toMatchObject({
+      reembedded: 1,
+      reembedFailed: 0,
+      reembedSkipped: REEMBED_BATCH + 50,
+    });
     expect(embed).toHaveBeenCalledTimes(1);
     expect(db.embeddings.get(below)?.split(",")).toHaveLength(1024);
   });
@@ -1148,9 +1565,19 @@ describe("runMaintenance", () => {
     const db = new FakeDb();
     const empty = REEMBED_MAX_PAGES * REEMBED_BATCH;
     for (let i = 0; i < empty; i++) {
-      await db.insertCandidate({ org_id: ORG, created_by: USER, source: "upload", full_name: `Personne ${i}` });
+      await db.insertCandidate({
+        org_id: ORG,
+        created_by: USER,
+        source: "upload",
+        full_name: `Personne ${i}`,
+      });
     }
-    const beyond = await db.insertCandidate({ org_id: ORG, created_by: USER, source: "upload", headline: "Au-delà" });
+    const beyond = await db.insertCandidate({
+      org_id: ORG,
+      created_by: USER,
+      source: "upload",
+      headline: "Au-delà",
+    });
     const embed = vi.fn(fakeEmbed);
     const report = await runMaintenance(maintenanceDeps(db, { embed }));
     expect(report).toMatchObject({ reembedded: 0, reembedFailed: 0, reembedSkipped: empty });
@@ -1160,7 +1587,12 @@ describe("runMaintenance", () => {
 
   it("skips the re-embed pass without a model", async () => {
     const db = new FakeDb();
-    await db.insertCandidate({ org_id: ORG, created_by: USER, source: "upload", headline: "Sans vecteur" });
+    await db.insertCandidate({
+      org_id: ORG,
+      created_by: USER,
+      source: "upload",
+      headline: "Sans vecteur",
+    });
     const report = await runMaintenance(maintenanceDeps(db));
     expect(report).toMatchObject({ reembedded: 0, reembedFailed: 0 });
     expect(db.usage).toEqual([]);

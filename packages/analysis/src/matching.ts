@@ -21,6 +21,8 @@ import type {
   MatchResult,
 } from "./types.js";
 
+export type { MatchProfile } from "./types.js";
+
 export interface Retrieval {
   textRank: number | null;
   vectorRank: number | null;
@@ -29,12 +31,7 @@ export interface Retrieval {
 /** NFD, diacritics stripped, lowercase, one space between words. */
 export function normalise(text: string | null | undefined): string {
   if (typeof text !== "string" || !text) return "";
-  return text
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 export function escapeRegExp(text: string): string {
@@ -73,9 +70,17 @@ const CEFR_RANK: Record<string, number> = { a1: 1, a2: 2, b1: 3, b2: 4, c1: 5, c
 const LEVEL_WORDS: readonly { rank: number; pattern: RegExp }[] = [
   { rank: 6, pattern: /\b(bilingue|bilingual|natif|native|maternel|maternelle|mother tongue)\b/ },
   { rank: 5, pattern: /\b(avance|advanced)\b/ },
-  { rank: 4, pattern: /\b(courant|courante|fluent|fluently|professionnel|professionnelle|professional|business)\b/ },
+  {
+    rank: 4,
+    pattern:
+      /\b(courant|courante|fluent|fluently|professionnel|professionnelle|professional|business)\b/,
+  },
   { rank: 3, pattern: /\b(intermediaire|intermediate)\b/ },
-  { rank: 2, pattern: /\b(notions|basique|basic|beginner|debutant|debutante|scolaire|elementary|elementaire)\b/ },
+  {
+    rank: 2,
+    pattern:
+      /\b(notions|basique|basic|beginner|debutant|debutante|scolaire|elementary|elementaire)\b/,
+  },
 ];
 
 /**
@@ -133,13 +138,19 @@ export function sameLanguage(value: string, name: string): boolean {
 // one criterion
 // ---------------------------------------------------------------------
 
-function result(criterion: BriefCriterion, verdict: CriterionVerdict, evidence: string | null): CriterionResult {
+function result(
+  criterion: BriefCriterion,
+  verdict: CriterionVerdict,
+  evidence: string | null,
+): CriterionResult {
   return { criterionId: criterion.id, verdict, evidence: evidence ? evidence.slice(0, 200) : null };
 }
 
 function cleanStrings(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
-  return values.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map((value) => value.trim());
+  return values
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim());
 }
 
 function words(value: string): string[] {
@@ -173,7 +184,8 @@ function evaluateSkill(criterion: BriefCriterion, profile: MatchProfile): Criter
 
 /** "Anglais (C1)", or "Anglais" when no level is stated. */
 function languageText(language: { name: string; level: string | null }): string {
-  const level = typeof language.level === "string" && language.level.trim() ? language.level.trim() : null;
+  const level =
+    typeof language.level === "string" && language.level.trim() ? language.level.trim() : null;
   return level ? `${language.name.trim()} (${level})` : language.name.trim();
 }
 
@@ -274,7 +286,20 @@ function evaluateOther(criterion: BriefCriterion, profile: MatchProfile): Criter
 }
 
 /** Words a job's name carries that say nothing of the job: "chef de projet" is found by "chef" and "projet". */
-const ROLE_STOP_WORDS = new Set<string>(["des", "les", "pour", "and", "the", "for", "with", "avec", "sur", "senior", "junior", "confirme"]);
+const ROLE_STOP_WORDS = new Set<string>([
+  "des",
+  "les",
+  "pour",
+  "and",
+  "the",
+  "for",
+  "with",
+  "avec",
+  "sur",
+  "senior",
+  "junior",
+  "confirme",
+]);
 
 /** The words of a job's name worth finding in a title: three letters at least, no function word, each once. */
 export function roleWords(label: string): string[] {
@@ -289,9 +314,11 @@ export function roleWords(label: string): string[] {
 /** The headline and the titles of the experiences, as written, blank ones left out. */
 function titlesOf(profile: MatchProfile): string[] {
   const titles: string[] = [];
-  if (typeof profile.headline === "string" && profile.headline.trim()) titles.push(profile.headline.trim());
+  if (typeof profile.headline === "string" && profile.headline.trim())
+    titles.push(profile.headline.trim());
   for (const entry of Array.isArray(profile.experiences) ? profile.experiences : []) {
-    if (entry && typeof entry.title === "string" && entry.title.trim()) titles.push(entry.title.trim());
+    if (entry && typeof entry.title === "string" && entry.title.trim())
+      titles.push(entry.title.trim());
   }
   return titles;
 }
@@ -316,12 +343,16 @@ function evaluateRole(criterion: BriefCriterion, profile: MatchProfile): Criteri
     if (present === wanted.length) return result(criterion, "match", title);
     if (!closest || present > closest.present) closest = { title, present };
   }
-  if (closest && closest.present * 2 >= wanted.length) return result(criterion, "partial", closest.title);
+  if (closest && closest.present * 2 >= wanted.length)
+    return result(criterion, "partial", closest.title);
   return result(criterion, "not_stated", null);
 }
 
 /** What one criterion says about one profile, with the evidence it rests on. */
-export function evaluateCriterion(criterion: BriefCriterion, profile: MatchProfile): CriterionResult {
+export function evaluateCriterion(
+  criterion: BriefCriterion,
+  profile: MatchProfile,
+): CriterionResult {
   switch (criterion.kind) {
     case "role":
       return evaluateRole(criterion, profile);
@@ -348,7 +379,12 @@ export function evaluateCriterion(criterion: BriefCriterion, profile: MatchProfi
 // one candidate, one search
 // ---------------------------------------------------------------------
 
-export const POINTS: Record<CriterionVerdict, number> = { match: 1, partial: 0.5, missing: 0, not_stated: 0 };
+export const POINTS: Record<CriterionVerdict, number> = {
+  match: 1,
+  partial: 0.5,
+  missing: 0,
+  not_stated: 0,
+};
 
 /**
  * The explained match of one profile: verdicts for every criterion, a

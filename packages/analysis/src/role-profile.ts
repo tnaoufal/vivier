@@ -355,7 +355,9 @@ export function briefSourceHash(brief: BriefSource): string {
  * text (or before the hash existed). Otherwise the stored profile and
  * criteria stand, and no model call comes before the triage.
  */
-export function needsDerivation(brief: BriefSource & { role_profile: RoleProfile | null }): boolean {
+export function needsDerivation(
+  brief: BriefSource & { role_profile: RoleProfile | null },
+): boolean {
   const profile = brief.role_profile;
   return !profile || profile.sourceHash !== briefSourceHash(brief);
 }

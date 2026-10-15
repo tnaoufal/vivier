@@ -63,6 +63,8 @@ import type {
   RoleSeniority,
 } from "./types.js";
 
+export type { AssessmentProfile } from "./types.js";
+
 /** The brief as the payloads read it: its text, its criteria, and the role profile when it has one. */
 export interface BriefText extends BriefSource {
   criteria: BriefCriterion[];
