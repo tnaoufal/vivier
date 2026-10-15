@@ -505,8 +505,9 @@ const EXCLUDE_LOT = 100;
  * the ones in the results left out (`exclude`: the first hundred in the
  * query, every one here), best score first, then by candidate id, read
  * by offset (`from`, 0 for the first page; `fetched` says how far the
- * page went) since a score, once written, never changes. The first
- * page also counts them all. RLS decides what the caller reads.
+ * page went) since a score, once written, never changes. Every page
+ * asks the count; the first one alone reports it. RLS decides what the
+ * caller reads.
  */
 export async function listScreened(
   supabase: SupabaseClient,
@@ -518,12 +519,11 @@ export async function listScreened(
   const from = Math.max(0, Math.floor(Number.isFinite(page.from) ? page.from : 0));
   const first = from === 0;
   const excluded = new Set(page.exclude);
+  // The count is asked on every page (one builder type, so the conditional exclusion below
+  // keeps the chain's type shallow enough for tsc); only the first page reports it.
   let request = supabase
     .from("search_triage")
-    .select(
-      "candidate_id, verdict, score, score_reason",
-      first ? { count: "exact" as const } : undefined,
-    )
+    .select("candidate_id, verdict, score, score_reason", { count: "exact" })
     .eq("org_id", orgId)
     .eq("search_id", searchId)
     .in("verdict", [...KEPT_VERDICTS])

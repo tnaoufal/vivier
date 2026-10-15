@@ -300,11 +300,11 @@ describe("listScreened", () => {
     expect(argsOf(calls, "range")).toEqual([[0, 49]]);
   });
 
-  it("reads the next page by offset, without counting again, and names nothing to leave out when the results are empty", async () => {
+  it("reads the next page by offset, reports no total for it, and names nothing to leave out when the results are empty", async () => {
     const { supabase, queries } = fakeSupabase(() => ({
       data: [{ candidate_id: "c9", verdict: "close", score: 51, score_reason: "Voisin." }],
       error: null,
-      count: null,
+      count: 328,
     }));
     expect(
       await listScreened(supabase, "org", "search", { exclude: [], from: 50, limit: 50 }),
@@ -315,7 +315,7 @@ describe("listScreened", () => {
     });
     const calls = queries[0] ?? [];
     expect(argsOf(calls, "select")).toEqual([
-      ["candidate_id, verdict, score, score_reason", undefined],
+      ["candidate_id, verdict, score, score_reason", { count: "exact" }],
     ]);
     expect(argsOf(calls, "not")).toEqual([["score", "is", null]]);
     expect(argsOf(calls, "range")).toEqual([[50, 99]]);
