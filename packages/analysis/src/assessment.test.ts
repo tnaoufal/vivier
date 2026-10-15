@@ -1634,3 +1634,37 @@ describe("applyChallenge", () => {
     expect(after.decision).toBe("borderline");
   });
 });
+
+describe("enforceAssessment: required requirements met in part", () => {
+  it("keeps a fit with one required requirement at partial, and asks for a look with two", () => {
+    const one = enforceAssessment(
+      criteria,
+      none,
+      answer({
+        requirements: [
+          { criterionId: "skill", met: "yes", evidence: "Contrôleur de gestion chez X (2018-2024)" },
+          { criterionId: "lang", met: "partial", evidence: "Anglais (B2)" },
+          { criterionId: "sap", met: "yes", evidence: "SAP FI/CO" },
+        ],
+      }),
+      "m",
+    );
+    expect(one.decision).toBe("fit");
+    expect(one.modelDecision).toBe("fit");
+    expect(one.requirements.find((row) => row.criterionId === "lang")?.met).toBe("partial");
+    const two = enforceAssessment(
+      criteria,
+      none,
+      answer({
+        requirements: [
+          { criterionId: "skill", met: "partial", evidence: "Assistant contrôle de gestion" },
+          { criterionId: "lang", met: "partial", evidence: "Anglais (B2)" },
+          { criterionId: "sap", met: "yes", evidence: "SAP FI/CO" },
+        ],
+      }),
+      "m",
+    );
+    expect(two.decision).toBe("borderline");
+    expect(two.modelDecision).toBe("fit");
+  });
+});
