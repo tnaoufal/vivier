@@ -48,7 +48,10 @@ INVOKER, so RLS decides what it answers; its rows are guarded at the
 boundary like any query result (`src/lib/candidates/similar.ts`). A loop
 the browser drives (an import, an analysis) sends bounded batches
 (`LOT_SIZE`, `ASSESS_BATCH_MAX`), renders progress, and can be stopped and
-resumed from what is stored.
+resumed from what is stored. The team's thread on an object is
+`TeamThread` / `ThreadPanel` (`src/components/thread`) on a
+`ThreadTarget` (`{ briefId } | { candidateId } | { shortlistItemId }`);
+its reads and writes live in `src/lib/threads`, never in a page.
 
 Errors from supabase-js are objects with `code` and `message`; show
 `t("common.error")` (or a specific sentence for a known code) with
@@ -67,17 +70,17 @@ import { enforceRateLimit } from "@/lib/platform/rate-limit.server";
 
 const input = z.object({ accessToken: z.string(), orgId: z.string().uuid(), briefId: z.string().uuid() });
 
-export const extractCriteria = createServerFn({ method: "POST" })
+export const runSearch = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => input.parse(data))
   .handler(async ({ data }) => {
     const member = await requireMember(data.accessToken, data.orgId, "member");
-    await enforceRateLimit("model", { userKey: member.userId });
+    await enforceRateLimit("search", { userKey: member.userId });
     // ... db() for service-role reads/writes, completeJson() for the model, recordUsage()
     return { ... };
   });
 ```
 
-The browser calls it with the token: `await extractCriteria({ data: { ...(await withToken()), orgId, briefId } })`
+The browser calls it with the token: `await runSearch({ data: { ...(await withToken()), orgId, briefId } })`
 (`src/lib/platform/call.ts`). A thrown `AppError` (`src/lib/platform/errors.ts`)
 reaches the browser as an error whose message is the code; show
 `errorMessage(locale, error)` with `toast.error`. Never put a model or
@@ -122,13 +125,13 @@ Dates: `formatDate`, `formatDateTime`, `formatRelative` from `@/lib/i18n`.
 
 ## Components
 
-shadcn/ui primitives in `src/components/ui` (button, card, dialog,
+shadcn/ui primitives in `src/components/ui` (button, dialog,
 dropdown-menu, input, label, popover, select, separator, sheet, skeleton,
-tabs, textarea, tooltip, command). App-shell pieces in
-`src/components/app-shell`: `PageHeader`, `Section`, `EmptyState`, `Pill`
-(tones: neutral, positive, caution, negative, primary; `dot` for a leading
-mark), `StatTile`, `FilterChip`, `LocaleChips`, `ScoreRing`,
-`RequirementList`, `Avatar`, `ConfirmDialog`. A verdict or a decision is
+sonner, tabs, textarea, tooltip). App-shell pieces in
+`src/components/app-shell`: `PageHeader`, `Section`, `EmptyState`,
+`InfoTip`, `Pill` (tones: neutral, positive, caution, negative, primary;
+`dot` for a leading mark), `FilterChip`, `LocaleChips`, `ProgressBar`,
+`Meter`, `Timeline`, `RequirementList`, `Avatar`, `ConfirmDialog`. A verdict or a decision is
 always a pill or a mark with an icon and a text alternative, never colour
 alone (`docs/DESIGN.md`). Utilities: `sheet` (a bordered card),
 `sheet-row`, `sheet-link` (a card that leads somewhere), `label-caps`,
@@ -136,8 +139,9 @@ alone (`docs/DESIGN.md`). Utilities: `sheet` (a bordered card),
 `surface-dialog`; `share-sheet` for the public dossier only. Icons from
 `lucide-react`.
 Tailwind v4 tokens: `bg-background`, `text-ink`, `text-muted-foreground`,
-`border-border`, `text-positive` / `text-caution` / `text-negative`
-(verdicts), `bg-primary`.
+`border-border`, `text-positive` / `text-caution` / `text-negative` (the
+three monochrome tones, the ink, grey 700 and grey 500: never alone,
+always with an icon or a word), `bg-primary`.
 
 Layout rules: a page starts with `PageHeader`; lists are `sheet`s with
 rows; forms use `Label` + `Input`/`Textarea`; destructive actions go

@@ -165,7 +165,7 @@ desktop row that already measures 40px or more.
 | `duration-fast`               | 120 ms                    | hover, press, a colour change                  |
 | `duration-base`               | 180 ms                    | menus, popovers, the page change, the nav mark |
 | `duration-slow`               | 240 ms                    | dialogs and drawers entering                   |
-| `duration-slower`             | 320 ms                    | rows rising in, a bar or a ring reaching its value |
+| `duration-slower`             | 320 ms                    | rows rising in, a bar reaching its value |
 | `ease-out-soft`               | cubic-bezier(.2,.7,.2,1)  | everything that settles                        |
 | `ease-spring`                 | cubic-bezier(.34,1.3,.64,1) | a dialog entering (a gentle overshoot, 4 percent) |
 | `--stagger`                   | 40 ms                     | the wait between two rows of a list            |
@@ -178,7 +178,7 @@ the hook `usePrefersReducedMotion` lives in `app-shell/page-transition`).
 ## Layout
 
 - The shell: a 264px grey 50 sidebar (the brand in the ink, the
-  organisation switcher with the plan pill, five sections with 20px
+  organisation switcher with the plan as a quiet line, four sections with 20px
   icons and one ink mark, paper text over it, that slides to the current
   section, the person at the bottom). On phones a 64px top bar and a
   full-screen sheet menu, closed on navigation.
@@ -312,7 +312,7 @@ Every primitive keeps its props from v2; the look is monochrome.
 
 ### Elsewhere
 
-- **Switch** (`team/switch`) and **ToggleSwitch** (`briefs/toggle-switch`)
+- **Switch** (`team/switch`)
   a 36 × 20 track in a 40px target: on, the ink with a paper thumb; off,
   grey 300 with an ink thumb (both AA, the thumb's side tells the state);
   the `switch` role.
@@ -361,7 +361,6 @@ grey sheen), `animate-indeterminate` (a bar whose size is unknown),
 | A drawer opening                    | slides in from its edge, 240ms; the scrim fades                                          |
 | A menu, a popover, a tooltip        | fades and scales from 95 percent toward its trigger, 180ms (tooltip 120ms)               |
 | Work running                        | the bar's width eases to its value and a sheen crosses it (`shine`); indeterminate when the size is unknown |
-| A score ring mounting               | the arc draws itself once, 320ms (`static` for print)                                    |
 | A photo loading                     | it fades in over the initials, 240ms                                                     |
 | A theme change                      | one viewport cross-fade (view transition), component transitions frozen meanwhile        |
 
@@ -374,7 +373,7 @@ the page still.
 ## Icons
 
 lucide only, stroke 1.75. 16px in buttons, rows, pills (14px) and menu
-items; 20px in the navigation, page headers and stat tiles; 24px in an
+items; 20px in the navigation and page headers; 24px in an
 empty state's disc. One icon per control: a button with the `icon` prop
 never also has an icon child; a pill has a dot or an icon; a select
 trigger has its one chevron; a menu item has one leading icon and, if
@@ -401,7 +400,7 @@ anything, text on the right. Every icon-only button carries an
 | partially met           | `Minus`         | not stated             | `CircleHelp`      |
 | the dashboard           | `LayoutDashboard` | activity             | `Activity`        |
 | the talent pool         | `Users`         | settings               | `Settings`        |
-| a comment               | `MessageSquare` | a vote                 | `ThumbsUp` / `ThumbsDown` |
+| a comment               | `MessageSquare` | a mention              | `AtSign`                  |
 | copy a link             | `Copy`          | an email               | `Mail`            |
 | in processing           | `CircleDashed`  | open elsewhere (a new tab, outside the app) | `ExternalLink` |
 | a profile (in the app)  | `UserRound`     | more information       | `Info`            |
@@ -530,86 +529,124 @@ Not a gas factory: a simple, fast product that reads at a glance.
 
 ## Page templates
 
-The templates below are the ones of v2, kept in place; the page
-engineers of evolution 6 rewrite them page by page (the brief complement
-module leaves the brief page, the thread joins each object, the
-dashboard gains "to handle"). A colour named in them reads through the
-monochrome tones above.
+The pages of evolution 6, as they are. A colour named in a template reads
+through the monochrome tones above.
 
-- **List page** (the pool, the briefs, the shortlists): `PageHeader`
-  with the one primary action; a filter row (`Segmented` or
-  `FilterChip`s, a search `Input`); one `sheet` of `sheet-row`s, each row
-  the link, rising in once; `SkeletonRows` while loading; `EmptyState`
-  with the action that fills it; the count in the header's `meta`, never
-  a sentence.
-- **Detail page** (a candidate, a brief): `PageHeader sticky` on long
-  pages with the title, `meta` pills (only what sets the record apart:
-  archived, typed by hand, consent withdrawn) and the actions, kept in
-  place while the page loads and when it fails;
-  then two columns from `lg`: the identity and the verdicts on the left
-  (Avatar `profile`, the headline, the Meters, the RequirementList), the
-  evidence on the right (the Timeline of experiences, the skills, the
-  languages, the documents); comments and history in their own sections
-  below; the CV opens in a `Sheet size="full"`.
-- **Board page** (a shortlist): `PageHeader` with the share action and
-  no count pills (each column's heading carries its count); columns or
-  grouped sections by decision (matching, to check, set aside collapsed,
-  not analysed), each card a `sheet-link` with the Avatar, the
-  ScoreRing `sm`, the missing required requirement named; a drawer for
-  the item (`Sheet size="lg"`) with the profile, the verdicts, the note,
-  the votes, the comments, the history.
-- **Brief page** (`/app/briefs/:briefId`): `PageHeader sticky` with the
-  title, the status and its date, the one filled action ("Lancer la
-  recherche", held with a tooltip while an editor has unsaved edits) and
-  the administrators' menu; then two `Tabs` kept in the URL
-  (`?tab=matches|brief`), both panels mounted: "Correspondances", its
-  count in the tab, and "Le poste" (the brief, the role profile and the
-  criteria in one `max-w-3xl` column). The matches tab, top to bottom and
-  nothing else:
+- **List page** (the pool, the briefs): `PageHeader` with the count in
+  its `meta` and the one filled action ("Importer des CV", "Nouveau
+  brief"; the empty state carries it instead while the list is empty);
+  one toolbar at most (a search `Input`, a sort `Select`, a "Filtrer"
+  button whose `Popover` holds the fields with their count on the
+  button, or a `Segmented` that appears only once it has something to
+  separate); one `sheet` of 64px `sheet-row`s, each row the link, rising
+  in once: the name and the position, one quiet line of facts (the
+  seniority first), the date on the right from `sm`, no pill every row
+  would carry; `SkeletonRows` while loading; `EmptyState` with the action
+  that fills it; never a sentence for a count.
+- **Detail page** (a candidate): `PageHeader sticky` with the way back as
+  its eyebrow, the title, one line of facts in `meta`, one filled action
+  ("Voir le CV"), the `ThreadButton` (phones) and an `Ellipsis` menu for
+  the rest, kept in place while the page loads and when it fails; then
+  `ThreadPanel` around the content: the main column (the head of the CV
+  as a card with the Avatar `profile`, the sections in one sheet divided
+  by hairlines, the documents, the tags and the consent folded under
+  them) and, from `lg`, the team's thread as a sticky right column of
+  22.5rem, a `Sheet` on a phone. The CV opens in a `Sheet size="full"`;
+  the form in a `Sheet` with one "Enregistrer".
+- **Brief page** (`/app/briefs/:briefId`): the same sticky header (the
+  status pill only when the brief is not open, the date; the one filled
+  button "Lancer l'analyse" / "Relancer", held while one runs and
+  outline while the band or the board carries the expected action; the
+  `ThreadButton`; a menu to close, reopen or delete), then, inside the
+  `ThreadPanel`: the brief folded to three lines in a `sheet` with a
+  quiet "Voir le brief" and a ghost "Modifier" (the form in a drawer),
+  and two `Tabs` kept in the URL (`?tab=matches|shortlist`) with no count
+  in their names. The matches tab, top to bottom and nothing else:
   - the **analysis band**, one `sheet` in the state the analysis is in.
-    Idle: the count of matches as the headline (`font-display`), one line
-    of figures under it ("analysés · retenus au tri · lus en détail"
-    while some are left, then the date), the method behind an `InfoTip`,
-    the earlier analyses behind a quiet button (the tiers are on the
-    rows, never counted again in the band); once done, the profiles the
-    pool gained since and "Analyser". Running: the live count first
-    (`aria-live`, "Préparation du vivier…" while the search is
-    prepared) with "Interrompre", then a `ProgressBar` with "{step} ·
-    {done} / {total}" and the time left once known. Unfinished: what is
-    left and "Reprendre", or "En cours dans une autre session". Waiting for the
-    team's check: one line and "Vérifier le poste". No match once
-    everything ran: "0 correspondance", the requirement most often
-    missing and "Revoir le poste". An empty pool: `EmptyState` with the
-    import.
-  - the **match rows**, the matches alone in one `sheet` of compact rows:
-    the rank, the `Avatar md`, the name and the position held today, one
-    line (why it ranks there), the `TierPill compact` from `sm`, the
-    `ScoreRing sm`; the row is one button, the shortlist button sits
-    beside it, never inside. Rows rise in as their batch lands and never
-    again; skeleton rows of the same height hold the place before.
+    Idle: the count of matches as the headline (`font-display`) and one
+    line of figures under it ("analysés · retenus au tri · lus en entier
+    · écartés" and the date; the "écartés" figure is a quiet button that
+    opens their drawer), a "Lecture du modèle" pill once a profile was
+    read, nothing else: no method sentence, no funnel, no tier counts,
+    no earlier analyses. Running: the live figure first in a heading (a
+    `role="status"` region that exists in every state carries it),
+    "Interrompre", the step line "{step} · {done} / {total}" with the
+    time left, a `ProgressBar`. Unfinished: what is left and a filled
+    "Reprendre" (the header's button goes outline), or "En cours dans
+    une autre session". Done with profiles gained since: the figure and
+    a filled "Analyser". No match once everything ran: the requirement
+    most often missing. "Brief modifié · relancez l'analyse" in one line
+    when the text changed, while running too. An empty pool: `EmptyState`
+    with the import.
+  - the **match rows**, the matches alone in one `sheet` of 64px rows:
+    the rank, the `Avatar sm`, the name and the position held today, one
+    line from `md` (why it ranks there), the `TierPill compact` or the
+    quiet word "À confirmer"; the row is one button, the shortlist icon
+    button sits beside it, never inside. No ring, no decision pill (every
+    row matches). Rows rise in as their batch lands and never again;
+    skeleton rows of the same height hold the place before.
   - right under them, a quiet toggle (`aria-expanded`) for the near
     profiles: muted rows, no tier, their main reservation as the line. A
-    profile set aside is a figure of the band, never a row.
-  - the **drawer** (`Sheet size="lg"`, from the right): the `Avatar lg`,
-    the name, the position held today, the tier, the decision (only when
-    it is not "Correspond") and the score in its header, previous and
-    next (and the arrow keys), one row of actions (add to the shortlist,
-    open the profile); then why this profile (the tiering's note first),
-    the requirements with their evidence, the strengths and the
-    reservations side by side, the reading against the role, the
-    interview points, and the triage's verdict, small and muted.
+    profile set aside is a figure of the band, never a row; its drawer
+    (`Sheet size="lg"`) lists them fifty at a time with their reason,
+    marked once as the model's, and "Lire quand même" beside a row the
+    triage set aside.
+  - the **drawer** (`Sheet size="lg"`): the `Avatar lg`, the name, the
+    position, "12 ans · Casablanca" ("Non renseigné" for absent years),
+    the tier, the decision only when it is not "Correspond", the score as
+    a figure ("82 / 100"), previous and next (and the arrow keys), one
+    row of actions (add to the shortlist, open the profile); then why
+    this profile, the requirements with their evidence, the strengths and
+    the reservations side by side as plain bullets, the reading against
+    the role (the `Meter`s, the composite behind an `InfoTip`), the
+    interview points, the triage's verdict, small and muted, and the
+    candidate's `TeamThread compact` at the end.
+  The shortlist tab mounts the board.
+- **Board** (the shortlist tab): no header of its own (the brief page's
+  carries the primary); above the columns, at most one filled "Partager"
+  once someone is retained, right-aligned; three columns from `lg` (à
+  examiner, retenus, écartés), each heading with its count, a `Segmented`
+  to switch on a phone; each card a `sheet p-4`, 16px apart, with the
+  `Avatar sm`, the name (it opens the drawer), the `TierPill compact`,
+  the position and the years, one line, and a footer with the thread's
+  count, the two decisions that apply as 40px ghost icon buttons (their
+  words from `sm`), the assignee and an `Ellipsis` menu; no ring, no
+  votes, no history. The drawer (`Sheet size="lg"`): the person and the
+  score as a figure, who decided and when, the decisions, then `Tabs`
+  "Lecture" and "Discussion" (`TeamThread compact`). The shares made from
+  the shortlist in a `Section` under the board.
+- **Dashboard** (`/app`): `PageHeader` with a greeting as the title, the
+  date in `meta`, one filled "Nouveau brief"; two columns from `lg`: "Mes
+  briefs en cours" as `sheet-row`s (the title, what the analysis found,
+  "3 retenus", the thread's last message) and, beside, "À traiter" (the
+  mentions, `MyMentions`) over one `sheet` line for the pool with its bar
+  and an outline "Importer des CV". No stat tiles, no feed.
+- **Thread panel** (`ThreadPanel`, `ThreadButton`, `TeamThread`): from
+  `lg` a sticky right column of 22.5rem beside the page's content (the
+  grid is the panel's); below, a `Sheet` from the right opened by the
+  header's `ThreadButton` (`MessageSquare` and the count, `lg:hidden`).
+  Inside: a short header (the title, the count), the messages grouped by
+  day under a quiet label, each an `Avatar sm`, the name, the relative
+  time, the body with its mentions in ink weight, a list and no bubbles;
+  the composer sticky at the bottom (Enter sends, Shift+Enter breaks a
+  line, "@" completes the team). `compact` caps the height for a drawer's
+  tab or a card.
 - **Dialog** (a confirmation, a form): `size` by content (`sm` for a
   question, `lg` for a form with rows, `xl` for an upload with a table),
   `DialogHeader` with a title (a sentence only for a confirmation's
   consequence or a legal obligation), `DialogBody` scrolling,
-  `DialogFooter` with cancel then the one confirming button.
+  `DialogFooter` with cancel then the one confirming button. The share
+  dialog is one such `lg` dialog in one step: a checklist, two optional
+  fields, "Partager"; then the link with its copy button.
 - **Drawer**: `SheetHeader` with the Avatar and the title, `SheetBody`
   scrolling, `SheetFooter` with the actions when the drawer decides
   something.
 - **Public dossier** (`/share/:token`): a white sheet with dark ink on
-  any theme (`share-sheet` scopes the tokens), A4 with a 16mm margin, one
-  sheet per candidate per printed page (`print:break-before-page`), the
-  ring drawn at rest (`static`), the print and CV buttons hidden in print
-  (`print:hidden`). It says when the link expires; a sheet without an
-  analysis says so instead of showing an empty table. The PDF a reader
-  keeps is the browser's print of the page.
+  any theme (`share-sheet` scopes the tokens), A4 with a 16mm margin, a
+  cover then one sheet per candidate per printed page
+  (`print:break-before-page`), the initials alone (no photo), the score
+  and the decision as text, "Lecture du modèle" once per sheet beside the
+  synthesis, the print and CV buttons hidden in print (`print:hidden`).
+  It says when the link expires; a sheet without an analysis says so
+  instead of showing an empty table. The PDF a reader keeps is the
+  browser's print of the page.
