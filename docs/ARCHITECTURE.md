@@ -402,7 +402,7 @@ re-embed (with a model):                 ◀──────── active cand
   one ai_usage embed per call            ────────▶ candidates.embedding
   a wrong width stops the pass; /health says "mismatch"
 photos (photo-backfill.ts), last:        ◀──────── candidates without a photo never checked
-  50 a batch, up to 10 batches a run,                (photo_path and photo_checked_at null,
+  50 a batch, up to 25 batches a run,                (photo_path and photo_checked_at null,
   two CVs read at once: page 1 of the                candidates_photo_pending_idx), with a
   newest CV with a text layer, the                   processed document
   pipeline's rules (a portrait among     ────────▶ photos/<org>/<cand>.png, candidates.photo_path

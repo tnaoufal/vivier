@@ -33,6 +33,7 @@ jobs:
           filters: |
             frontend:
               - 'src/**'
+              - 'packages/analysis/**'
               - 'public/**'
               - 'supabase/**'
               - 'package.json'
@@ -43,6 +44,7 @@ jobs:
               - 'vitest.config.ts'
               - 'eslint.config.js'
               - 'components.json'
+              - '.github/workflows/ci.yml'
               - 'wrangler.jsonc'
               - '.github/workflows/ci.yml'
       - id: gate

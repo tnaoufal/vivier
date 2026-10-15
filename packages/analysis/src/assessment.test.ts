@@ -312,8 +312,8 @@ describe("enforceAssessment", () => {
     expect(low.score).toBe(50);
   });
 
-  it("caps a fit at borderline when a required requirement is only met in part", () => {
-    const assessment = enforceAssessment(
+  it("keeps a fit with one required requirement the model read as met in part, and caps it with two", () => {
+    const one = enforceAssessment(
       criteria,
       none,
       answer({
@@ -327,8 +327,27 @@ describe("enforceAssessment", () => {
       }),
       "m",
     );
-    expect(assessment.decision).toBe("borderline");
-    expect(assessment.score).toBe(85);
+    expect(one.decision).toBe("fit");
+    expect(one.modelDecision).toBe("fit");
+    expect(one.score).toBe(85);
+    expect(one.requirements[1]?.met).toBe("partial");
+    const two = enforceAssessment(
+      criteria,
+      none,
+      answer({
+        requirements: [
+          { criterionId: "skill", met: "partial", evidence: "Assistant contrôle de gestion" },
+          { criterionId: "lang", met: "partial", evidence: "Anglais (B2)" },
+          { criterionId: "sap", met: "yes", evidence: "SAP" },
+        ],
+        decision: "fit",
+        score: 85,
+      }),
+      "m",
+    );
+    expect(two.decision).toBe("borderline");
+    expect(two.modelDecision).toBe("fit");
+    expect(two.score).toBe(85);
   });
 
   it("needs 75 for a fit and 45 for a borderline, whatever the model said", () => {

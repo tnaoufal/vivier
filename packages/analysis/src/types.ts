@@ -132,6 +132,8 @@ export interface Assessment {
   model: string;
   /** The model's own overall score, advisory; absent on assessments made before the dimensions. */
   modelScore?: number;
+  /** The model's own decision before the rules (fit, borderline, no_fit), for the audit; absent on older assessments. */
+  modelDecision?: AssessmentDecision;
   /** The five dimensions with their evidence; absent on older assessments. */
   dimensions?: Record<AssessmentDimension, DimensionScore>;
   /** Facts in the profile's favour, as a recruiter would list them. */

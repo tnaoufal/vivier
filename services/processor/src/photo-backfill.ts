@@ -16,7 +16,7 @@
  * PHOTO_BACKFILL_CONCURRENCY CVs are read at once, one PDF in memory per
  * worker, and a maintenance run loops over up to PHOTO_BACKFILL_PASSES
  * batches while rows remain, so a backlog of a thousand profiles is done
- * in a few hourly runs rather than a day.
+ * in one run (at boot, then hourly) rather than a day.
  */
 import { PHOTO_BUCKET, type Db } from "./db.js";
 import { logError, logInfo, type LogFields } from "./log.js";
@@ -27,7 +27,7 @@ import type { PhotoCandidateRow, PhotoDocumentRow } from "./types.js";
 /** Candidates listed per batch. */
 export const PHOTO_BACKFILL_BATCH = 50;
 /** Batches per maintenance run while rows remain: a bound on the run's length, not a target. */
-export const PHOTO_BACKFILL_PASSES = 10;
+export const PHOTO_BACKFILL_PASSES = 25;
 /** CVs read at once; each worker holds one PDF in memory. */
 export const PHOTO_BACKFILL_CONCURRENCY = 2;
 
