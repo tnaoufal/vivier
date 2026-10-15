@@ -1,18 +1,18 @@
 /**
- * Words of the shortlist board under a brief (to examine, retained,
- * dismissed), the card of a candidate on it with its menu, and the
- * detail drawer in two tabs (the model's reading, the team's thread).
- * Decision traces name the person and the moment: {name} and {when}
- * are filled from decided_by / decided_at, never guessed; a tier and a
- * reading are always said to be the model's proposal.
+ * Words of the shortlist group of a brief page (its filter, its rows
+ * with the decision as a pill and who decided, the decisions in one
+ * click with their toasts of two words, the trace the reading shows)
+ * and of the links that still name a shortlist. Decision traces name
+ * the person and the moment: {name} and {when} are filled from
+ * decided_by / decided_at, never guessed; a reading is always said to
+ * be the model's.
  */
 const fr = {
-  // the board
-  "shortlists.share": "Partager",
-  "shortlists.columns": "Colonnes",
+  // the group and its filter
+  "shortlists.share": "Partager la shortlist",
   "shortlists.boardError": "La shortlist n'a pas pu être chargée.",
   "shortlists.board.empty.title": "Personne sur cette shortlist",
-  "shortlists.board.empty.action": "Voir les correspondances",
+  "shortlists.filter.label": "Filtrer la shortlist",
   "shortlists.status.to_review": "À examiner",
   "shortlists.status.retained": "Retenus",
   "shortlists.status.dismissed": "Écartés",
@@ -25,66 +25,37 @@ const fr = {
   "shortlists.notFound.title": "Cette shortlist n'existe pas",
   "shortlists.notFound.action": "Voir les briefs",
 
-  // the card
-  "shortlists.item.noName": "Sans nom",
-  "shortlists.item.candidateGone": "Candidat supprimé du vivier",
-  "shortlists.item.menu": "Actions sur ce candidat",
-  "shortlists.item.open": "Voir la fiche",
+  // the rows
   "shortlists.item.score": "{score} / 100",
   "shortlists.item.fitScore": "Adéquation {score} sur 100, selon le modèle",
-  "shortlists.item.noAssessment": "Sans analyse",
+  "shortlists.item.noMatch": "Ajouté sans analyse",
   "shortlists.item.addedBy": "Ajouté par {name} · {when}",
-  "shortlists.item.assignedTo": "Attribué à {name}",
+  "shortlists.pill.retained": "Retenu",
+  "shortlists.pill.dismissed": "Écarté",
+  "shortlists.pill.to_review": "À examiner",
+  "shortlists.line.retained": "{name} retient",
+  "shortlists.line.dismissed": "{name} écarte",
+  "shortlists.line.to_review": "à examiner",
   "shortlists.action.retain": "Retenir",
   "shortlists.action.dismiss": "Écarter",
   "shortlists.action.review": "Réexaminer",
-  "shortlists.action.remove": "Retirer de la shortlist",
-  "shortlists.assign.menu": "Attribuer à",
-  "shortlists.assign.none": "Personne",
   "shortlists.formerMember": "Un ancien membre",
-  "shortlists.remove.title": "Retirer {name} de la shortlist ?",
-  "shortlists.remove.text": "La discussion est perdue ; le candidat reste dans le vivier.",
   "shortlists.trace.retained": "Retenu par {name} · {when}",
   "shortlists.trace.dismissed": "Écarté par {name} · {when}",
   "shortlists.trace.reviewed": "Remis à l'étude par {name} · {when}",
-  "shortlists.statusSaved": "Décision enregistrée.",
-  "shortlists.removed": "Candidat retiré de la shortlist.",
+  "shortlists.toast.retained": "Retenu.",
+  "shortlists.toast.dismissed": "Écarté.",
+  "shortlists.toast.to_review": "À examiner.",
 
-  // the drawer
-  "shortlists.drawer.tabs": "Sections de la fiche",
-  "shortlists.drawer.tab.reading": "Lecture",
-  "shortlists.drawer.why": "Pourquoi",
-  "shortlists.drawer.assessment": "Lecture du modèle",
-  "shortlists.drawer.match": "Exigences du brief",
-  "shortlists.drawer.match.none": "Ajouté sans analyse",
-  "shortlists.drawer.match.empty": "Aucun critère n'a été évalué.",
-  "shortlists.drawer.criterion.unknown": "Critère retiré du brief",
-  "shortlists.drawer.required": "obligatoire",
-  "shortlists.met.yes": "Satisfait",
-  "shortlists.met.partial": "En partie",
-  "shortlists.met.no": "Non satisfait",
-  "shortlists.met.unknown": "Non renseigné",
-
-  // the recruiter's reading
-  "shortlists.reading.dimensions": "Par dimension",
-  "shortlists.dimension.role": "Métier",
-  "shortlists.dimension.seniority": "Séniorité",
-  "shortlists.dimension.context": "Contexte",
-  "shortlists.dimension.trajectory": "Trajectoire",
-  "shortlists.dimension.achievements": "Réalisations",
-  "shortlists.reading.rank": "Parmi les retenus",
-  "shortlists.reading.strengths": "Points forts",
-  "shortlists.reading.concerns": "Réserves",
+  // the reading
   "shortlists.reading.challenge": "Seconde lecture",
-  "shortlists.reading.questions": "Pour l'entretien",
 } as const;
 
 const en = {
-  "shortlists.share": "Share",
-  "shortlists.columns": "Columns",
+  "shortlists.share": "Share the shortlist",
   "shortlists.boardError": "The shortlist could not be loaded.",
   "shortlists.board.empty.title": "Nobody on this shortlist",
-  "shortlists.board.empty.action": "See the matches",
+  "shortlists.filter.label": "Filter the shortlist",
   "shortlists.status.to_review": "To review",
   "shortlists.status.retained": "Retained",
   "shortlists.status.dismissed": "Dismissed",
@@ -96,55 +67,28 @@ const en = {
   "shortlists.notFound.title": "This shortlist does not exist",
   "shortlists.notFound.action": "See the briefs",
 
-  "shortlists.item.noName": "No name",
-  "shortlists.item.candidateGone": "Candidate removed from the pool",
-  "shortlists.item.menu": "Actions on this candidate",
-  "shortlists.item.open": "Open the profile",
   "shortlists.item.score": "{score} / 100",
   "shortlists.item.fitScore": "Fit {score} out of 100, as the model reads it",
-  "shortlists.item.noAssessment": "No analysis",
+  "shortlists.item.noMatch": "Added without an analysis",
   "shortlists.item.addedBy": "Added by {name} · {when}",
-  "shortlists.item.assignedTo": "Assigned to {name}",
+  "shortlists.pill.retained": "Retained",
+  "shortlists.pill.dismissed": "Dismissed",
+  "shortlists.pill.to_review": "To review",
+  "shortlists.line.retained": "{name} retains",
+  "shortlists.line.dismissed": "{name} dismisses",
+  "shortlists.line.to_review": "to review",
   "shortlists.action.retain": "Retain",
   "shortlists.action.dismiss": "Dismiss",
   "shortlists.action.review": "Review again",
-  "shortlists.action.remove": "Remove from the shortlist",
-  "shortlists.assign.menu": "Assign to",
-  "shortlists.assign.none": "Nobody",
   "shortlists.formerMember": "A former member",
-  "shortlists.remove.title": "Remove {name} from the shortlist?",
-  "shortlists.remove.text": "The discussion is lost; the candidate stays in the pool.",
   "shortlists.trace.retained": "Retained by {name} · {when}",
   "shortlists.trace.dismissed": "Dismissed by {name} · {when}",
   "shortlists.trace.reviewed": "Put back under review by {name} · {when}",
-  "shortlists.statusSaved": "Decision saved.",
-  "shortlists.removed": "Candidate removed from the shortlist.",
+  "shortlists.toast.retained": "Retained.",
+  "shortlists.toast.dismissed": "Dismissed.",
+  "shortlists.toast.to_review": "To review.",
 
-  "shortlists.drawer.tabs": "Sections of the profile",
-  "shortlists.drawer.tab.reading": "Reading",
-  "shortlists.drawer.why": "Why",
-  "shortlists.drawer.assessment": "The model's reading",
-  "shortlists.drawer.match": "The brief's requirements",
-  "shortlists.drawer.match.none": "Added without an analysis",
-  "shortlists.drawer.match.empty": "No criterion was evaluated.",
-  "shortlists.drawer.criterion.unknown": "Criterion removed from the brief",
-  "shortlists.drawer.required": "required",
-  "shortlists.met.yes": "Met",
-  "shortlists.met.partial": "In part",
-  "shortlists.met.no": "Not met",
-  "shortlists.met.unknown": "Not stated",
-
-  "shortlists.reading.dimensions": "By dimension",
-  "shortlists.dimension.role": "Role",
-  "shortlists.dimension.seniority": "Seniority",
-  "shortlists.dimension.context": "Context",
-  "shortlists.dimension.trajectory": "Trajectory",
-  "shortlists.dimension.achievements": "Achievements",
-  "shortlists.reading.rank": "Among the retained",
-  "shortlists.reading.strengths": "Strengths",
-  "shortlists.reading.concerns": "Reservations",
   "shortlists.reading.challenge": "Second reading",
-  "shortlists.reading.questions": "For the interview",
 } as const satisfies Record<keyof typeof fr, string>;
 
 export const shortlists = { fr, en };

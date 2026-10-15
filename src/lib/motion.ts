@@ -3,8 +3,10 @@
  * (the same numbers as the tokens of styles.css), the stagger of a list
  * that unfolds row by row, and the reading of the person's reduced-motion
  * preference. Nothing here touches the DOM beyond a media query the
- * caller hands in, so every helper runs in a node test; the React hook
- * that follows the preference lives in components/app-shell/page-transition.
+ * caller hands in, so every helper runs in a node test. No component
+ * follows the preference live today (the reduced-motion block of
+ * styles.css stills the motion tokens); `subscribeReducedMotion` is
+ * shaped for a `useSyncExternalStore` hook once code drives a timer.
  */
 import type { CSSProperties } from "react";
 

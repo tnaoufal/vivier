@@ -4,17 +4,13 @@
  * filter of the list, the newest analysis of each brief, its method,
  * where its job stands and what it counted (kept current from the
  * realtime rows themselves), what its row says of it and how many
- * candidates each shortlist retained; and what the brief page's
- * "Correspondances" tab reads off an analysis: the state its band is in
- * (read off the row's status: the processor runs the job, the page
- * follows it), the time a run has left at the pace its row shows, what
- * a stopped run still has to do, the one line a failed run says, the
- * figures of its funnel and the one line that says them, the
- * matches, the near profiles and the profiles set aside in their order,
- * the one line each row shows (the reason a profile was set aside, the
- * screening's score among them), the turn each row takes when a list
- * unfolds (a batch that lands rises in one row after the other, a row
- * already on screen never moves again), the pages of a list read on
+ * candidates each shortlist retained; and what the brief page reads off
+ * an analysis: the state its band is in (read off the row's status: the
+ * processor runs the job, the page follows it), the one line a failed
+ * run says, the figures of its funnel, the matches, the near profiles
+ * and the profiles set aside in their order, the one line each row
+ * shows (the second opinion's doubt, the reason a profile was set aside,
+ * the screening's score among them), the pages of a list read on
  * demand, and whether the brief's text changed since the model read it.
  * Tested in presentation.test.ts.
  */
@@ -33,7 +29,6 @@ import type {
   BriefStatus,
   MatchResult,
   SearchMethod,
-  SearchRow,
 } from "@/lib/db/types";
 
 import { compareTiered, decisionOf, firstMissingRequirement } from "./assessment";
@@ -322,32 +317,6 @@ export function funnelOf(results: readonly MatchResult[], triage: TriageTally | 
   };
 }
 
-/** One figure of the band's line, by what it counts. */
-export type FigureKey = "analysed" | "kept" | "assessed" | "setAside";
-
-export interface Figure {
-  key: FigureKey;
-  count: number;
-}
-
-/**
- * The one line of figures under the band's headline, each figure once
- * and only when it says something the headline does not: the profiles
- * analysed; the ones the triage kept (a whole-pool analysis); the ones
- * read in full, when that is not every profile kept (the others are
- * the near profiles the screening scored); the ones set aside (the
- * triage's "no" and "unknown", the readings' no_fit), the figure that
- * opens their list. The matches are the headline's and are never said
- * twice.
- */
-export function figuresLine(funnel: Funnel, wholePool: boolean): Figure[] {
-  const line: Figure[] = [{ key: "analysed", count: funnel.analysed }];
-  if (wholePool) line.push({ key: "kept", count: funnel.kept });
-  if (funnel.assessed !== funnel.kept) line.push({ key: "assessed", count: funnel.assessed });
-  if (funnel.setAside > 0) line.push({ key: "setAside", count: funnel.setAside });
-  return line;
-}
-
 /**
  * The first sentence of a text, trimmed: up to the first full stop,
  * question or exclamation mark followed by a space or the end (so
@@ -367,17 +336,6 @@ function sentence(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
-/**
- * The one line a match row shows: the tiering's note (why this rank
- * among the others), else the first sentence of the reading's summary;
- * null when the model wrote neither (a profile no model read).
- */
-export function synthesisLine(result: Pick<MatchResult, "assessment">): string | null {
-  const assessment = result.assessment;
-  if (!assessment) return null;
-  return sentence(assessment.rankNote) ?? sentence(firstSentence(assessment.summary));
-}
-
 /** The second opinion's doubt, when it doubted: the first thing any row of the profile says, a match's too. */
 export function doubtLine(result: Pick<MatchResult, "assessment">): string | null {
   const challenge = result.assessment?.challenge;
@@ -385,29 +343,21 @@ export function doubtLine(result: Pick<MatchResult, "assessment">): string | nul
 }
 
 /**
- * The one line a near profile's row shows: its main reservation, the
- * second opinion's doubt first, then the first reservation the reading
- * named, else the synthesis line.
- */
-export function reservationLine(result: Pick<MatchResult, "assessment">): string | null {
-  const assessment = result.assessment;
-  if (!assessment) return null;
-  return doubtLine(result) ?? sentence(assessment.concerns?.[0]) ?? synthesisLine(result);
-}
-
-/**
  * The one line a profile the screening scored but no model read shows:
  * the score first, then the reason the model gave ("72 · Senior, huit
  * ans en contrôle de gestion"); the score alone without a reason, the
  * reason alone without a score; null when the screening wrote neither.
+ * `scoreText` words the rounded score with its scale ("72 / 100"); the
+ * figure alone by default.
  */
 export function screenLine(
   screen: { score: number | null; reason: string | null } | null | undefined,
+  scoreText: (score: number) => string = (score) => String(score),
 ): string | null {
   if (!screen) return null;
   const score =
     typeof screen.score === "number" && Number.isFinite(screen.score)
-      ? String(Math.round(screen.score))
+      ? scoreText(Math.round(screen.score))
       : null;
   const reason = sentence(screen.reason);
   if (score !== null && reason !== null) return `${score} · ${reason}`;
@@ -569,63 +519,8 @@ export function stageKey(stage: AnalysisStage): `briefs.analysis.stage.${Analysi
   return `briefs.analysis.stage.${stage}`;
 }
 
-/** The shortest a run must have run before its pace says anything about the time left. */
-export const ETA_MIN_ELAPSED_MS = 5000;
-
-/**
- * The time a run has left, in milliseconds, at the pace its row shows
- * since it started: `done` of `total` settled since `startedAt` (the
- * overall progress the stage spans give, or a stage's own count), the
- * rest projected at the same pace. Null while that pace is not known
- * (no start, nothing settled yet, or too soon); 0 once nothing is
- * left.
- */
-export function etaOf(
-  startedAt: string | null | undefined,
-  done: number,
-  total: number,
-  now: number,
-): number | null {
-  if (!startedAt) return null;
-  const started = Date.parse(startedAt);
-  if (!Number.isFinite(started) || !Number.isFinite(total) || total <= 0) return null;
-  if (done >= total) return 0;
-  if (!Number.isFinite(done) || done <= 0) return null;
-  const elapsed = now - started;
-  if (elapsed < ETA_MIN_ELAPSED_MS) return null;
-  return Math.round((elapsed * (total - done)) / done);
-}
-
 /** The stages whose items are profiles: a card at the triage, a kept card at the screening, an entry at the full reading. The others count retained entries read again, groups, or one comparison. */
 export const PROFILE_STAGES: readonly AnalysisStage[] = ["triage", "screening", "assessing"];
-
-/**
- * What a stopped run's line says, from the stage it stopped at and its
- * count: the profiles that stage had left to read, when its items are
- * profiles ("640 profils restent à analyser"); else the stage with its
- * own count ("Classement · 2 / 4": groups of the tiering, retained
- * entries of the second reading, the triage once every card was read),
- * so a count of groups never reads as profiles; "unfinished" alone when
- * the row names no stage or the stage has no items (stopped before the
- * first step, or during the brief's reading, the snapshot or the
- * selection).
- */
-export type StoppedLine =
-  | { kind: "profiles"; count: number }
-  | { kind: "stage"; stage: AnalysisStage; done: number; total: number }
-  | { kind: "unfinished" };
-
-export function stoppedLineOf(
-  row: Pick<SearchRow, "stage" | "progress_done" | "progress_total">,
-): StoppedLine {
-  const stage = row.stage;
-  const total = atLeastZero(row.progress_total);
-  if (stage === null || total === 0) return { kind: "unfinished" };
-  const done = Math.min(total, atLeastZero(row.progress_done));
-  if (PROFILE_STAGES.includes(stage) && done < total)
-    return { kind: "profiles", count: total - done };
-  return { kind: "stage", stage, done, total };
-}
 
 /**
  * The one line a failed run says, from the code the processor wrote on
@@ -641,30 +536,4 @@ export function failureLineOf(error: string | null | undefined): FailureLine {
   if (code.startsWith("brief_changed")) return "brief";
   if (code.startsWith("model_unavailable")) return "model";
   return "other";
-}
-
-/**
- * The turn each key takes in a list that unfolds: a key already known
- * keeps the turn it was given (so a row on screen never animates
- * again), the new keys count from 0 in the order given (so a batch
- * that lands rises in one row after the other). Keys known before but
- * absent now are forgotten.
- */
-export function arrivalIndexes(
-  known: ReadonlyMap<string, number>,
-  keys: readonly string[],
-): Map<string, number> {
-  const next = new Map<string, number>();
-  let arrived = 0;
-  for (const key of keys) {
-    if (next.has(key)) continue;
-    const turn = known.get(key);
-    if (turn === undefined) {
-      next.set(key, arrived);
-      arrived += 1;
-    } else {
-      next.set(key, turn);
-    }
-  }
-  return next;
 }

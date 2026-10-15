@@ -1,10 +1,12 @@
 /**
- * What a list shows when it has nothing: an icon in a grey 100 disc, a
- * title of a few words, the one action that fills it. `compact` is the version
- * inside a card or a drawer (less air, a smaller disc, and the title a
- * paragraph: the card's or the drawer's own title is the heading).
- * `inset` is for a place that already draws the card (a `sheet p-6`):
- * no sheet of its own, so never a card inside a card.
+ * What a list shows when it has nothing: an icon in a grey disc, a
+ * title of a few words, the one action that fills it. `compact` is the
+ * version inside a card or a drawer (less air, a smaller disc, and the
+ * title a paragraph: the card's or the drawer's own title is the
+ * heading). `inset` is for a place that already draws the card (a
+ * `sheet p-6`): no sheet of its own, so never a card inside a card.
+ * `quiet` is the version inside a pane of the plane: no sheet, no disc,
+ * the icon alone, the title, the action.
  */
 import type { ReactNode } from "react";
 
@@ -17,6 +19,7 @@ export function EmptyState({
   action,
   compact = false,
   inset = false,
+  quiet = false,
   className,
 }: {
   icon?: ReactNode;
@@ -26,8 +29,24 @@ export function EmptyState({
   compact?: boolean;
   /** Inside a sheet that already draws the card: no sheet of its own. */
   inset?: boolean;
+  /** Inside a pane: no sheet, no disc. */
+  quiet?: boolean | undefined;
   className?: string;
 }) {
+  if (quiet) {
+    return (
+      <div className={cn("fade-in flex flex-col items-center px-4 py-10 text-center", className)}>
+        {icon ? (
+          <div className="mb-3 text-muted-foreground [&_svg]:size-5" aria-hidden="true">
+            {icon}
+          </div>
+        ) : null}
+        <p className="max-w-md text-sm font-medium text-ink break-words">{title}</p>
+        {text ? <p className="mt-1 max-w-md text-meta text-muted-foreground">{text}</p> : null}
+        {action ? <div className="mt-4 flex flex-wrap justify-center gap-3">{action}</div> : null}
+      </div>
+    );
+  }
   const Title = compact ? "p" : "h2";
   return (
     <div

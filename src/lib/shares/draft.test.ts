@@ -104,6 +104,28 @@ const reading: Assessment = {
 
 const read: MatchResult = { ...deterministic, assessment: reading };
 
+/**
+ * Two sentences of the model the analysis did not find in Ana's CV, short
+ * enough that an attention point would write them after its label.
+ */
+const nodeClaim = "Node.js en production chez un grand compte";
+const kubernetesClaim = "Kubernetes sur plusieurs projets";
+
+/**
+ * An assessment whose quotes the analysis could not find in the CV: the
+ * brief page shows them marked, the dossier leaves them out. "Anglais
+ * courant" and the availability were left to the deterministic verdicts.
+ */
+const unverified: Assessment = {
+  ...assessment,
+  requirements: [
+    { criterionId: "c1", met: "yes", evidence: nodeClaim, evidenceUnverified: true },
+    { criterionId: "c3", met: "partial", evidence: kubernetesClaim, evidenceUnverified: true },
+  ],
+};
+
+const unquoted: MatchResult = { ...deterministic, assessment: unverified };
+
 const noMatch = { candidate: ana, documentId: "doc-1", match: null };
 
 describe("requirementsOf", () => {
@@ -159,6 +181,38 @@ describe("requirementsOf", () => {
     expect(rows[3]?.evidence).toBeNull();
   });
 
+  it("keeps the mark of an answer whose sentence the analysis did not find in the CV, and gives it no evidence", () => {
+    const rows = requirementsOf(criteria, unquoted);
+    expect(rows).toEqual([
+      { label: "Node.js en production", required: true, met: "yes", evidence: null },
+      { label: "Anglais courant", required: true, met: "partial", evidence: "Anglais B2" },
+      { label: "Kubernetes", required: false, met: "partial", evidence: null },
+      { label: "Disponible sous un mois", required: false, met: "unknown", evidence: null },
+    ]);
+    expect(JSON.stringify(rows)).not.toContain(nodeClaim);
+    expect(JSON.stringify(rows)).not.toContain(kubernetesClaim);
+  });
+
+  it("keeps a quote the analysis found in the CV, and a deterministic verdict's evidence beside an unverified answer", () => {
+    const found: MatchResult = {
+      ...deterministic,
+      assessment: {
+        ...assessment,
+        requirements: [
+          { criterionId: "c1", met: "yes", evidence: "API Node en production depuis 2018", evidenceUnverified: false },
+        ],
+      },
+    };
+    expect(requirementsOf(criteria, found)[0]).toEqual({
+      label: "Node.js en production",
+      required: true,
+      met: "yes",
+      evidence: "API Node en production depuis 2018",
+    });
+    // The assessment left "Anglais courant" to the verdicts: the CV's own field stays its evidence.
+    expect(requirementsOf(criteria, unquoted)[1]?.evidence).toBe("Anglais B2");
+  });
+
   it("answers nothing without a match or when neither the assessment nor the verdicts hold a row", () => {
     expect(requirementsOf(criteria, null)).toEqual([]);
     expect(requirementsOf(criteria, { ...deterministic, verdicts: [] })).toEqual([]);
@@ -202,6 +256,25 @@ describe("strengthsFrom, attentionFrom and metCount", () => {
     const many = Array.from({ length: 9 }, (_, i) => ({ label: `R${i}`, required: false, met: "yes" as const, evidence: null }));
     expect(strengthsFrom(many)).toHaveLength(5);
     expect(attentionFrom(many.map((row) => ({ ...row, met: "no" as const })))).toHaveLength(5);
+  });
+
+  it("never writes into a point a sentence the analysis did not find in the CV, however short", () => {
+    const partly = attentionFrom(requirementsOf(criteria, unquoted));
+    expect(partly).toEqual(["Anglais courant — Anglais B2", "Kubernetes"]);
+    // An unverified "no", as an assessment stored before the analysis dropped such a quote holds it: the label alone.
+    const notMet: MatchResult = {
+      ...deterministic,
+      assessment: {
+        ...assessment,
+        requirements: [{ criterionId: "c3", met: "no", evidence: kubernetesClaim, evidenceUnverified: true }],
+      },
+    };
+    const missing = attentionFrom(requirementsOf(criteria, notMet));
+    expect(missing).toEqual(["Kubernetes", "Anglais courant — Anglais B2"]);
+    for (const point of [...partly, ...missing]) {
+      expect(point).not.toContain(nodeClaim);
+      expect(point).not.toContain(kubernetesClaim);
+    }
   });
 });
 
@@ -308,6 +381,21 @@ describe("plainItem", () => {
     const item = plainItem({ candidate: ana, documentId: null, match: { ...deterministic, why } }, criteria, "fr");
     expect(item.summary).toBe("Profil Node solide ; l'anglais reste à vérifier.");
     expect(plainItem({ candidate: ana, documentId: null, match: { ...assessed, why } }, criteria, "fr").summary).toBe(assessment.summary);
+  });
+
+  it("carries into the sheet no sentence the analysis did not find in the CV: the table and the points keep the marks", () => {
+    const item = plainItem({ candidate: ana, documentId: null, match: unquoted }, criteria, "fr");
+    expect(item.requirements.map((row) => `${row.label}:${row.met}:${row.evidence}`)).toEqual([
+      "Node.js en production:yes:null",
+      "Anglais courant:partial:Anglais B2",
+      "Kubernetes:partial:null",
+      "Disponible sous un mois:unknown:null",
+    ]);
+    // The mark stays, so the requirement met is still a strength, named by the brief's label, not by the model's sentence.
+    expect(item.strengths).toEqual(["Node.js en production"]);
+    expect(item.attention).toEqual(["Anglais courant — Anglais B2", "Kubernetes"]);
+    expect(JSON.stringify(item)).not.toContain(nodeClaim);
+    expect(JSON.stringify(item)).not.toContain(kubernetesClaim);
   });
 
   it("keeps the first skills as strengths and no attention point when the shortlist holds no analysis", () => {
@@ -429,6 +517,14 @@ describe("summaryPayload", () => {
     ]);
     const second = payload.candidates[1] ?? {};
     expect(Object.keys(second)).toEqual(["candidateId"]);
+  });
+
+  it("sends the model no sentence the analysis did not find in the CV as the evidence quoted from it", () => {
+    const payload = summaryPayload(brief, [ana], new Map([[ana.id, unquoted]]));
+    const sent = (payload.candidates[0] ?? {})["assessment"] as { requirements: { label: string; evidence: string | null }[] };
+    expect(sent.requirements.map((row) => row.evidence)).toEqual([null, "Anglais B2", null, null]);
+    expect(JSON.stringify(payload)).not.toContain(nodeClaim);
+    expect(JSON.stringify(payload)).not.toContain(kubernetesClaim);
   });
 
   it("sends no assessment for a candidate the shortlist never analysed", () => {

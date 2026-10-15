@@ -12,8 +12,9 @@ send the hiring manager a dossier by email: one sheet per candidate, the
 requirement table on each, printable. Every decision is a person's, every
 page says what it knows and what it does not, and each organisation sets
 how long its candidates are kept. The interface is black and white (the
-Blackweaver charter, v3: one ink on paper, a state told by a shape and a
-word, never a colour).
+Blackweaver charter, v4: one ink on paper, a state told by a shape and a
+word, never a colour), and every page is one plane, the team's thread
+beside the work.
 
 - **Product name**: "Vivier" (a vivier is where talent grows). Name, tagline
   and description live in `src/lib/brand.ts`; the mark is drawn inline in
@@ -22,10 +23,11 @@ word, never a colour).
   `fr`, tested).
 - **Fonts**: Geist, Geist Mono and Poppins 600, self-hosted from
   `public/fonts/` under the SIL Open Font License. No third-party stylesheet.
-- **Design**: `docs/DESIGN.md` is the charter every screen follows (v3, Blackweaver monochrome:
-  the principles, the tokens of `src/styles.css`, the primitives of
-  `src/components/ui` and `src/components/app-shell`, what moves and why,
-  the icons, the content rules, the page templates).
+- **Design**: `docs/DESIGN.md` is the charter every screen follows (v4,
+  Blackweaver monochrome, one plane: the rule, the tokens of
+  `src/styles.css` and the two tests that prove them, the plane and the
+  primitives of `src/components/ui` and `src/components/app-shell`, what
+  moves and why, the icons, the content rules, the page templates).
 - **Where it lives**: its own repository, `tnaoufal/vivier`, apart from
   Namearly; the two share a stack and nothing else.
 
@@ -81,7 +83,7 @@ pages, not only promised:
 | Processor | `services/processor`                        | Node 22 + Fastify 5 on Railway with the service role key: reads queued PDFs, sets aside what is not a CV, structures the rest (model or heuristics), finds the person already in the pool (email, phone, fingerprint), reads the candidate's photo off the first page, computes embeddings, runs every analysis of a brief against the pool as a job (the brief's reading, the triage, the screening, the full readings, the second opinions, the tiers: no model call for an analysis is made anywhere else), and runs the hourly maintenance (stale reset, retention purge, re-embed, the photo pass). Documented in `services/processor/README.md`. |
 | Analysis  | `packages/analysis`                         | `@vivier/analysis`, the pure part of the analysis (the types, the deterministic matching, the criteria and the role profile, the prompts and the payloads, the assessment's rules, the composite score, the tiering, the triage, the screening, the funnel's rules, the run's state machine), with no dependency. The web app reads it straight from its sources through a path alias, the processor from its built `dist/` through a `file:` dependency; the rules are in `docs/CONVENTIONS.md`. |
 | Email     | `src/lib/email/email.server.ts`             | Resend, transactional only (invitations, dossiers). Every send is a row in `email_sends`.                                                                                                                                                                                 |
-| Billing   | `src/lib/db/types.ts` (`Plan`), `plan-card` | Paddle, later: the plan grid and `sync_plan_from_billing()` exist, the checkout and the webhook do not (see "Not built yet").                                                                                                                                             |
+| Billing   | `src/lib/db/types.ts` (`Plan`), `plan-usage` | Paddle, later: the plan grid and `sync_plan_from_billing()` exist, the checkout and the webhook do not (see "Not built yet").                                                                                                                                             |
 
 The components, the flows and the trust boundaries are drawn in
 `docs/ARCHITECTURE.md`.
@@ -109,10 +111,14 @@ evolution 4 (`candidates.photo_path`, `organizations.show_photos`, the
 `photos` bucket), `20261015090000` evolution 5 (`search_triage` and its
 three functions, the summary counts of `searches`), `20261015120000`
 evolution 6 (`seniority_band()`, and `similar_candidates()` answering the
-neighbour's years, seniority first) and `20261015150000` evolution 7 (the
+neighbour's years, seniority first), `20261015150000` evolution 7 (the
 job's columns of `searches`, the screening's columns of `search_triage`
 with `record_screen()` and `bump_triage_attempts()`, the usage kind
-`screen`, `candidates.photo_checked_at`). Then enable
+`screen`, `candidates.photo_checked_at`) and `20261016090000_vivier_spaces`
+evolution 7 part B (`organizations.kind`, `create_organization()` taking
+the kind as a fourth argument, `p_kind`, in place of the three-argument
+function, `accept_invitation()` turning a personal space into a team,
+the organisation's row in the realtime publication). Then enable
 Email and Google in Auth and add `http://localhost:5173/**` to the
 redirect allow list. Nothing is set up by hand in the dashboard beyond
 Auth and the secrets.
@@ -121,7 +127,7 @@ Secrets for local server functions go in `.dev.vars` (wrangler) or your
 shell, never in `.env` (CI refuses a committed env file holding a key).
 Without a model key the app runs end to end in no-model mode and says so;
 without the processor, uploads stay `queued` and an analysis waits on
-"Démarrage…" (the processor runs it); without Resend, an invitation
+"En attente" (the processor runs it); without Resend, an invitation
 shows its link to the inviter instead of emailing it.
 
 The processor, in a second terminal:
@@ -202,11 +208,12 @@ No value is ever logged or returned by either service.
 
 Sign-in is Supabase Auth (email + password with confirmation, Google). A
 profile row follows each account (`profiles`, created by trigger: email,
-display name, language). A person belongs to organisations through
-`memberships.role`; the first screen without one creates an organisation
-(`create_organization()`, the caller becomes its owner) or follows an
-invitation link. The current organisation is remembered in the browser;
-`useOrg()` gives every page `org.id` and `can(role)`.
+display name, language). A person belongs to organisations, the spaces
+of the interface (below), through `memberships.role`; the first screen
+without one creates a personal space or a team (`create_organization()`,
+the caller becomes its owner) or follows an invitation link. The current
+space is remembered in the browser; `useOrg()` gives every page `org.id`
+and `can(role)`, and `isPersonal(org)` tells a personal space.
 
 Access is decided by the role, in the database (RLS policies and column
 grants in the migration) and again in server functions by
@@ -219,7 +226,7 @@ may do:
 | Read candidates, documents, briefs, analyses, shortlists, threads, activity, shares, similar profiles |   x    |   x    |   x   |   x   |
 | Upload CVs, add or correct a candidate, archive, set consent, put a failed or set-aside document back in the queue |        |   x    |   x   |   x   |
 | Create and edit briefs, run analyses                                                             |        |   x    |   x   |   x   |
-| Add to a shortlist, retain or dismiss, assign, write in a thread (delete own messages), share and send |        |   x    |   x   |   x   |
+| Add to a shortlist, retain or dismiss, write in a thread (delete own messages), share and send |        |   x    |   x   |   x   |
 | Delete candidates, documents and briefs, erase a candidate with their files, delete any message  |        |        |   x   |   x   |
 | Invite, revoke invitations, change roles below owner, remove members                             |        |        |   x   |   x   |
 | Organisation settings (name, working language, retention, candidates' photos shown)             |        |        |   x   |   x   |
@@ -243,40 +250,82 @@ against `organizations.seat_limit`.
 Plans (`organizations.plan`): `trial` (3 seats, 200 CVs a month), `team`
 (10, 1 000), `business` (50, 5 000). A plan is only ever set by
 `sync_plan_from_billing()` with the service role; the browser cannot update
-it (no column grant). The plan card on the team page (`/app/members`) is
-read-only.
+it (no column grant). The plan's two usages on the team page
+(`/app/members`) are read-only.
 
-## The shell and the dashboard
+## The screens and the spaces
 
-Four entries in the sidebar (Tableau de bord, Briefs, Vivier, Équipe)
-with one ink mark that slides to the current one; the organisation
-switcher above them, the plan as a quiet line under its name; the person
-at the bottom, whose menu holds Réglages (`/app/settings`), the theme, the
-language, the organisations and the sign-out. On a phone the same sidebar
-is a full-screen sheet. `/app/account` only redirects to the settings (a
-password-reset link still lands there, and the password dialog opens by
-itself). The team page (`/app/members`, "Équipe") holds the members and
-their roles, the invitations, the plan card and the one filled "Inviter";
-a quiet link leads to the activity log (`/app/activity`). The settings
-(`/app/settings`, "Réglages") hold the organisation (name, working
-language, retention, the photos switch) for administrators, "Mon compte"
-(display name, language, theme, password) for everyone, and the danger
-zone (leave the organisation, delete it, delete the account).
+Every signed-in page is one plane that fits the screen: a 64px rail on
+the left (the dashboard, the briefs, the pool, the team; the theme
+switch; the person's disc, whose menu holds the spaces, a new team, the
+settings, the language and the sign-out), a 56px header (the way back,
+the title, the page's figures, the one filled button, the thread's
+toggle, a menu), and panes side by side that each scroll inside
+themselves, a list beside the detail of the row chosen in it (the URL
+keeps the row), so the page never scrolls as a whole. The team's thread
+on what the page shows is the right pane: open beside the work from
+80rem, one click away below that (over the detail, or in a sheet under
+64rem), the choice remembered on the device. Under 64rem the rail's
+items are in the header's menu, the panes stack and a profile opens full
+screen; the layout and each page are in `docs/DESIGN.md` ("Layout",
+"Page templates").
+
+What changed for a person in evolution 7 part B. The sidebar became the
+rail, with the theme switch on it. The thread left the bottom of the
+pages for the right pane. The pool opens a profile beside its list,
+sorted by seniority by default. A brief's page shows its profiles in
+four groups (the matches, the near profiles, the shortlist, the
+profiles set aside) beside the reading of the one selected, and a match
+is retained or dismissed in one click, from its row or its reading. The
+shortlist's board, cards and drawers are gone, and with them the
+assignment and the removal of an item: a profile is dismissed, not
+removed. A person who works alone has a personal space.
+
+A person works in spaces. Alone (a freelance recruiter, say), "Je
+travaille seul" on the first screen creates a personal space in one
+click, named after the person (the profile's display name, else the
+email's local part); the rail's fourth item then reads "Espace" and the
+team page "Espace personnel". "Je crée une équipe", or "Nouvelle équipe"
+in the person's menu (`/app/organizations/new`), creates a team under
+the name given. Inviting someone into a personal space makes it a team
+the moment they accept, which the team page says in one line
+beforehand. The person's menu lists the spaces, the personal one first,
+a check on the current one; switching lands on the same section of the
+other space (its briefs, its pool, its team) or on its dashboard. In the
+database a space is an organisation (`organizations.kind`, `team` or
+`personal`, migration `20261016090000`): `create_organization()` sets
+the kind, `accept_invitation()` turns a personal space into a team when
+a second member joins, the browser never writes it (no column grant),
+and the open pages follow the change (the organisation's row is in the
+realtime publication). Roles, plans, quotas and retention are the same
+for both kinds; leaving is for a team only, since the one member of a
+personal space is its owner.
+
+`/app/account` only redirects to the settings (a password-reset link
+still lands there, and the password dialog opens by itself). The team
+page (`/app/members`, "Équipe" or "Espace personnel") lists the members
+and their roles as rows; for administrators a second pane holds the
+pending invitations and the plan's two usages, and the header the one
+filled "Inviter"; its menu leads to the activity log (`/app/activity`).
+The settings (`/app/settings`, "Réglages") hold the space (name, working
+language, retention, the photos switch) for administrators, "Mon
+compte" (display name, language, theme, password) for everyone, and the
+danger zone (leave a team, delete the space, delete the account).
 
 The dashboard (`/app`) says what asks for the person, figures first: a
-greeting and the date, one filled button, "Nouveau brief" (the import
-while the pool is empty); "Mes briefs en cours",
-the open briefs as rows (what the newest analysis found, "3 retenus", the
-thread's last message with who wrote it and when), the most recently
-active first (`src/lib/activity/overview.ts`, read off the searches'
-summary columns and the shortlist items' status, never the results); "À
-traiter", the messages that mention the person, each leading to its
-object; and one line for the pool ("1 091 profils · 12 CV en traitement",
-with a bar while CVs are read) and "Importer des CV", which opens the
-pool's import dialog (`/app/candidates?import=1`). No stat tiles, no
-activity feed: the log is at `/app/activity`. Everything re-reads when
-the briefs, the searches, the shortlist items, the comments or the
-documents change.
+greeting and the date in the header, one filled button, "Nouveau brief"
+(the import while the pool is empty); in the left pane "Mes briefs en
+cours", the open briefs as rows (what the newest analysis found, "3
+retenus", the thread's last message with who wrote it), the most
+recently active first (`src/lib/activity/overview.ts`, read off the
+searches' summary columns and the shortlist items' status, never the
+results); in the right pane "À traiter", the messages that mention the
+person, each leading to its object, and one line for the pool ("1 091
+profils · 12 CV en traitement", with a bar while CVs are read) and
+"Importer des CV", which opens the pool's import dialog
+(`/app/candidates?import=1`). No stat tiles, no activity feed: the log
+is at `/app/activity`. Everything re-reads when the briefs, the
+searches, the shortlist items, the comments or the documents change.
 
 ## The talent pool
 
@@ -319,8 +368,9 @@ How a CV becomes a profile:
    unreadable file, model did not answer, processing failed, monthly quota
    reached); or `needs_ocr` (a scanned PDF and no OCR key). A member can put
    a `failed`, `needs_ocr` or `rejected` document back to `queued` from the
-   profile page or the banner above the list, which counts the documents
-   set aside apart so a wrong reading is seen and retried; it is the only
+   profile's sheet or the processing line at the top of the pool's list,
+   which counts the documents set aside apart so a wrong reading is seen
+   and retried; it is the only
    status change the browser may make (`guard_document_update()` trigger).
    A document left in `processing` for ten minutes is re-queued; after
    three claims it is left `failed` so a crashing file cannot loop.
@@ -404,56 +454,64 @@ page (`organizations.show_photos`, for a team that practises anonymous
 CVs); the dossier never shows it. The purge and the erasure remove it
 with the CVs; the export carries a link to it valid one hour.
 
-The list (`/app/candidates`) shows what tells rows apart, not every
-field: one 64px row per profile with the photo or the initials, the name
-and the position held today (`currentPosition()`: the first experience
-without an end, else the headline), one quiet line that reads the
-seniority first, then the place, then the three skills the CV put first
-(`listLine()`: "12 ans · Casablanca · Python, SAP, MS Project"; a fact
-the CV does not state is simply absent from the row, the sheet says "not
-stated"), the last update on the right from `sm`, and the one pill that
-sets a row apart (archived, listed on demand). The header carries the
-pool's figure (the profiles, and the CVs being read while a wave runs)
-and the one filled action, the import; a person typed in by hand waits in
-the header's menu. One toolbar: a search over the name, the headline and
-the location, a sort (recent, name, seniority; a second key on every
-sort, so a row never shows on two pages) and a "Filtrer" button whose
-popover holds the filters (the location contains, the years at least,
-one skill as the profiles write it with the page's skills suggested, a
-tag when the page holds some, and "Afficher les archivés"), their count
-on the button. `?import=1` opens the import dialog once (the dashboard's
+The pool (`/app/candidates`) is a list and a sheet. The list shows what
+tells rows apart, not every field: one 60px row per profile with the
+photo or the initials, the name and the position held today
+(`currentPosition()`: the first experience without an end, else the
+headline), one quiet line that reads the seniority first, then the
+place, then the three skills the CV put first (`listLine()`: "12 ans ·
+Casablanca · Python, SAP, MS Project"; a fact the CV does not state is
+simply absent from the row, the sheet says "not stated"), the last
+update on the right from `sm`, and the one pill that sets a row apart
+(archived, listed on demand). The header carries the pool's figure (the
+profiles, and the CVs being read while a wave runs), a search over the
+name, the headline and the location (at the top of the list below
+`lg`), a "Filtrer" button whose popover holds the filters (the
+location contains, the years at least, one skill as the profiles write
+it with the page's skills suggested, a tag when the page holds some,
+and "Afficher les archivés") with their count on the button, and the
+one filled action, the import; a person typed in by hand waits in the
+header's menu. Above the rows, the sort: seniority (the default), then
+recent and name, with a second key on every sort, so a row never shows
+on two pages; fifty rows a page. `?c=<id>` is the profile shown beside
+the list: from `lg` the first row when the URL names none, and the
+arrow keys move along the rows; below `lg` a row opens the profile's
+page. `?import=1` opens the import dialog once (the dashboard's
 "Importer des CV" leads there). A row reads `experiences` whole and
 `photo_path`, never `search_text` or `fingerprint`
 (`CANDIDATE_LIST_COLUMNS`).
 
-The profile page (`/app/candidates/:id`) is laid out like a CV a
-recruiter reads, the team's thread beside it: a sticky header with the
-way back, the name, one line (the position held today, the years, the
-place), one filled action ("Voir le CV") and a menu (edit, similar
-profiles, export, archive, erase); the head of the CV as a card (the
-photo in greyscale, the name, the position, the seniority first, the
-languages as quiet text, the pills that set the profile apart), then the
-summary on three lines, the career as a timeline with each period and
-its duration computed (`formatDuration()`: nothing estimated when a date
-is not one), the education, the skills (eight, the rest behind "+ N"),
-the contact details and the links; under them the documents, the team's
-tags and the consent folded behind its one line. From `lg` the team's
-thread on the candidate is the right column (`TeamThread`, with
-@mentions, live); on a phone it is a drawer the header's button opens.
-Every field the structuring read, with a confidence hint where it was
-unsure and "not stated" where it read nothing; a form in a drawer
-corrects it (the browser may update the human-readable columns;
-`fingerprint`, `search_text`, `embedding`, `confidence` and `photo_path`
-are the processor's). **The CV is read in place**: "Voir le CV" opens the
-newest processed document (else the newest, `primaryDocument()`) in a
-full-size drawer, the PDF in a frame from a signed link of fifteen
-minutes with a toolbar (the file, its size, pages and date; a PDF / Text
-switch; open in a new tab; download under the file name), and the text
-the service extracted as paragraphs, read on demand
-(`readDocumentText()`), which is the view a browser that displays no PDF
-opens on (`canDisplayPdf()`); each document in the Documents card has its
-own "Lire" button. **Similar profiles** (every role, in the menu) opens a
-drawer listing the ten profiles nearest this one, seniority first:
+The sheet of a profile (`CandidateSheet`) is the same beside the list
+and on the profile's page (`/app/candidates/:id`, full width, its name
+and its actions in the page's header), laid out like a CV a recruiter
+reads: the head (the photo in greyscale, else the initials, the name,
+the position held today, the seniority first, the place, then the
+languages and the availability as quiet text, the pills that set the
+profile apart), one filled action ("Voir le CV") and a menu (edit,
+similar profiles, export, archive, erase); then the summary on three
+lines, the career as a rail of positions with each period and its
+duration computed (`formatDuration()`: nothing estimated when a date is
+not one), the education, the contact details and the links; beside
+them, once the sheet is wide enough, the skills (eight, the rest behind
+"+ N"), the documents, the five nearest profiles, the team's tags and
+the consent folded behind its one line. The team's thread on the
+candidate (`TeamThread`, with @mentions, live) is the thread pane, on
+the pool and on the page. Every field the structuring read, with a
+confidence hint where it was unsure and "not stated" where it read
+nothing; a form in a drawer corrects it (the browser may update the
+human-readable columns; `fingerprint`, `search_text`, `embedding`,
+`confidence` and `photo_path` are the processor's). **The CV is read in
+place**: "Voir le CV" opens the newest processed document (else the
+newest, `primaryDocument()`) in a full-size drawer, the PDF in a frame
+from a signed link of fifteen minutes with a toolbar (the file, its
+size, pages and date; a PDF / Text switch; open in a new tab; download
+under the file name), and the text the service extracted as
+paragraphs, read on demand (`readDocumentText()`), which is the view a
+browser that displays no PDF opens on (`canDisplayPdf()`); each
+document of the Documents block has its own "Lire" button. **Similar
+profiles**: the sheet shows the five nearest, and "Tout voir" (or
+"Profils proches" in the menu, for every role) opens a drawer listing
+the ten profiles nearest this one, seniority first:
 `similar_candidates()` (migration `20261015120000`, SECURITY INVOKER so
 RLS applies) takes the fifty nearest by cosine distance between vectors
 when both profiles carry one, else by the words of the headline and the
@@ -465,9 +523,9 @@ similarity; the browser applies the same order again (`orderSimilar()`,
 version of the function the database runs. Each row reads the years
 first ("12 ans", or that the CV states none), then the name, the
 position, and the proximity as a percentage beside the measure that
-spoke. A reading aid for a person who compares, never a verdict. The page
-is live through Realtime on the candidate's `documents`; the thread
-follows its own messages.
+spoke. A reading aid for a person who compares, never a verdict. The
+sheet is live through Realtime on the candidate's `documents`; the
+thread follows its own messages.
 
 Embeddings: with a model, each processed profile gets a 1024-dimension
 vector from its compact text, written after the candidate row, outside the
@@ -481,14 +539,15 @@ pass fills the gap) or `unavailable`.
 ## Briefs and search
 
 A brief (`/app/briefs/new`) is a title and the consultant's text, nothing
-else: one centred card, "Créer et analyser", and the brief page opens
-with `?run=1` and starts the analysis at once. The list of briefs shows
-each one with its status when it is not simply open, what its newest
-analysis found (`readLatestAnalyses()`, read off the counts of its row,
-never its results: "12 correspondances", "Analyse inachevée", "Aucune
-analyse"), how many candidates its shortlist retained, who wrote last on
-its thread and when, and when it changed, behind a filter (open, closed,
-all) that appears once a brief is closed; the dashboard shows the open
+else: one pane with the two fields, "Créer et analyser" in the header,
+and the brief page opens with `?run=1` and starts the analysis at once.
+The list of briefs shows each one with its status when it is not
+simply open, what its newest analysis found (`readLatestAnalyses()`,
+read off the counts of its row, never its results: "12
+correspondances", "Analyse inachevée", "Aucune analyse"), how many
+candidates its shortlist retained, who wrote last on its thread and
+when, and when it changed, behind a filter (open, closed, all) that
+appears once a brief is closed; the dashboard shows the open
 briefs the same way.
 
 **The brief is the only source of the analysis, read once by the model.**
@@ -721,12 +780,13 @@ goes and leaves the stage and the progress on the row, and
    `evidenceGrounded()` looks for the quote in them, case, accents and
    spacing apart: whole when short, else a window of twelve characters
    found verbatim, else 60 % of its tokens of four letters or more found
-   as words of one text. A `yes` the deterministic pass confirms from the
-   profile's own fields (the years the CV states, a listed skill, a
-   degree of the family) stands, its sentence still marked when it is the
-   model's computation rather than a quote; otherwise a `yes` without a
-   quote, or with one found nowhere, becomes `partial`, the quote kept and marked unverified
-   ("quote not found in the CV" in the drawer); a `no` without a grounded
+   as words of one text. A `yes` on years alone ("8 ans d'expérience
+   minimum") stands when the deterministic pass counted the profile's
+   years from the CV; the row then shows those years, never the model's
+   sentence. Any other `yes` without a quote, or with one found
+   nowhere, becomes `partial`, the quote kept and marked unverified
+   ("quote not found in the CV" in the reading), and a match by words
+   never stands in for a quote; a `no` without a grounded
    quote becomes `unknown`, unless the deterministic pass found the
    requirement missing with evidence of its own, which is then shown; a
    `yes` on a required skill, language, place or years the deterministic
@@ -739,8 +799,8 @@ goes and leaves the stage and the progress on the row, and
    list, the wider words in a personal construction such as "sa famille"
    or "née en 1975", the phrases of a career break or a leave, the job's
    own collocations such as "politique commerciale" or "race condition"
-   taken out first) is withheld and counted (`withheld`), and the drawer
-   says the reading shown is incomplete by that much. So is a concern
+   taken out first) is withheld and counted (`withheld`), and the
+   reading says it is incomplete by that much. So is a concern
    that only notes the CV's silence ("certification PMP non mentionnée",
    `silenceSentence()`): the requirement table already says "Non
    renseigné", and a silence is a question. One that finds the person
@@ -754,7 +814,7 @@ goes and leaves the stage and the progress on the row, and
    1, `partial` 0.5, `no` 0, weighted 1..3 as the brief says, `unknown`
    left out, 50 when nothing is evaluable); a dimension the model did not
    score is neutral; the model's own score is kept apart as `modelScore`,
-   advisory, and the drawer says what the composite is made of. **The
+   advisory, and the reading says what the composite is made of. **The
    gates** then bound the decision and the score, the role first: a role
    at `no` forces `no_fit` and caps the score at 25, whatever the other
    requirements and whether or not it is still required; at `partial` the
@@ -777,7 +837,7 @@ goes and leaves the stage and the progress on the row, and
    entry is left unread for this run and counted on the row (`error =
    "assess_failed:<n>"` beside `status = 'done'`; the step reads its
    remaining work from the results, so the same row queued again reads
-   those entries alone; the band says how many readings failed, and
+   those entries alone; the state block says how many readings failed, and
    "Reprendre" or "Relancer" queues that row again rather than a new one).
 7. **The second opinion** (retained profiles only, six a batch,
    `CHALLENGE_BATCH_MAX`): one more call per `fit`, with the same brief,
@@ -805,7 +865,7 @@ goes and leaves the stage and the progress on the row, and
    only notes the CV's silence, and one that finds the person above the
    level (a `seniority` doubt `above`, or a reason that says so) on a
    brief that states no maximum, for the same reason as a concern: its
-   reason is withheld and counted. The drawer puts the
+   reason is withheld and counted. The reading puts the
    doubt first among the reservations ("Seconde lecture : …"). A call the
    model cannot answer is sent once more, then the entry keeps its first
    reading for this run.
@@ -837,27 +897,28 @@ goes and leaves the stage and the progress on the row, and
 9. **Done**: `status = 'done'`, `finished_at`, the stage cleared, the
    progress at its total.
 
-**While it runs**, the band follows the row (realtime on `searches`, and
-a read every ten seconds while the job is queued or running; the results
-are read again when the status changes and every twenty seconds while
-the profiles are read in full, so the matches land as they are read).
-Queued, it says "Démarrage…" with "Interrompre"; running, the stage's
-name ("Lecture du brief", "Vivier", "Tri par métier", "Notation",
-"Sélection", "Lecture complète", "Seconde lecture", "Classement"), the
-stage's own count ("640 / 1 093") and the time left at the pace the row
-shows since the run started, then the bar of the whole run, each stage
-owning a span of it so it never goes back (`progressOf()`).
-"Interrompre" (`stopAnalysis`) stops a row no processor claimed yet at
-once and asks a running one to stop between two batches (what was stored
-stays); "Reprendre" queues the same row again, and the run resumes where
-it was. Closing the tab changes nothing, and a colleague sees the same
-row. A failure of the provider (its rate, a server error, the network)
+**While it runs**, the state block of the brief's page follows the row
+(realtime on `searches`, and a read every ten seconds while the job is
+queued or running; the results are read again when the status changes
+and every twenty seconds while the profiles are read in full, so the
+matches land as they are read). Queued, it says "En attente" over an
+indeterminate bar; running, the stage's figure ("640 / 1 093 analysés"
+while profiles are read, else the stage's own count), the bar of the
+whole run, each stage owning a span of it so it never goes back
+(`progressOf()`), and the stage's word ("Lecture du brief", "Vivier",
+"Tri", "Notation", "Sélection", "Lecture", "Contre-lecture",
+"Classement"). In both, "Interrompre" (`stopAnalysis`) stops a row no
+processor claimed yet at once and asks a running one to stop between
+two batches (what was stored stays); "Reprendre" queues the same row
+again, and the run resumes where it was. Closing the tab changes
+nothing, and a colleague sees the same row. A failure of the provider (its rate, a server error, the network)
 is sent again after 2, 6, 15, 30 and 60 seconds, or after the
 `Retry-After` it names, then fails the run; a batch the model cannot
 answer is split, never retried for ever; any other error ends the run
-`failed` with a short code the band turns into one line ("Modèle
-indisponible", "Le poste a changé : relancez l'analyse.", else "Analyse
-interrompue par une erreur") and "Relancer". Nothing retries by itself.
+`failed` with a short code the state block turns into one line
+("Échec · Modèle indisponible", "Le poste a changé : relancez
+l'analyse.", else "Analyse interrompue par une erreur") and "Réessayer".
+Nothing retries by itself.
 A SIGTERM on the processor (a redeploy) lets the batches in flight end
 and leaves the row running: the next boot claims it at once; a crash
 leaves a row the scan claims once its heartbeat is two minutes old. A
@@ -873,97 +934,85 @@ full readings, the second opinions and the tiers), a failed call too
 when its error carries what it billed; the run's model is written on
 the row (`searches.analysis_model`).
 
-**The brief page** (`/app/briefs/:briefId`) is one page and no left
-module. A slim sticky header carries the title, the status when it is
-not simply open, when it changed, the one filled button ("Lancer
-l'analyse", then "Relancer"; "Analyse en cours…" while one runs; outline
-while the band or the board carries the expected action) and a menu
-(close or reopen the brief, delete it for administrators), with the
-thread's button on a phone. Under it, the brief folded to three lines
-("Voir le brief" / "Replier", shown only when three lines do not hold
-it) with "Modifier", which opens the title, the text and the status in a
-drawer: a text change marks the band "Brief modifié · relancez
-l'analyse" until the next run (the row's hash says it for a colleague's
-edit too, `briefChangedSince()`). Then two tabs kept in the URL
-(`?tab=matches|shortlist`), "Correspondances" and "Shortlist", no count
-in their names (the band's headline and the board's columns carry the
-figures); the matches stay mounted behind the shortlist, so an analysis
-under way keeps its rows. From `lg` the team's thread on the brief is
-the right column (`ThreadPanel`, 360px, sticky), on a phone a drawer.
-One analysis per brief is on screen, the newest: a newer one a colleague
-starts takes its place, and the earlier rows stay in the database with
-no menu to reopen them. The matches tab, top to bottom:
+**The brief page** (`/app/briefs/:briefId`) is one plane in three
+panes (the layout in `docs/DESIGN.md`, "Page templates"). The header
+carries the way back, the title, the status when it is not simply open,
+the date of the last change, the one filled button ("Analyser", then
+"Relancer"; "Analyse en cours" while one runs; outline while the state
+block carries "Reprendre" or "Réessayer", while the empty matches carry
+"Analyser", or while the shortlist's "Partager la shortlist" is the
+filled one), the thread's toggle and a menu (the full text, the form,
+the shares, close or reopen, delete for administrators). The list pane
+holds the brief folded to two lines, with "Voir le brief" and
+"Modifier" (the title, the text and the status in a drawer: a text
+change says "Brief modifié · relancez" until the next run, and the
+row's hash says it for a colleague's edit too, `briefChangedSince()`),
+then the state block, then the profiles in four groups, the group and
+the selected profile kept in the URL (`?g=`, `?c=`; the old
+`?tab=shortlist` still opens the shortlist). One analysis per brief is
+on screen, the newest: a newer one a colleague starts takes its place,
+and the earlier rows stay in the database with no menu to reopen them.
 
-- the **band**, one sheet in the state the row is in (`bandStateOf()`,
-  `src/lib/briefs/presentation.ts`). Done, the headline counts the
-  matches ("12 profils correspondent", "Aucun profil ne correspond") and
-  one quiet line of figures says how the pool narrowed, "1 091 analysés
-  · 84 retenus au tri · 30 lus en entier · 3 écartés" and the date
-  (`figuresLine()`: the triage's counts read once the job ended, the
-  ones read in full only when they are not every profile kept, the ones
-  set aside only when there are any), the "écartés" figure being the
-  button that opens their drawer, and a "Lecture du modèle" pill once a
-  profile was read. Queued: "Démarrage…" and "Interrompre". Running: the
-  stage's name and its count ("Tri par métier · 640 / 1 091"), the time
-  left once known, the bar, "Interrompre". Stopped: how many profiles
-  are left ("640 profils restent à analyser"; past the full reading, the
-  stage with its own count, "Classement · 2 / 4") and "Reprendre".
-  Failed: one line from the code and "Relancer". No match once
-  everything ran: the requirement most often missing. An analysis stored
-  before the whole pool was read: how many of the pool it read ("Analyse
-  antérieure · 84 profils lus sur 1 091"); one run on the text alone,
-  before evolution 7: "Texte seul, sans modèle" (or "sans exigences") and
-  the head of its ranking, twenty rows. A brief edited since the analysis
-  ran: "Brief modifié · relancez l'analyse". An empty pool: the way to
-  the import.
-- the **matches alone** (`fit`), one 64px row each, tier then score: the
-  rank, the photo or the initials, the name and the position held today,
-  one line from `md` (the second opinion's doubt when it kept the match,
-  else the tiering's note, else the first sentence of the reading), the
-  word "Doute" on a match the second opinion doubted without sending it
-  back, the tier letter (`TierPill`: A an ink disc, B an ink outline, C
-  a grey outline) or the quiet word "À confirmer" while the second
-  opinion has not seen the match, and beside the row the
-  shortlist button (a check once added). No ring: the score lives in the
-  drawer. Rows rise in as their batch lands and never again.
-- right under them, a quiet toggle, "N profils proches", unfolds the
-  near profiles: muted rows, the ones the full reading found
-  `borderline` first, with their main reservation (the second opinion's
-  doubt, else the first concern), then the ones the screening scored but
-  the promotion did not take, with "score · reason" as their line, fifty
-  at a time (`listScreened()`, best first, under RLS) and "Lire quand
-  même" beside each. A profile set aside (`no_fit`, or `no` or `unknown`
-  at the triage) is a figure of the band, never a row: the figure opens
-  a drawer listing every one on demand, fifty at a time, in two groups
-  (set aside after the full reading, closest first, with the must-have
-  at `no`, else the main reservation; set aside by the triage, with the
-  model's reason, "Non lus" for a card it could not read), each leading
-  to the profile, marked once as the model's reading. A member may have
-  any profile the triage or the screening left out read in full anyway
-  ("Lire quand même", `readAnyway`: its `search_triage` row becomes
-  `close` and `forced`, with no reason of the model's; a run that had
-  ended is queued again and the promotion always takes a forced row, one
-  under way reads it at its next step), since a person decides, not the
-  model.
-- the **drawer** of a row (`Sheet size="lg"`), which walks its list with
-  two buttons and the arrow keys and stays on its person when a batch
-  reorders the list: the photo or the initials, the name, the position,
-  "12 ans · Casablanca" ("Non renseigné" when the CV states no years),
-  the tier, the decision when it is not "Correspond", the score as a
-  plain figure ("82 / 100"); "Ajouter à la shortlist" (or "Voir la
-  shortlist") and "Voir la fiche"; then why this profile (the tiering's
-  note first, then the reading's summary, marked as the model's, with
+- **The state block** (`AnalysisState`; `bandStateOf()`,
+  `src/lib/briefs/presentation.ts`), one status region in every state,
+  figures first. Done: the matches as the figure ("12 correspondances")
+  and one line, "1 091 analysés · 4 min" (the profiles the run analysed
+  and how long it took); a run whose full readings failed for some
+  profiles says how many, with "Reprendre"; no match once everything
+  ran, the requirement most often missing. Queued, running, stopped
+  ("Interrompue · 640 / 1 091" and "Reprendre") and failed as above. An
+  analysis stored before the whole pool was read says how many of the
+  pool it read ("Analyse antérieure · 84 profils lus sur 1 091"); one
+  run on the text alone, before evolution 7, says "Texte seul, sans
+  modèle" (or "sans exigences") over the head of its ranking, twenty
+  rows. An empty pool says "Vivier vide", with the way to the import.
+  No funnel, no tier counts: the four groups carry the figures.
+- **The groups**, a segmented control with their counts, each a list of
+  56px rows with the photo or the initials. **Correspondances**: the
+  matches alone (`fit`), tier then score; the rank, the name, the
+  position, the years and the place, the tier letter (`TierPill`: A an
+  ink disc, B an ink outline, C a grey outline), after the word "Doute"
+  on a match the second opinion doubted without sending it back (its
+  reason heads the reservations of the reading), or "À confirmer" while
+  the second opinion has not seen the match, and beside the row the
+  shortlist button (a check once added). **Proches**: the ones the full
+  reading found `borderline` first, then, fifty at a time
+  (`listScreened()`, best first, under RLS), the ones the screening
+  scored but the promotion did not take, each with "Lire quand même".
+  **Shortlist**: the shortlist's items ("Shortlists" below).
+  **Écartés**: every profile set aside, on demand, fifty at a time (set
+  aside after the full reading, closest first, with the must-have at
+  `no`, else the main reservation; set aside by the triage, with the
+  model's reason, "Non lus" for a card it could not read), marked once
+  as the model's reading, with "Lire quand même" where no model read it
+  in full. A member may have any profile the triage or the screening
+  left out read in full anyway ("Lire quand même", `readAnyway`: its
+  `search_triage` row becomes `close` and `forced`, with no reason of
+  the model's; a run that had ended is queued again and the promotion
+  always takes a forced row, one under way reads it at its next step),
+  since a person decides, not the model. Rows rise in as their batch
+  lands and never again.
+- **The reading** of the profile selected (from `lg` the first of the
+  group when the URL names none; below `lg` a tap opens it full
+  screen): the photo or the initials, the name, one line of what the CV
+  states ("Directeur commercial chez Label'Vie · 12 ans · Casablanca ·
+  Disponible sous 3 mois", "Non renseigné" when it states none of it),
+  the tier, the score as a plain figure ("82 / 100") and "Lecture du
+  modèle" (on the shortlist, who decided and when); for a member
+  "Retenir" and "Écarter" (one click: a match enters the shortlist with
+  that decision), then "Voir le CV" and "Voir la fiche"; then why this
+  profile (the tiering's note first, then the reading's summary, with
   the count of sentences the filter withheld), the requirements with
   their evidence (the role first, an unverified quote marked, what the
-  CV does not state "Non renseigné"), the strengths and the reservations
-  side by side (the second opinion's doubt first), the five dimensions
-  as meters with the composite's make-up and the model's own score
-  behind an info icon, the interview points, the screening's score and
-  the triage's verdict, small and muted, and the team's thread on the
-  candidate (the
-  same one as the candidate's page). The `why` sentences of analyses
-  stored before evolution 2 (`ai_usage` kind `explain`) are still read
-  where present; nothing writes them any more.
+  CV does not state "Non renseigné"), the five dimensions as meters with
+  the composite's make-up and the model's own score behind an info icon,
+  the strengths, the reservations (the second opinion's doubt first),
+  the interview points, and the triage's verdict, small and muted. The
+  thread pane beside it holds the brief's thread, or a shortlisted
+  candidate's (a segmented control at its top switches between the
+  two). The `why` sentences of analyses stored before evolution 2
+  (`ai_usage` kind `explain`) are still read where present; nothing
+  writes them any more.
 
 **Strict presentation.** What the page lists is what the team could
 send as it is, and nothing else. A profile is a match only when the model
@@ -984,10 +1033,10 @@ required requirement, a tier C), and a role at `no`, a must-have at `no` or a co
 is set aside, counted and listed only on demand. So a pool with no
 match reads "0 correspondance" once every stage ran, with how many
 profiles were analysed and the requirement most often missing; while
-profiles are still to read it reads "Aucune correspondance pour
-l'instant". The thresholds are the exported constants of the package's
-`assessment.ts` (re-exported by `src/lib/briefs/assessment.ts`), each
-tested at its boundary in `assessment.test.ts`.
+a run goes, a group with nothing landed yet says "Analyse en cours",
+never "none". The thresholds are the exported constants of the
+package's `assessment.ts` (re-exported by `src/lib/briefs/assessment.ts`),
+each tested at its boundary in `assessment.test.ts`.
 
 **What the shortlist and the dossier carry.** The whole reading
 (`Assessment`: the rows, the dimensions, `strengths`, `concerns`,
@@ -998,15 +1047,14 @@ evolution 3 reads as before and the pages show nothing of what it lacks.
 An item added to the shortlist holds the match of that moment: the
 screening is carried to an item added before its batch returned (the
 server fills an unassessed match only), the second opinion and the tier
-are not carried afterwards. The board's card shows the tier letter beside
-the name and the line the tiering wrote for this rank (else the main
-reservation); the drawer's "Lecture" tab shows the recruiter's reading
-(`src/lib/shortlists/requirements.ts`, `recruiterReadingOf()`): the
-dimensions, the line among the retained, the strengths, the reservations
-with the second opinion's doubt marked as the second reading, the
-interview points, then the requirement rows; the score is a figure in
-its header. The dossier (`src/lib/shares/draft.ts`) takes a sheet's
-strengths from the reading's, its attention points from the concerns
+are not carried afterwards. A shortlisted candidate's row shows the
+tier letter beside the name; the reading shows the recruiter's reading
+(`src/lib/shortlists/requirements.ts`, `recruiterReadingOf()`): the line
+the tiering wrote for this rank, the dimensions, the strengths, the
+reservations with the second opinion's doubt marked as the second
+reading, the interview points and the requirement rows; the score is a
+figure in its head. The dossier (`src/lib/shares/draft.ts`) takes a
+sheet's strengths from the reading's, its attention points from the concerns
 with the doubt as one more point, and its **questions** (up to five,
 `ShareItem.questions`) from the reading's, shown on the sheet under
 "Points à vérifier en entretien" only when there are some; the sheets go
@@ -1038,71 +1086,79 @@ records each one for the organisation with the model that answered.
 
 ## Shortlists
 
-One shortlist per brief (`shortlists.brief_id` is unique), a tab of the
-brief's page (`/app/briefs/:briefId?tab=shortlist`, `ShortlistBoard`),
-created on the first "add to shortlist" from a result or when a member
-first opens the tab (`ensureShortlist()`; a viewer reads what exists). An
-item carries the match as a snapshot (`shortlist_items.match`: the
-verdicts, the assessment when the model answered, and the criteria of
-that analysis, so the table is read against the right brief whatever the
-brief becomes). An item added before its batch returned receives the
-assessment when it does (members insert a match, never update one; the
-server fills only an unassessed one). The old addresses still work:
-`/app/shortlists` goes to the briefs, and `/app/shortlists/:id` reads the
-shortlist's brief under RLS and goes to its Shortlist tab.
+One shortlist per brief (`shortlists.brief_id` is unique), the
+Shortlist group of the brief's page (`/app/briefs/:briefId?g=shortlist`),
+created on the first profile a member puts on it (`ensureShortlist()`;
+a viewer reads what exists). An item carries the match as a snapshot
+(`shortlist_items.match`: the verdicts, the assessment when the model
+answered, and the criteria of that analysis, so the table is read
+against the right brief whatever the brief becomes). An item added
+before its batch returned receives the assessment when it does (members
+insert a match, never update one; the server fills only an unassessed
+one). The old addresses still work: `/app/shortlists` goes to the
+briefs, and `/app/shortlists/:id` reads the shortlist's brief under RLS
+and goes to its Shortlist group.
 
-The board has three columns from `lg`, **à examiner**, **retenus**,
-**écartés** (`shortlist_items.status`), each with its count in its
-title, one column at a time on a phone behind a segmented control. A
-card is a sheet: the photo or the initials, the name (it opens the
-drawer), the tier letter, the position and the years, the tiering's line
-(else the main reservation), and a footer with the thread's count (it
-opens the drawer on the thread), the two decisions that apply as quiet
-icon buttons (Retenir, Écarter, Réexaminer), the person assigned, and a
-menu (assign, open the profile, remove behind a confirmation). The
-drawer (`Sheet size="lg"`): the person (photo, position, years, the tier,
-the score as a figure), who decided and when (else who added them), the
-decisions, "Voir la fiche", then two tabs, "Lecture" (the model's
-reading of the match) and "Discussion" (the item's thread). Above the
-board, one filled "Partager" once someone is retained (the brief page's
-header turns its run button outline on this tab); under it, the shares
-made from the shortlist.
+A match enters the shortlist in one click: the button beside its row
+adds it to examine, "Retenir" and "Écarter" in its reading add it with
+that decision (`addWithStatus()`: the insert, then the status as a
+second write, so the database stamps who and when as for any decision;
+a profile already there keeps the decision it has). The Shortlist group
+lists the items as rows under a filter (Tous, À examiner, Retenus,
+Écartés, each with its count): the photo or the initials, the name, one
+line (the position, the years, the score, then who decided, "Sara B.
+retient", else "à examiner"), the tier letter and the decision as a
+pill (Retenu, the ink filled with a check; Écarté, a grey outline with
+a cross, the row muted; À examiner, an ink outline), and for a member
+the decisions that apply as icon buttons beside the row (Retenir and
+Écarter, or Réexaminer a decided one) and the item's thread with its
+count. A decision shows at once as the person's own and the next read
+confirms it. Selected, the item reads in the reading pane with who
+decided and when, its decisions (the one taken becomes "Réexaminer")
+and the recruiter's reading; its thread is the thread pane's. Once
+someone is retained the header's one filled button is "Partager la
+shortlist" (the run button turns outline on this group); the shares
+made from the shortlist are in the header's menu ("Partages (N)").
 
 - **Decisions**: a member retains, dismisses or reviews again. The
   database stamps `decided_by` and `decided_at` from the session; the
-  drawer says "Retenu par Ana · il y a 2 h" from those columns, never
-  from the browser.
+  reading says "Retenu par Ana" with the date and the time from those
+  columns, never from the browser.
 - **The thread**: one per shortlisted candidate
   (`comments.shortlist_item_id`), the team's dialogue with `@` mentions
   over the members (`comments.mentions`, member ids read from the final
   text), live; a message is deleted by its author or an administrator.
   The brief and the candidate have threads of their own ("The team
   thread").
-- **Assignment**: `assigned_to` names who follows the candidate.
 - **Decision trace**: every change is a row in `activities`, written by
   database triggers (`shortlist.added`, `shortlist.removed`,
   `shortlist.status`, `shortlist.assigned`, `comment.added`), read at
   `/app/activity`; the per-item history panel is gone.
-- **Gone from the interface**: the votes and the shared note per item.
-  The `votes` table and `shortlist_items.note` stay in the schema with
-  their grants; nothing reads or writes them any more (the migration
-  that drops them is not written).
+- **Gone from the interface**: the votes and the shared note per item
+  (evolution 6), the assignment and the removal of an item (evolution 7
+  part B: a profile is dismissed, not removed). The `votes` table,
+  `shortlist_items.note` and `shortlist_items.assigned_to` stay in the
+  schema with their grants; nothing reads or writes them any more (the
+  migration that drops them is not written).
 - **Realtime**: `shortlist_items` and `comments` (with `votes`,
   `documents`, `activities`, `briefs`, `shortlists` and `searches`) are
   in the `supabase_realtime` publication with full replica identity; the
-  board subscribes under RLS and debounces changes into one re-read.
+  brief's page subscribes under RLS and debounces changes into one
+  re-read.
 
-Viewers read the board; members write; the buttons follow the role and
-RLS checks again.
+Viewers read the shortlist; members write; the buttons follow the role
+and RLS checks again.
 
 ## The team thread
 
 Almost every object carries the team's dialogue, one component for every
-screen (`src/components/thread`, `src/lib/threads`): a brief (the right
-column of its page from `lg`, a drawer on a phone), a candidate (the
-same on their page, and at the bottom of a match's drawer: the same
-thread), a shortlisted candidate (the drawer's "Discussion" tab). A
-thread is the `comments` table with one of `brief_id`, `candidate_id` or
+screen (`src/components/thread`, `src/lib/threads`), in the thread pane
+of the page that shows it (`ThreadPane`, opened by the header's toggle;
+a sheet on a phone): a brief, a candidate (on the pool beside the
+selected profile, and on their page), a shortlisted candidate (on the
+brief's page, where a segmented control at the top of the pane switches
+between the candidate's thread and the brief's). A thread is the
+`comments` table with one of `brief_id`, `candidate_id` or
 `shortlist_item_id` set (the schema's check, unchanged since evolution
 1, like its policies: members read, a member inserts as the author, the
 author or an administrator deletes). `TeamThread` reads the last hundred
@@ -1115,9 +1171,9 @@ breaks a line and "@" completes the team's names
 re-reads (`subscribeThread`, Realtime on `comments`). The dashboard's "À
 traiter" lists the messages that mention the person (`listMyMentions`,
 the object each is about named: the brief's title, the candidate's
-name), and the briefs list and the dashboard say who wrote last on each
-brief and when (`threadSummaries`). The pure helpers are tested
-(`src/lib/threads/thread.test.ts`).
+name), and the briefs list says who wrote last on each brief and when,
+the dashboard who and the first words (`threadSummaries`). The pure
+helpers are tested (`src/lib/threads/thread.test.ts`).
 
 ## Sharing: the dossier
 
@@ -1165,16 +1221,17 @@ looked for, an overview of the profiles, then one sheet per candidate.
   token it receives and reads the share with the service role. The
   browser keeps the links it created in `sessionStorage`
   (`src/lib/shares/link-memory.ts`: the newest fifty, gone with the tab,
-  sent nowhere), so the panel under the board can copy them again; a
+  sent nowhere), so the shares' drawer can copy them again; a
   link created elsewhere cannot be shown. `shares` is written by the
   server only: the browser has no insert or update grant.
 - **Expiry and revocation**: `expires_at` is checked on every open and
   the page says when the link stops working; `revoked_at` ends a share at
   once (a revoked link says so even after its date). Opens are counted
   (`view_count`, `last_viewed_at`, best effort) and the shares of a
-  shortlist are listed under the board of its brief's Shortlist tab with
-  their date, who shared, how many addresses, their state, a copy button
-  for a link this browser created and a revocation in the row's menu.
+  shortlist are listed in a drawer of its brief's page (the header's
+  menu, "Partages (N)") with their date, who shared, how many
+  addresses, their state, a copy button for a link this browser created
+  and a revocation in the row's menu.
   `share.created`, `share.sent` and `share.revoked` go to the activity
   log.
 - **CVs** on the page open through `GET /api/share/<token>/cv/<documentId>`,
@@ -1243,16 +1300,17 @@ conventions, plus one the processor alone reads (`LLM_ANALYSIS_MODEL`):
   per user alone, nothing uses them since the analysis left the Worker):
   60 calls per minute per client and per scope (the address, an IPv6 by
   its /64, and the user id as a second bucket). An analysis spends
-  `search` once per click ("Lancer l'analyse", "Reprendre", "Lire quand
-  même"); its model calls are the processor's, paced by
+  `search` once per click ("Analyser", "Relancer", "Reprendre", "Lire
+  quand même"); its model calls are the processor's, paced by
   `ANALYSIS_CONCURRENCY` and the provider's own answers (a refusal is
   sent again after 2, 6, 15, 30 and 60 seconds, or the `Retry-After` it
   names), never by this throttle. A throttled call answers
   `RATE:limited` and the page says to try again in a minute. People
   behind one office address share that address's bucket.
 - **Without a key** on the processor an analysis fails at its claim
-  (`model_unavailable`, "Modèle indisponible" on the band, "Relancer")
-  and the processor structures by heuristics and sets nothing aside;
+  (`model_unavailable`, "Échec · Modèle indisponible" on the brief's
+  state block, "Réessayer") and the processor structures by heuristics
+  and sets nothing aside;
   without a key on the Worker `modelConfigured()` is false, `/status`
   says so, dossiers are written from the verdicts, and an analysis stored
   on the text alone before evolution 7 reads "Texte seul, sans modèle".
@@ -1357,9 +1415,14 @@ process started, the documents set aside among them.
   again at the next boot. Evolution 7 moved the analysis here: deploy
   the processor (after the migration) before the Worker that queues the
   rows, since a processor built before it never claims them and the
-  band would wait on "Démarrage…".
+  brief's state block would wait on "En attente".
 - **Database**: migrations are applied to the Supabase project before the
-  code that needs them is deployed.
+  code that needs them is deployed. Evolution 7 part B is the Worker and
+  one migration: `20261016090000_vivier_spaces` must be applied before the
+  new Worker serves (the onboarding and "Nouvelle équipe" call
+  `create_organization()` with the kind, the four-argument signature only
+  that file creates: without it nobody can create a space), then the
+  Worker; the processor does not change.
 
 ## Validation
 
@@ -1411,9 +1474,10 @@ Said plainly so no page or document pretends otherwise:
   generated and committed by the first person with network access; until
   then CI and the Dockerfile install from the ranges in `package.json`
   (unpdf 0.12.2 at least, the floor the photo needs).
-- **Votes and notes**: the `votes` table and `shortlist_items.note` have
-  had no interface since evolution 6; nothing writes them, and the
-  migration that drops them is not written.
+- **Votes, notes and assignment**: the `votes` table and
+  `shortlist_items.note` have had no interface since evolution 6, and
+  `shortlist_items.assigned_to` none since evolution 7 part B; nothing
+  writes them, and the migration that drops them is not written.
 - **Photos**: nothing replaces or removes a candidate's photo short of
   erasing the candidate; a wrong one (a logo the rules took for a
   portrait) stays until then. The maintenance pass gives a candidate

@@ -2,7 +2,8 @@
  * Pure formatting for the talent pool: confidence tones, file sizes,
  * experience date ranges and durations, years of experience, the
  * position held today and the one-line summaries a list row, a sheet's
- * head and its sticky header show (the seniority always first). No
+ * head and a page's header show (the seniority first wherever it stands
+ * alone; after the position under a sheet's name). No
  * React, no data access; every rule is tested in format.test.ts. Words
  * for a locale live here the way formatRelative() keeps them in
  * src/lib/i18n: short and the same for every caller.
@@ -182,16 +183,35 @@ function joinStated(parts: readonly (string | null | undefined)[]): string {
     .join(" · ");
 }
 
-/** "6 ans · Paris · Disponible en janvier": the years, the location and the availability the CV states, the seniority first; "" when none. */
-export function metaLine(
+/**
+ * "Directrice juridique chez Label'Vie · 19 ans · Casablanca": the line
+ * under a sheet's name: the position held today with its company (worded
+ * by `at`, the dictionary's "chez {company}"), the years, the location;
+ * "" when the CV states none of them.
+ */
+export function sheetLine(
   locale: Locale,
-  row: Pick<CandidateRow, "location" | "years_experience" | "availability">,
+  row: Pick<CandidateRow, "headline" | "location" | "years_experience"> & {
+    experiences?: readonly CandidateExperience[] | null | undefined;
+  },
+  at: (company: string) => string,
 ): string {
-  return joinStated([
-    yearsLabel(locale, row.years_experience),
-    row.location?.trim(),
-    row.availability?.trim(),
-  ]);
+  const position = currentPosition(row);
+  const held = position
+    ? position.company
+      ? `${position.title} ${at(position.company)}`
+      : position.title
+    : null;
+  return joinStated([held, yearsLabel(locale, row.years_experience), row.location?.trim()]);
+}
+
+/** "Français C2 · Anglais C1 · Disponible sous 1 mois": a sheet's second line: the languages with their level, then the availability as the CV words it; "" when it states neither. */
+export function sheetFacts(
+  row: Pick<CandidateRow, "availability"> & {
+    languages?: readonly CandidateLanguage[] | null | undefined;
+  },
+): string {
+  return joinStated([languagesSummary(row.languages), row.availability?.trim()]);
 }
 
 /**

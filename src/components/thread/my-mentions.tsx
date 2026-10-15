@@ -1,15 +1,18 @@
 /**
  * "To handle": the last messages that mention the person, newest first,
- * each a row that leads to the object it is about (a brief by its
- * title, a candidate or a shortlisted candidate by their name) with who
- * wrote it, when, and the first line. For the dashboard; re-read on
- * every change of the organisation's comments.
+ * each a row of the plane (`Row`, lines between rows, no sheet) that
+ * leads to the object it is about (a brief by its title, a candidate or
+ * a shortlisted candidate by their name), with who wrote it, when and
+ * the first words on one line. The rows' names line up with the block's
+ * title. For the dashboard's detail pane; re-read on every change of
+ * the organisation's comments.
  */
-import { Link } from "@tanstack/react-router";
+import { Fragment } from "react";
 import { AtSign } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { EmptyState } from "@/components/app-shell/empty-state";
+import { ROW_SKELETON, Row, RowText } from "@/components/app-shell/row";
 import { Section } from "@/components/app-shell/section";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { formatDateTime, formatRelative, useI18n } from "@/lib/i18n";
@@ -17,6 +20,9 @@ import { memberName } from "@/lib/org/org-context";
 import { MENTIONS_LIMIT } from "@/lib/threads/queries";
 import { excerpt, mentionPath, type MentionItem } from "@/lib/threads/thread";
 import { useMyMentions } from "@/lib/threads/use-mentions";
+
+/** The skeleton drawn like the 64px rows it stands for, pulled into the gutter like them. */
+const SKELETON = `-mx-3 ${ROW_SKELETON.lg}`;
 
 export function MyMentions({
   limit = MENTIONS_LIMIT,
@@ -34,20 +40,16 @@ export function MyMentions({
       {...(className !== undefined ? { className } : {})}
     >
       {loading && items.length === 0 ? (
-        <div className="sheet overflow-hidden">
-          <SkeletonRows rows={3} avatarSize="sm" />
-        </div>
+        <SkeletonRows rows={3} avatarSize="md" className={SKELETON} />
       ) : items.length === 0 ? (
-        <EmptyState compact icon={<AtSign />} title={t("thread.mentions.empty")} />
+        <EmptyState quiet icon={<AtSign />} title={t("thread.mentions.empty")} />
       ) : (
-        <ol
-          className="sheet stagger divide-y divide-border overflow-hidden"
-          aria-label={t("thread.mentions.title")}
-        >
+        // Pulled into the pane's gutter by the row's own 12px, so the names line up with the title.
+        <ol className="stagger -mx-3" aria-label={t("thread.mentions.title")}>
           {items.map((item) => (
-            <li key={item.id} className="rise-in">
+            <Fragment key={item.id}>
               <MentionRow item={item} />
-            </li>
+            </Fragment>
           ))}
         </ol>
       )}
@@ -60,27 +62,28 @@ function MentionRow({ item }: { item: MentionItem }) {
   const author = memberName(item.author ?? undefined, t("thread.formerMember"));
   const label = item.target.label ?? t("candidates.noName");
   const path = mentionPath(item.target);
-  const inner = (
-    <>
-      <Avatar name={author} size="sm" className="mt-0.5" decorative />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-ink">{label}</p>
-        <p className="text-meta text-muted-foreground">
-          {author}
-          {" · "}
-          <time dateTime={item.created_at} title={formatDateTime(locale, item.created_at)}>
-            {formatRelative(locale, item.created_at)}
-          </time>
-        </p>
-        <p className="mt-0.5 text-sm text-ink break-words">{excerpt(item.body)}</p>
-      </div>
-    </>
-  );
-  return path ? (
-    <Link to={path} className="sheet-row items-start">
-      {inner}
-    </Link>
-  ) : (
-    <div className="sheet-row items-start">{inner}</div>
+  return (
+    <Row
+      as={path ? "link" : "div"}
+      to={path ?? undefined}
+      height="lg"
+      className="rise-in"
+      leading={<Avatar name={author} size="md" decorative />}
+    >
+      <RowText
+        title={label}
+        line={
+          <>
+            <span className="font-medium text-ink">{author}</span>
+            {" · "}
+            <time dateTime={item.created_at} title={formatDateTime(locale, item.created_at)}>
+              {formatRelative(locale, item.created_at)}
+            </time>
+            {" · "}
+            {excerpt(item.body)}
+          </>
+        }
+      />
+    </Row>
   );
 }

@@ -1,14 +1,15 @@
 /**
- * The activity feed as a timeline in one card: rows grouped by day
- * (today, yesterday, then dated), each with the actor's avatar on a
- * rail, the sentence with the actor's name set heavier, the moment
- * (relative, the exact time on hover) and a link to the brief or the
- * candidate the row points at. A row without an actor (the service read
- * a document) shows its family's icon instead of a face. Shared by the
- * dashboard (the last few, under its section's h2: days are h3) and the
- * activity page (paged, under the page's h1: days are h2, so headings
- * never skip a level). Rows rise in once, one after the other; a refresh
- * keeps the rows that are there.
+ * The activity feed as a timeline of rows divided by lines, edge to
+ * edge in its pane (no card: the plane has none): rows grouped by day
+ * (today, yesterday, then dated) under a label-caps heading with a line
+ * under it, each with the actor's avatar on a rail, the sentence with
+ * the actor's name set heavier, the moment (relative, the exact time on
+ * hover) and a link to the brief or the candidate the row points at. A
+ * row without an actor (the service read a document) shows its family's
+ * icon instead of a face. Days are h3 under a section's h2, h2 directly
+ * under the page's h1 (the activity page), so headings never skip a
+ * level. Rows rise in once, one after the other; a refresh keeps the
+ * rows that are there.
  */
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
@@ -58,19 +59,19 @@ export function ActivityList({
   const DayHeading = headingLevel === 2 ? "h2" : "h3";
   if (loading && rows.length === 0) {
     return (
-      <div className={cn("sheet overflow-hidden", className)}>
-        <SkeletonRows rows={4} />
+      <div className={className}>
+        <SkeletonRows rows={4} avatarSize="sm" />
       </div>
     );
   }
   if (rows.length === 0) return <>{emptyState}</>;
   const groups = grouped ? groupByDay(rows) : [{ key: "all", label: null, rows }];
   return (
-    <div className={cn("sheet overflow-hidden", className)}>
+    <div className={className}>
       {groups.map((group) => (
-        <section key={group.key} className="border-t border-border first:border-t-0">
+        <section key={group.key} className="border-t border-line first:border-t-0">
           {group.label ? (
-            <DayHeading className="label-caps border-b border-border bg-muted/40 px-4 py-2 sm:px-6">
+            <DayHeading className="label-caps border-b border-line px-4 py-2 sm:px-6">
               {dayTitle(group.label, locale, t)}
             </DayHeading>
           ) : null}

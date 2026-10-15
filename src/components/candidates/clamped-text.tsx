@@ -18,7 +18,7 @@ export function ClampedText({
 }: {
   text: string;
   lines?: 2 | 3;
-  /** Classes of the paragraph itself (its size, its tone). */
+  /** Classes of the paragraph itself (its size, its tone); the body size and the ink when omitted. */
   className?: string;
 }) {
   const t = useT();
@@ -43,9 +43,9 @@ export function ClampedText({
       <p
         ref={ref}
         className={cn(
-          "whitespace-pre-line text-body text-ink break-words",
+          "whitespace-pre-line break-words",
           !expanded && LINE_CLAMP[lines],
-          className,
+          className ?? "text-body text-ink",
         )}
       >
         {text}

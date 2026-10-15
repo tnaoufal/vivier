@@ -3,14 +3,15 @@
  * can be read and tested without the database or the model: the plain
  * draft from the profiles and the analysis the team saw on the shortlist
  * (the requirement table from the assessment or the deterministic
- * verdicts, the score and the decision, the recruiter's reading when the
- * assessment carries one: its strengths, its reservations with the
- * second opinion's doubt among them, its interview questions; else
- * strengths and points of attention read off the table), the snapshot of
- * the brief the cover shows, the system prompt and compact payload of
- * the one model call that refines the wording, the schema of its answer
- * and the merge back into the draft (never into the requirement table),
- * and the clean-up every item goes through before it is stored.
+ * verdicts, its evidence only what the CV holds; the score and the
+ * decision; the recruiter's reading when the assessment carries one: its
+ * strengths, its reservations with the second opinion's doubt among
+ * them, its interview questions; else strengths and points of attention
+ * read off the table), the snapshot of the brief the cover shows, the
+ * system prompt and compact payload of the one model call that refines
+ * the wording, the schema of its answer and the merge back into the
+ * draft (never into the requirement table), and the clean-up every item
+ * goes through before it is stored.
  */
 import { z } from "zod";
 
@@ -204,19 +205,24 @@ function byCriterion<T extends { criterionId: string }>(rows: readonly T[]): Map
 }
 
 /**
- * One row per criterion the analysis checked, read the way the
- * shortlist board reads it (lib/shortlists/requirements.ts) so the
- * dossier never disagrees with what the team saw. The criteria are the
- * match's own when it carries them (the search's, as they were when the
- * analysis ran), else the brief's as given; a criterion neither the
- * assessment nor the verdicts speak about was never checked and gets no
- * row (a "not stated" would read as the CV's silence, which it is not).
- * Each row is the assessment's answer when the model gave one, else the
- * deterministic verdict (found → yes, in part → partial, absent → no,
- * not stated → unknown). A criterion with neither label nor value is
- * left out, as the cover leaves it out. Nothing at all when neither the
- * assessment nor the verdicts say anything: the dossier then says so
- * instead of showing an empty table.
+ * One row per criterion the analysis checked, read the way the brief
+ * page reads it (requirementRows, packages/analysis/src/assessment.ts)
+ * so no mark in the dossier disagrees with what the team saw. The
+ * criteria are the match's own when it carries them (the search's, as
+ * they were when the analysis ran), else the brief's as given; a
+ * criterion neither the assessment nor the verdicts speak about was
+ * never checked and gets no row (a "not stated" would read as the CV's
+ * silence, which it is not). Each row is the assessment's answer when
+ * the model gave one, else the deterministic verdict (found → yes, in
+ * part → partial, absent → no, not stated → unknown) with its evidence,
+ * read off the CV's own fields. The client reads a row's evidence as
+ * what the CV says, so an answer whose sentence the analysis did not
+ * find in the CV (evidenceUnverified: the brief page shows it marked
+ * "quote not found in the CV") keeps its mark and gives no evidence: a
+ * model's sentence never passes for a quote in the dossier. A criterion
+ * with neither label nor value is left out, as the cover leaves it out.
+ * Nothing at all when neither the assessment nor the verdicts say
+ * anything: the dossier then says so instead of showing an empty table.
  */
 export function requirementsOf(criteria: readonly BriefCriterion[], match: MatchResult | null | undefined): ShareRequirement[] {
   if (!match) return [];
@@ -230,7 +236,8 @@ export function requirementsOf(criteria: readonly BriefCriterion[], match: Match
       const required = criterion.required === true;
       const answer = assessed.get(criterion.id);
       if (answer) {
-        return [{ label, required, met: isMet(answer.met) ? answer.met : "unknown", evidence: cleanEvidence(answer.evidence) }];
+        const met = isMet(answer.met) ? answer.met : "unknown";
+        return [{ label, required, met, evidence: answer.evidenceUnverified ? null : cleanEvidence(answer.evidence) }];
       }
       const verdict = verdicts.get(criterion.id);
       if (!verdict) return [];
@@ -251,8 +258,11 @@ export function strengthsFrom(requirements: readonly ShareRequirement[], max: nu
 /**
  * The requirements not met, then those met in part, as points: the
  * label, with the evidence after a dash when it is short enough to read
- * as one line. A requirement the CV says nothing about is never a point:
- * silence is not a lack, and the table already says "not stated".
+ * as one line. The evidence is the table's, so a point quotes only what
+ * the CV holds: a model's sentence the analysis did not find there never
+ * reached the row (requirementsOf), and its point is the label alone. A
+ * requirement the CV says nothing about is never a point: silence is
+ * not a lack, and the table already says "not stated".
  */
 export function attentionFrom(requirements: readonly ShareRequirement[], max: number = ATTENTION_FROM_REQUIREMENTS): string[] {
   const point = (row: ShareRequirement) =>
@@ -499,9 +509,12 @@ export interface SummaryPayload {
 /**
  * Compact profiles: only the fields the CV gave, so the model cannot
  * invent the rest, and the assessment the team saw (with the
- * requirements named by their label, and the recruiter's reading as the
- * plain draft holds it: strengths, concerns with the second opinion's
- * doubt among them, questions) for the candidates that have one.
+ * requirements named by their label and their evidence as the sheet
+ * shows it, so what the prompt calls "quoted from the CV" holds no
+ * sentence the analysis did not find there, and the recruiter's reading
+ * as the plain draft holds it: strengths, concerns with the second
+ * opinion's doubt among them, questions) for the candidates that have
+ * one.
  */
 export function summaryPayload(
   brief: DraftBrief,

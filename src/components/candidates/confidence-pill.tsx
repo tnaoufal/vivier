@@ -6,7 +6,7 @@
  * leading slot: the mark says it before the colour does, and the pill
  * stays under the text it qualifies, never a second title. What it
  * means is said once per page, behind the info icon of the profile's
- * head (profile-header.tsx), never in a hover title.
+ * head (candidate-sheet.tsx), never in a hover title.
  */
 import { CircleAlert, CircleHelp } from "lucide-react";
 
