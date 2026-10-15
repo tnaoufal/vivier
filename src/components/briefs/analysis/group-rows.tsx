@@ -23,7 +23,7 @@ import { Pill, type PillTone } from "@/components/app-shell/pill";
 import { useListKeys } from "@/components/app-shell/row";
 import { Button } from "@/components/ui/button";
 import { kindKey } from "@/lib/briefs/criteria";
-import { setAsideReason, type SetAsideReason } from "@/lib/briefs/presentation";
+import { doubtLine, setAsideReason, type SetAsideReason } from "@/lib/briefs/presentation";
 import { currentPosition, headerLine, yearsLabel } from "@/lib/candidates/format";
 import type {
   BriefCriterion,
@@ -201,6 +201,11 @@ export function GroupRows({
             provisional &&
             result.assessment?.decision === "fit" &&
             !result.assessment.challenge;
+          // A match the second opinion doubted without sending it back says so before its tier; the reading names the doubt first.
+          const doubted =
+            group === "matches" &&
+            result.assessment?.decision === "fit" &&
+            doubtLine(result) !== null;
           const added = addedIds.has(result.candidateId) || pendingIds.has(result.candidateId);
           const addLabel = added
             ? t("briefs.match.addedLabel")
@@ -220,8 +225,15 @@ export function GroupRows({
                     <span className="text-meta text-muted-foreground">
                       {t("briefs.match.unconfirmed")}
                     </span>
-                  ) : tier ? (
-                    <TierPill tier={tier} compact />
+                  ) : tier || doubted ? (
+                    <>
+                      {doubted ? (
+                        <span className="text-meta font-medium text-ink">
+                          {t("briefs.match.doubt")}
+                        </span>
+                      ) : null}
+                      {tier ? <TierPill tier={tier} compact /> : null}
+                    </>
                   ) : undefined
                 }
                 trailing={
