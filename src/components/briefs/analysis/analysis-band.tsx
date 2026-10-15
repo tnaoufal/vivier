@@ -1,29 +1,34 @@
 /**
  * The band at the top of the "Correspondances" tab: one sheet that says
- * where the analysis stands, in the state it is in, and nothing else.
- * Idle, the headline counts the matches ("12 profils correspondent",
- * "Aucun profil ne correspond") and one quiet line of figures under it
- * says how the pool narrowed (the profiles analysed, the ones the triage
- * kept, the ones read in full while some are left, the ones set aside:
- * a quiet button that opens their list, each with its reason) and when.
- * Running, the live figure comes first with the way to stop (a heading
- * from the first moment, while the search is prepared; a status region
- * that exists whatever the state carries it for assistive technologies,
- * so its first words are announced like the next), then the step with
- * how far it is, the time left when known, and the bar. An
- * interrupted analysis says how many profiles are left, with
- * "Reprendre", or that another session drives it; one done counts the
- * profiles the pool gained since, with the way to read them; one stored
- * before the whole pool was read says so in one line; one no model
- * could read says how many profiles it ranked on the text, in one line.
- * A brief edited since the analysis ran says so in one line, while one
- * runs too (the header's button runs it again). With no match once
- * everything ran, the requirement most often missing. An empty pool says
- * so, with the way to import CVs; an analysis that could not be opened
- * says so, with the way to read it again.
+ * where the analysis stands, read off the row the processor writes, in
+ * the state it is in and nothing else. Queued, it says the job is
+ * starting, with the way to stop. Running, the heading is the stage
+ * (the brief's reading, the pool, the sorting by job, the scoring, the
+ * selection, the full reading, the second reading, the ranking), under
+ * it how far the stage is ("640 / 1 093") and the time left at the pace
+ * the row shows, then the bar of the whole run (a status region that
+ * exists whatever the state carries the heading for assistive
+ * technologies, so its first words are announced like the next). Idle,
+ * the headline counts the matches ("12 profils correspondent", "Aucun
+ * profil ne correspond") and one quiet line of figures under it says
+ * how the pool narrowed (the profiles analysed, the ones the triage
+ * kept, the ones read in full, the ones set aside: a quiet button that
+ * opens their list, each with its reason) and when. A stopped run says
+ * how many profiles are left (past the full reading, the stage with its
+ * own count), with "Reprendre" (the same row is queued again and
+ * resumes where it was); a failed one says why in one line, with
+ * "Relancer"; one stored before the whole pool was read says so in
+ * one line; one no model could read says how many profiles it ranked
+ * on the text, in one line. A brief edited since the analysis ran says
+ * so in one line, while one runs too (the header's button runs it
+ * again). With no match once everything ran, the requirement most often
+ * missing. An empty pool says so, with the way to import CVs; an
+ * analysis that could not be opened says so, with the way to read it
+ * again.
  */
 import { useId, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import { progressOf, unreadOf } from "@vivier/analysis";
 import {
   CircleAlert,
   Play,
@@ -42,10 +47,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { kindKey } from "@/lib/briefs/criteria";
 import {
-  BAND_STEPS,
+  etaOf,
+  failureLineOf,
   figuresLine,
-  remainingMs,
-  stepOf,
+  stageKey,
+  type FailureLine,
   type FigureKey,
 } from "@/lib/briefs/presentation";
 import { formatCount } from "@/lib/candidates/format";
@@ -81,6 +87,13 @@ const FIGURE_KEYS: Record<FigureKey, PluralKeys> = {
   setAside: { one: "briefs.analysis.setAside.one", many: "briefs.analysis.setAside.many" },
 };
 
+/** The one line a failed run says. */
+const FAILURE_KEYS: Record<FailureLine, TranslationKey> = {
+  brief: "briefs.analysis.jobChanged",
+  model: "briefs.analysis.failed.model",
+  other: "briefs.analysis.failed.other",
+};
+
 export function AnalysisBand({
   analysis,
   canEdit,
@@ -98,7 +111,7 @@ export function AnalysisBand({
 }) {
   const { t, locale } = useI18n();
   const headingId = useId();
-  const { view, progress, band, funnel } = analysis;
+  const { latest, view, band, funnel } = analysis;
   const count = (value: number) => formatCount(locale, value);
 
   function plural(value: number, keys: PluralKeys): string {
@@ -107,26 +120,10 @@ export function AnalysisBand({
     return t(keys.many, { count: count(value) });
   }
 
-  // The live figure while the analysis runs: nothing to count yet while
-  // the search itself is prepared (the sentence says what runs), the
-  // profiles kept during the triage, then the matches; empty otherwise.
-  const step = progress?.step ?? "triage";
-  const live =
-    band !== "running"
-      ? ""
-      : !progress
-        ? t("briefs.analysis.starting")
-        : step === "triage" || step === "promote"
-          ? plural(step === "triage" ? progress.kept : funnel.kept, {
-              none: "briefs.analysis.live.kept.none",
-              one: "briefs.analysis.live.kept.one",
-              many: "briefs.analysis.live.kept.many",
-            })
-          : plural(analysis.matches.length, {
-              none: "briefs.analysis.live.matches.none",
-              one: "briefs.analysis.live.matches.one",
-              many: "briefs.analysis.live.matches.many",
-            });
+  const working = band === "queued" || band === "running";
+  // The heading while the job runs: the stage the row names, "Démarrage…" until the processor claims it.
+  const stage = band === "running" ? (latest?.stage ?? null) : null;
+  const live = !working ? "" : stage ? t(stageKey(stage)) : t("briefs.analysis.queued");
   // The brief's text changed since this analysis ran (or started): the header's button reads it again.
   const stale = briefStale ? (
     <p role="status" className="flex items-center gap-2 text-sm text-ink">
@@ -155,7 +152,7 @@ export function AnalysisBand({
 
   // The newest analysis is being looked up or opened: placeholders the size of the headline.
   const loading =
-    band !== "running" &&
+    !working &&
     (analysis.opening ||
       (view !== null && analysis.detailsLoading) ||
       (view === null && analysis.latestLoading));
@@ -169,10 +166,13 @@ export function AnalysisBand({
     );
   }
 
-  if (band === "running") {
-    // The size of the work is unknown while the search runs and during the promotion: the bar is indeterminate.
-    const measured = progress && step !== "promote" && progress.total > 0 ? progress : null;
-    const left = measured ? remainingMs({ ...measured, now: Date.now() }) : null;
+  if (working) {
+    // The stage's own count, when it has items, and the whole run's progress from the span each stage owns.
+    const done = latest?.progress_done ?? 0;
+    const total = latest?.progress_total ?? 0;
+    const percent = stage ? progressOf(stage, done, total) : null;
+    const left =
+      percent !== null && latest ? etaOf(latest.started_at, percent, 100, Date.now()) : null;
     const eta =
       left === null || left === 0
         ? null
@@ -181,50 +181,40 @@ export function AnalysisBand({
           : Math.ceil(left / 60_000) === 1
             ? t("briefs.analysis.eta.minutes.one")
             : t("briefs.analysis.eta.minutes", { count: Math.ceil(left / 60_000) });
-    const stepName = t(`briefs.analysis.step.${BAND_STEPS[stepOf(step)] ?? "triage"}`);
-    // Under the heading: the step and how far it is; nothing while the search itself is prepared (the heading says it).
-    const status = !progress
-      ? null
-      : measured
-        ? t("briefs.analysis.progress", {
-            step: stepName,
-            done: count(measured.done),
-            total: count(measured.total),
-          })
-        : step === "promote"
-          ? t("briefs.analysis.promoting")
-          : stepName;
+    const counted = stage && total > 0 ? `${count(done)} / ${count(total)}` : null;
     return shell(
       <>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 id={headingId} className="font-display text-xl text-ink tabular-nums">
             {live}
           </h2>
-          <Button
-            type="button"
-            variant="outline"
-            icon={<Square />}
-            onClick={analysis.stop}
-            disabled={analysis.stopping}
-            aria-busy={analysis.stopping || undefined}
-            className="self-start sm:self-auto"
-          >
-            {t("briefs.analysis.stop")}
-          </Button>
+          {canEdit ? (
+            <Button
+              type="button"
+              variant="outline"
+              icon={<Square />}
+              onClick={() => void analysis.stop()}
+              disabled={!analysis.canStop}
+              aria-busy={analysis.stopping || undefined}
+              className="self-start sm:self-auto"
+            >
+              {t("briefs.analysis.stop")}
+            </Button>
+          ) : null}
         </div>
         <div className="space-y-2">
-          {status !== null || eta ? (
+          {counted !== null || eta ? (
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-              <p className="text-sm text-ink tabular-nums">{status}</p>
+              <p className="text-sm text-ink tabular-nums">{counted}</p>
               {eta ? <p className="text-meta text-muted-foreground">{eta}</p> : null}
             </div>
           ) : null}
           <ProgressBar
-            value={measured ? measured.done : null}
-            max={measured ? measured.total : 100}
+            value={percent}
+            max={100}
             size="md"
             active
-            label={status ?? live}
+            label={counted ? `${live} · ${counted}` : live}
           />
         </div>
         {stale}
@@ -317,15 +307,17 @@ export function AnalysisBand({
   }
 
   const matches = analysis.matches.length;
-  const zero = band === "done" && matches === 0;
+  const ended = band === "done";
+  const zero = ended && matches === 0;
   const legacy = band === "legacy";
   const missing = analysis.mostMissing;
+  const failure = band === "failed" ? failureLineOf(latest?.error) : null;
+  const stopped = analysis.stoppedLine;
+  // A done run whose full readings failed for some profiles: they are unassessed until it is queued again.
+  const unread = ended ? unreadOf(latest?.error) : 0;
   const headline = plural(matches, {
-    // Nothing matches yet is not "nothing matches" while profiles are still to read (an earlier analysis stopped before its reads ended included).
-    none:
-      band === "incomplete" || (legacy && analysis.remaining > 0)
-        ? "briefs.analysis.matches.noneYet"
-        : "briefs.analysis.matches.none",
+    // Nothing matches yet is not "nothing matches" while profiles are still to read (a run stopped or failed before its reads ended).
+    none: ended ? "briefs.analysis.matches.none" : "briefs.analysis.matches.noneYet",
     one: "briefs.analysis.matches.one",
     many: "briefs.analysis.matches.many",
   });
@@ -393,28 +385,28 @@ export function AnalysisBand({
         </div>
       </div>
 
-      {stale}
+      {/* The failure line already says the brief changed: the notice would say it twice. */}
+      {failure === "brief" ? null : stale}
 
-      {band === "incomplete" ? (
+      {/* A person interrupted the run: the same row is queued again and resumes where it was. */}
+      {band === "stopped" ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="min-w-0 text-sm text-ink tabular-nums">
-            {plural(analysis.remaining, {
-              none: "briefs.analysis.left.none",
-              one: "briefs.analysis.left.one",
-              many: "briefs.analysis.left.many",
-            })}
+            {stopped.kind === "profiles"
+              ? plural(stopped.count, {
+                  one: "briefs.analysis.left.one",
+                  many: "briefs.analysis.left.many",
+                })
+              : stopped.kind === "stage"
+                ? `${t(stageKey(stopped.stage))} · ${count(stopped.done)} / ${count(stopped.total)}`
+                : t("briefs.analysis.left.none")}
           </p>
-          {/* Driven by another tab or a colleague: resuming here would send its profiles twice. */}
-          {analysis.elsewhere ? (
-            <p className="text-meta text-muted-foreground" role="status">
-              {t("briefs.analysis.elsewhere")}
-            </p>
-          ) : analysis.canResume ? (
+          {analysis.canResume ? (
             <Button
               type="button"
               variant="primary"
               icon={<Play />}
-              onClick={analysis.resume}
+              onClick={() => void analysis.run()}
               className="self-start sm:self-auto"
             >
               {t("briefs.analysis.resume")}
@@ -423,23 +415,48 @@ export function AnalysisBand({
         </div>
       ) : null}
 
-      {/* The pool gained profiles since this analysis ended: none of them was read. */}
-      {band === "done" && analysis.newProfiles > 0 ? (
+      {/* Some full readings failed: the figure, and the same row queued again reads them. */}
+      {unread > 0 ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="min-w-0 text-sm text-ink tabular-nums">
-            {analysis.newProfiles === 1
-              ? t("briefs.analysis.newProfiles.one")
-              : t("briefs.analysis.newProfiles.many", { count: count(analysis.newProfiles) })}
+          <p role="status" className="flex min-w-0 items-center gap-2 text-sm text-ink tabular-nums">
+            <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
+            <span className="min-w-0">
+              {plural(unread, {
+                one: "briefs.analysis.unread.one",
+                many: "briefs.analysis.unread.many",
+              })}
+            </span>
           </p>
-          {analysis.canAnalyseNew ? (
+          {analysis.canResume ? (
             <Button
               type="button"
               variant="primary"
-              icon={<Sparkles />}
-              onClick={analysis.resume}
+              icon={<Play />}
+              onClick={() => void analysis.run()}
               className="self-start sm:self-auto"
             >
-              {t("briefs.analysis.analyseNew")}
+              {t("briefs.analysis.resume")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* The run ended on an error: one line says which, the log holds the cause. */}
+      {failure !== null ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p role="status" className="flex min-w-0 items-center gap-2 text-sm text-ink">
+            <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
+            <span className="min-w-0">{t(FAILURE_KEYS[failure])}</span>
+          </p>
+          {analysis.canResume ? (
+            <Button
+              type="button"
+              variant="primary"
+              icon={<RefreshCw />}
+              onClick={() => void analysis.run()}
+              className="self-start sm:self-auto"
+            >
+              {t("briefs.search.rerun")}
             </Button>
           ) : null}
         </div>

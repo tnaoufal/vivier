@@ -113,6 +113,12 @@ export interface InvitationRow {
   created_at: string;
 }
 
+/** A link the CV states (LinkedIn, a portfolio, …): the structuring's shape, kept here and not in the shared package because no pure function of the analysis reads it. */
+export interface CandidateLink {
+  label: string;
+  url: string;
+}
+
 export type CandidateSource = "upload" | "manual";
 export type ConsentStatus = "unknown" | "given" | "withdrawn";
 export type CandidateStatus = "active" | "archived";

@@ -1,33 +1,43 @@
 /**
  * Pure helpers behind what the briefs pages show, kept apart from the
- * analysis itself (assessment.ts and its rules are the frozen part):
- * the status filter of the list, the newest analysis of each brief,
- * its method and what it counted (kept current from the realtime rows
- * themselves, the triage's counts read apart), what its row says of it
- * and how many candidates each shortlist retained; and what the brief
- * page's "Correspondances" tab reads off an analysis: the state its
- * band is in, the figures of its funnel and the one line that says
- * them, the matches, the near profiles and the profiles set aside in
- * their order, the one line each row shows (the reason a profile was
- * set aside among them), the step a running stage belongs to, the time
- * left, the turn each row takes when a list unfolds (a batch that lands
- * rises in one row after the other, a row already on screen never moves
- * again), the pages of a list read on demand, whether the role a search
- * rests on is still the brief's, and whether the brief's text changed
- * since the model read it. Tested in presentation.test.ts.
+ * analysis itself (the shared package holds its rules): the status
+ * filter of the list, the newest analysis of each brief, its method,
+ * where its job stands and what it counted (kept current from the
+ * realtime rows themselves), what its row says of it and how many
+ * candidates each shortlist retained; and what the brief page's
+ * "Correspondances" tab reads off an analysis: the state its band is in
+ * (read off the row's status: the processor runs the job, the page
+ * follows it), the time a run has left at the pace its row shows, what
+ * a stopped run still has to do, the one line a failed run says, the
+ * figures of its funnel and the one line that says them, the
+ * matches, the near profiles and the profiles set aside in their order,
+ * the one line each row shows (the reason a profile was set aside, the
+ * screening's score among them), the turn each row takes when a list
+ * unfolds (a batch that lands rises in one row after the other, a row
+ * already on screen never moves again), the pages of a list read on
+ * demand, and whether the brief's text changed since the model read it.
+ * Tested in presentation.test.ts.
  */
+import {
+  isAnalysisStatus,
+  LEFT_POOL_REASON,
+  THIN_CARD_REASON,
+  UNREADABLE_REASON,
+} from "@vivier/analysis";
+
 import type {
+  AnalysisStage,
+  AnalysisStatus,
   BriefCriterion,
   BriefRow,
   BriefStatus,
   MatchResult,
   SearchMethod,
+  SearchRow,
 } from "@/lib/db/types";
 
 import { compareTiered, decisionOf, firstMissingRequirement } from "./assessment";
-import { protectedCriterion, roleCriterion } from "./criteria";
-import { briefSourceHash, roleDefinitionOf } from "./role-profile";
-import type { AnalysisStep } from "./stages";
+import { briefSourceHash } from "./role-profile";
 
 /** The three views of the list: the briefs being worked on (open or draft), the closed ones, every brief. */
 export type BriefFilter = "open" | "closed" | "all";
@@ -75,16 +85,19 @@ export function digestResults(results: readonly MatchResult[]): AnalysisDigest {
   return { total: results.length, assessed, present };
 }
 
-/** The newest analysis of a brief as its row says it: when it ran, how (the whole pool, the closest profiles, the text alone) and what it counted. */
+/** The newest analysis of a brief as its row says it: when it ran, how (the whole pool, the closest profiles, the text alone), where its job stands and what it counted. */
 export interface LatestAnalysis extends AnalysisDigest {
   searchId: string;
   createdAt: string;
   method: SearchMethod;
+  /** Where the job stands (the processor runs it); null when the row does not carry it (stored before the job existed, or a payload without the column). */
+  status: AnalysisStatus | null;
   /**
    * For a whole-pool search, the profiles of its snapshot the triage has
-   * not read, and the ones it kept (yes, close, unknown): no row carries
-   * them, they are counted apart. Null when not read (another method, a
-   * realtime row, a count that failed).
+   * not read, and the ones it kept: no row carries them, they are
+   * counted apart by the callers that still read them. Null when not
+   * read (the status says where the job stands; these are kept for the
+   * rows without one).
    */
   triagePending: number | null;
   kept: number | null;
@@ -102,14 +115,16 @@ function countColumn(value: unknown): number | null {
 
 /**
  * The analysis a realtime change of a search carries, read off the row
- * itself (an analysis writes its results batch after batch): its brief,
- * when it ran and what it counted. The summary columns the database
- * keeps (result_count, assessed_count, match_count) are read first, so
- * a row whose results realtime could not carry still counts; a row
- * without them is counted from its results. The method travels with
- * them, so a row can tell an analysis a model reads from a ranking on
- * the text. Null when the row lacks its id, its brief or its date, or
- * carries neither, so the caller reads the analyses again instead.
+ * itself (the processor writes the row stage after stage): its brief,
+ * when it ran, where its job stands and what it counted. The summary
+ * columns the database keeps (result_count, assessed_count,
+ * match_count) are read first, so a row whose results realtime could
+ * not carry still counts; a row without them is counted from its
+ * results. The method and the status travel with them, so a row can
+ * tell a run under way from one done, and an analysis a model reads
+ * from a ranking on the text. Null when the row lacks its id, its brief
+ * or its date, or carries neither, so the caller reads the analyses
+ * again instead.
  */
 export function analysisOfRow(
   row: Readonly<Record<string, unknown>>,
@@ -120,6 +135,8 @@ export function analysisOfRow(
   if (typeof id !== "string" || typeof briefId !== "string" || typeof createdAt !== "string")
     return null;
   const method = methodColumn(row["method"]);
+  const rawStatus = row["status"];
+  const status = isAnalysisStatus(rawStatus) ? rawStatus : null;
   const total = countColumn(row["result_count"]);
   const assessed = countColumn(row["assessed_count"]);
   const present = countColumn(row["match_count"]);
@@ -128,7 +145,7 @@ export function analysisOfRow(
   if (total !== null && assessed !== null && present !== null)
     return {
       briefId,
-      analysis: { searchId: id, createdAt, method, total, assessed, present, ...triage },
+      analysis: { searchId: id, createdAt, method, status, total, assessed, present, ...triage },
     };
   const results: unknown = row["results"];
   if (!Array.isArray(results)) return null;
@@ -138,6 +155,7 @@ export function analysisOfRow(
       searchId: id,
       createdAt,
       method,
+      status,
       ...digestResults(results as MatchResult[]),
       ...triage,
     },
@@ -148,9 +166,9 @@ export function analysisOfRow(
  * The newest analyses once one search changed: the change takes its
  * brief's place when it is the same search or a newer one, so a late
  * patch of an older search never hides the newest; a patch of the same
- * search that does not carry the triage's counts keeps the ones known.
- * The map given is left untouched; it is answered as is when nothing
- * changes.
+ * search that does not carry the status or the triage's counts keeps
+ * the ones known. The map given is left untouched; it is answered as is
+ * when nothing changes.
  */
 export function withAnalysis(
   latest: ReadonlyMap<string, LatestAnalysis>,
@@ -168,6 +186,7 @@ export function withAnalysis(
   const next = new Map(latest);
   next.set(briefId, {
     ...analysis,
+    status: analysis.status ?? same?.status ?? null,
     triagePending: analysis.triagePending ?? same?.triagePending ?? null,
     kept: analysis.kept ?? same?.kept ?? null,
   });
@@ -194,15 +213,14 @@ export function withTriageProgress(
 
 /**
  * What a brief's row says of its newest analysis:
- * - "unfinished": a whole-pool search not through yet: profiles of its
- *   snapshot wait for the triage, profiles it kept are not in the
- *   results yet, or results are not read in full. Its counts are not its
- *   answer yet (a run still going and one interrupted look alike), so it
- *   says neither. Without the triage's counts, a search none of whose
- *   profiles was read in full cannot be told from a triage that kept
- *   nobody: it reads unfinished too;
- * - "matches": how many profiles match, once every profile was through
- *   (0 for a triage that kept nobody);
+ * - "unfinished": a whole-pool search whose job has not ended well:
+ *   queued, running, stopped or failed. Its counts are not its answer
+ *   yet, so it says neither. A row without the job's status (stored
+ *   before the job existed and read without the column) is read as
+ *   before: profiles of its snapshot wait for the triage, profiles it
+ *   kept are not in the results, or results are not read in full;
+ * - "matches": how many profiles match, once the job is done (0 for a
+ *   triage that kept nobody);
  * - "ranked": how many profiles an analysis no model read ranked.
  */
 export type CardAnalysis =
@@ -212,9 +230,14 @@ export type CardAnalysis =
 
 export function cardAnalysisOf(
   analysis: Pick<LatestAnalysis, "method" | "total" | "assessed" | "present"> &
-    Partial<Pick<LatestAnalysis, "triagePending" | "kept">>,
+    Partial<Pick<LatestAnalysis, "status" | "triagePending" | "kept">>,
 ): CardAnalysis {
   if (analysis.method === "triage") {
+    const status = analysis.status ?? null;
+    if (status !== null)
+      return status === "done"
+        ? { kind: "matches", count: analysis.present }
+        : { kind: "unfinished" };
     if (analysis.assessed < analysis.total) return { kind: "unfinished" };
     const pending = analysis.triagePending ?? null;
     const kept = analysis.kept ?? null;
@@ -259,12 +282,12 @@ export interface TriageTally {
 
 /**
  * The figures of the funnel: the profiles the triage read, the ones it
- * kept (yes, close, unknown: a card too thin to judge is read rather
- * than dropped), the ones read in full, the matches, and the ones set
- * aside (another métier at the triage, or no_fit after the full
- * reading), which a person can always open. Without a triage (an
- * analysis stored before it, or the text path), every result counts as
- * read and kept.
+ * kept (yes, close: the screening scores them and the best are read in
+ * full), the ones read in full, the matches, and the ones set aside
+ * (another métier at the triage, a card it could not read, or no_fit
+ * after the full reading), which a person can always open. Without a
+ * triage (an analysis stored before it, or the text path), every result
+ * counts as read and kept.
  */
 export interface Funnel {
   analysed: number;
@@ -272,6 +295,10 @@ export interface Funnel {
   assessed: number;
   matches: number;
   setAside: number;
+}
+
+function atLeastZero(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
 export function funnelOf(results: readonly MatchResult[], triage: TriageTally | null): Funnel {
@@ -287,11 +314,11 @@ export function funnelOf(results: readonly MatchResult[], triage: TriageTally | 
   if (!triage)
     return { analysed: results.length, kept: results.length, assessed, matches, setAside: noFit };
   return {
-    analysed: Math.max(0, triage.read),
-    kept: Math.max(0, triage.yes + triage.close + triage.unknown),
+    analysed: atLeastZero(triage.read),
+    kept: atLeastZero(triage.yes) + atLeastZero(triage.close),
     assessed,
     matches,
-    setAside: Math.max(0, triage.no) + noFit,
+    setAside: atLeastZero(triage.no) + atLeastZero(triage.unknown) + noFit,
   };
 }
 
@@ -307,10 +334,11 @@ export interface Figure {
  * The one line of figures under the band's headline, each figure once
  * and only when it says something the headline does not: the profiles
  * analysed; the ones the triage kept (a whole-pool analysis); the ones
- * read in full, when that is not every profile kept (some are left);
- * the ones set aside (the triage's "no" and the readings' no_fit), the
- * figure that opens their list. The matches are the headline's and are
- * never said twice.
+ * read in full, when that is not every profile kept (the others are
+ * the near profiles the screening scored); the ones set aside (the
+ * triage's "no" and "unknown", the readings' no_fit), the figure that
+ * opens their list. The matches are the headline's and are never said
+ * twice.
  */
 export function figuresLine(funnel: Funnel, wholePool: boolean): Figure[] {
   const line: Figure[] = [{ key: "analysed", count: funnel.analysed }];
@@ -364,24 +392,57 @@ export function reservationLine(result: Pick<MatchResult, "assessment">): string
 }
 
 /**
+ * The one line a profile the screening scored but no model read shows:
+ * the score first, then the reason the model gave ("72 · Senior, huit
+ * ans en contrôle de gestion"); the score alone without a reason, the
+ * reason alone without a score; null when the screening wrote neither.
+ */
+export function screenLine(
+  screen: { score: number | null; reason: string | null } | null | undefined,
+): string | null {
+  if (!screen) return null;
+  const score =
+    typeof screen.score === "number" && Number.isFinite(screen.score)
+      ? String(Math.round(screen.score))
+      : null;
+  const reason = sentence(screen.reason);
+  if (score !== null && reason !== null) return `${score} · ${reason}`;
+  return score ?? reason;
+}
+
+/**
  * Why a profile was set aside, as its row in the list of the profiles
  * set aside says it: for a "no" at the triage, the reason the model gave
- * on its card; else the first requirement at "no" that sets a profile
- * aside on its own (the role, then the required ones), then the
- * reading's main reservation, then the first sentence of its summary.
- * Null when nothing was written (the row then names the verdict alone).
+ * on its card; for a card the triage could not judge ("unknown", read
+ * by nobody), "unread" when the model could not read it and "thin" when
+ * it carried no title and no position (or no reason at all); else the
+ * first requirement at "no" that sets a profile aside on its own (the
+ * role, then the required ones), then the reading's main reservation,
+ * then the first sentence of its summary. Null when nothing was written
+ * (the row then names the verdict alone).
  */
 export type SetAsideReason =
   | { kind: "missing"; criterion: BriefCriterion }
-  | { kind: "text"; text: string };
+  | { kind: "text"; text: string }
+  | { kind: "unread" }
+  | { kind: "thin" }
+  | { kind: "gone" };
 
 export function setAsideReason(
   criteria: readonly BriefCriterion[],
   entry: Pick<MatchResult, "assessment" | "triage">,
 ): SetAsideReason | null {
-  if (entry.triage?.verdict === "no") {
-    const reason = sentence(entry.triage.reason);
+  const triage = entry.triage;
+  if (triage?.verdict === "no") {
+    const reason = sentence(triage.reason);
     return reason ? { kind: "text", text: reason } : null;
+  }
+  if (triage?.verdict === "unknown" && !entry.assessment) {
+    const reason = sentence(triage.reason);
+    if (reason === UNREADABLE_REASON) return { kind: "unread" };
+    if (reason === LEFT_POOL_REASON) return { kind: "gone" };
+    if (reason === null || reason === THIN_CARD_REASON) return { kind: "thin" };
+    return { kind: "text", text: reason };
   }
   const missing = firstMissingRequirement(criteria, entry);
   if (missing) return { kind: "missing", criterion: missing };
@@ -391,7 +452,7 @@ export function setAsideReason(
   return text ? { kind: "text", text } : null;
 }
 
-/** How many profiles set aside one page of their list shows, and one "Voir plus" adds. */
+/** How many rows one page of a list read on demand shows (the profiles set aside, the near profiles the screening scored), and one "Voir plus" adds. */
 export const SET_ASIDE_PAGE = 50;
 
 /**
@@ -426,47 +487,6 @@ export function requirementTally(result: Pick<MatchResult, "verdicts">): {
 }
 
 /**
- * The results once a stage's answer is in, as the database merges it
- * (merge_search_results): an entry of the answer replaces the entry of
- * the same candidate where it stands, an entry the results lack is
- * appended. The list given is left untouched; it is answered as is
- * when the answer is empty.
- */
-export function mergeResults(
-  results: readonly MatchResult[],
-  answered: readonly MatchResult[],
-): readonly MatchResult[] {
-  if (!answered.length) return results;
-  const updated = new Map(answered.map((entry) => [entry.candidateId, entry] as const));
-  const merged = results.map((entry) => {
-    const next = updated.get(entry.candidateId);
-    if (next) updated.delete(entry.candidateId);
-    return next ?? entry;
-  });
-  return [...merged, ...updated.values()];
-}
-
-/**
- * True when the role profile now defines the role otherwise than the
- * search's role criterion: the search ran on another job (runSearch
- * writes that definition from the profile, unless the profile defines
- * nothing or something protected, which this reads as no change).
- */
-export function roleChangedSince(
-  profile: BriefRow["role_profile"],
-  searchCriteria: readonly BriefCriterion[],
-): boolean {
-  const role = roleCriterion(searchCriteria);
-  if (!role || !profile) return false;
-  const definition = roleDefinitionOf(profile);
-  return (
-    definition.length > 0 &&
-    definition !== role.value &&
-    !protectedCriterion(role.label, definition, "role")
-  );
-}
-
-/**
  * True when the brief's text (the title or the need) changed since the
  * model read it: the profile the brief holds was read from another
  * text, and the next analysis reads the brief again. A brief never
@@ -483,96 +503,140 @@ export function briefChangedSince(
 /** The most rows the deterministic ranking shows when no model reads the profiles. */
 export const TEXT_RANKING_MAX = 20;
 
+// ---------------------------------------------------------------------
+// the band: the job as its row says it
+// ---------------------------------------------------------------------
+
 /**
- * The state the analysis band is in:
- * - "running": a search or a stage is being sent from this page;
+ * The state the analysis band is in, read off the row of the newest
+ * search (the processor runs the job and writes the row; the page
+ * follows it):
  * - "empty": no analysis on screen;
- * - "textOnly": an analysis no model can read (no model on this
- *   deployment, or a brief without criteria), ranked on the text;
+ * - "queued": stored, not claimed by the processor yet (its poke, or
+ *   its scan every thirty seconds, starts it);
+ * - "running": the processor works on it; the row says the stage and
+ *   how far it is;
+ * - "stopped": a person interrupted it; what was stored stays and
+ *   "Reprendre" queues the same row again;
+ * - "failed": the run ended on an error the row names; "Relancer"
+ *   queues it again;
+ * - "done": every stage ran;
  * - "legacy": an analysis stored before the whole pool was read, which
  *   read only the profiles closest to the brief (or a pool of unknown
  *   size);
- * - "incomplete": profiles of the pool still wait for the triage, the
- *   promotion or a stage (interrupted, or batches that failed);
- * - "done": every stage ran on every profile it could send.
+ * - "textOnly": an analysis no model can read (no model on this
+ *   deployment, or a brief without criteria), ranked on the text.
+ * A row stored before the job existed reads "done" (the column's
+ * default), so an earlier analysis reads as it always did.
  */
-export type BandState = "empty" | "running" | "incomplete" | "done" | "legacy" | "textOnly";
+export type BandState =
+  | "empty"
+  | "queued"
+  | "running"
+  | "stopped"
+  | "failed"
+  | "done"
+  | "legacy"
+  | "textOnly";
 
-export interface BandInputs {
-  /** Whether the deployment has a model; null while unknown (never read as "no model"). */
-  model: boolean | null;
-  /** The method of the analysis on screen; null when none is. */
-  method: SearchMethod | null;
-  /** True while this page sends the search or a stage. */
-  running: boolean;
-  /** The criteria the analysis on screen was run with. */
-  criteriaCount: number;
-  /** Its results. */
-  resultCount: number;
+/** What the band reads of the newest search's row (and of its results, once opened). */
+export interface BandRow {
+  method: SearchMethod;
+  status: AnalysisStatus;
   /** The active profiles of the pool when it ran; null for rows stored before that was recorded. */
   poolSize: number | null;
-  /** Profiles of the snapshot the triage has not read (0 without a triage). */
-  triagePending: number;
-  /** True when the triage kept profiles the results do not hold yet. */
-  promotionPending: boolean;
-  /** What the stages after the triage still have to send. */
-  stagePending: number;
+  resultCount: number;
+  /** The criteria the analysis was run with. */
+  criteriaCount: number;
 }
 
-export function bandStateOf(inputs: BandInputs): BandState {
-  if (inputs.running) return "running";
-  if (inputs.method === null) return "empty";
-  const wholePool = inputs.method === "triage";
-  if (!wholePool && (inputs.model === false || inputs.criteriaCount === 0)) return "textOnly";
-  if (!wholePool && (inputs.poolSize === null || inputs.resultCount < inputs.poolSize))
-    return "legacy";
-  if (inputs.triagePending > 0 || inputs.promotionPending || inputs.stagePending > 0)
-    return "incomplete";
+/** `model`: whether the deployment has a model; null while unknown (never read as "no model"). */
+export function bandStateOf(row: BandRow | null, model: boolean | null): BandState {
+  if (!row) return "empty";
+  if (row.status !== "done") return row.status;
+  if (row.method === "triage") return "done";
+  if (model === false || row.criteriaCount === 0) return "textOnly";
+  if (row.poolSize === null || row.resultCount < row.poolSize) return "legacy";
   return "done";
 }
 
-/** The four steps the band names, in order. */
-export const BAND_STEPS = ["triage", "read", "challenge", "rank"] as const;
-export type BandStep = (typeof BAND_STEPS)[number];
-
-/** The step (0 to 3) a stage belongs to: the promotion closes the triage, the final comparison is part of the tiering. */
-export function stepOf(stage: AnalysisStep): number {
-  switch (stage) {
-    case "triage":
-    case "promote":
-      return 0;
-    case "read":
-      return 1;
-    case "challenge":
-      return 2;
-    case "rank":
-    case "final":
-      return 3;
-  }
+/** The i18n key of a stage's name, for the band's heading while the job runs. */
+export function stageKey(stage: AnalysisStage): `briefs.analysis.stage.${AnalysisStage}` {
+  return `briefs.analysis.stage.${stage}`;
 }
 
-/** The shortest a stage must have run before its pace says anything about the time left. */
+/** The shortest a run must have run before its pace says anything about the time left. */
 export const ETA_MIN_ELAPSED_MS = 5000;
 
 /**
- * The time a stage has left, in milliseconds, at the pace this page saw
- * since it started it (`doneAtStart` profiles already settled then);
- * null while that pace is not known (nothing came back yet, or too
- * soon), 0 once nothing is left.
+ * The time a run has left, in milliseconds, at the pace its row shows
+ * since it started: `done` of `total` settled since `startedAt` (the
+ * overall progress the stage spans give, or a stage's own count), the
+ * rest projected at the same pace. Null while that pace is not known
+ * (no start, nothing settled yet, or too soon); 0 once nothing is
+ * left.
  */
-export function remainingMs(progress: {
-  done: number;
-  total: number;
-  doneAtStart: number;
-  startedAt: number;
-  now: number;
-}): number | null {
-  const left = progress.total - progress.done;
-  if (left <= 0) return 0;
-  const advanced = progress.done - progress.doneAtStart;
-  const elapsed = progress.now - progress.startedAt;
-  if (advanced <= 0 || elapsed < ETA_MIN_ELAPSED_MS) return null;
-  return Math.round((left * elapsed) / advanced);
+export function etaOf(
+  startedAt: string | null | undefined,
+  done: number,
+  total: number,
+  now: number,
+): number | null {
+  if (!startedAt) return null;
+  const started = Date.parse(startedAt);
+  if (!Number.isFinite(started) || !Number.isFinite(total) || total <= 0) return null;
+  if (done >= total) return 0;
+  if (!Number.isFinite(done) || done <= 0) return null;
+  const elapsed = now - started;
+  if (elapsed < ETA_MIN_ELAPSED_MS) return null;
+  return Math.round((elapsed * (total - done)) / done);
+}
+
+/** The stages whose items are profiles: a card at the triage, a kept card at the screening, an entry at the full reading. The others count retained entries read again, groups, or one comparison. */
+export const PROFILE_STAGES: readonly AnalysisStage[] = ["triage", "screening", "assessing"];
+
+/**
+ * What a stopped run's line says, from the stage it stopped at and its
+ * count: the profiles that stage had left to read, when its items are
+ * profiles ("640 profils restent à analyser"); else the stage with its
+ * own count ("Classement · 2 / 4": groups of the tiering, retained
+ * entries of the second reading, the triage once every card was read),
+ * so a count of groups never reads as profiles; "unfinished" alone when
+ * the row names no stage or the stage has no items (stopped before the
+ * first step, or during the brief's reading, the snapshot or the
+ * selection).
+ */
+export type StoppedLine =
+  | { kind: "profiles"; count: number }
+  | { kind: "stage"; stage: AnalysisStage; done: number; total: number }
+  | { kind: "unfinished" };
+
+export function stoppedLineOf(
+  row: Pick<SearchRow, "stage" | "progress_done" | "progress_total">,
+): StoppedLine {
+  const stage = row.stage;
+  const total = atLeastZero(row.progress_total);
+  if (stage === null || total === 0) return { kind: "unfinished" };
+  const done = Math.min(total, atLeastZero(row.progress_done));
+  if (PROFILE_STAGES.includes(stage) && done < total)
+    return { kind: "profiles", count: total - done };
+  return { kind: "stage", stage, done, total };
+}
+
+/**
+ * The one line a failed run says, from the code the processor wrote on
+ * the row: the brief's text changed since this run read profiles on its
+ * earlier reading (brief_changed: a new analysis reads the new text),
+ * the model did not answer (model_unavailable), or any other error
+ * (the log holds the cause; the person runs it again).
+ */
+export type FailureLine = "brief" | "model" | "other";
+
+export function failureLineOf(error: string | null | undefined): FailureLine {
+  const code = typeof error === "string" ? error.trim().toLowerCase() : "";
+  if (code.startsWith("brief_changed")) return "brief";
+  if (code.startsWith("model_unavailable")) return "model";
+  return "other";
 }
 
 /**

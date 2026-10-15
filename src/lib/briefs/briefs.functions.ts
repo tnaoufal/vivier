@@ -16,6 +16,7 @@
  * and asks, the processor reads, a person retains.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { unreadOf } from "@vivier/analysis";
 import { z } from "zod";
 
 import type {
@@ -97,9 +98,12 @@ async function loadBrief(
 }
 
 /** A search as the job reads it: never its results (the processor writes them, the browser reads them under RLS). */
-type SearchHead = Pick<SearchRow, "id" | "brief_id" | "criteria" | "method" | "status" | "created_at">;
+type SearchHead = Pick<
+  SearchRow,
+  "id" | "brief_id" | "criteria" | "method" | "status" | "error" | "created_at"
+>;
 
-const SEARCH_HEAD_COLUMNS = "id,brief_id,criteria,method,status,created_at";
+const SEARCH_HEAD_COLUMNS = "id,brief_id,criteria,method,status,error,created_at";
 
 /** A row of searches with its criteria parsed and its status guarded (a row stored before the job existed reads done). */
 function headOf(row: SearchHead): SearchHead {
@@ -109,6 +113,7 @@ function headOf(row: SearchHead): SearchHead {
     criteria: criteriaOf(row.criteria, { searchId: row.id }),
     method: row.method,
     status: isStatus(row.status) ? row.status : "done",
+    error: row.error ?? null,
     created_at: row.created_at,
   };
 }
@@ -151,12 +156,19 @@ async function latestSearch(
   return row ? headOf(row) : null;
 }
 
-/** The row set to queued for the runner: nothing asks it to stop any more, and the last error is gone. */
+/**
+ * The row set to queued for the runner: nothing asks it to stop any
+ * more, the last error is gone, and the pace the band shows starts
+ * afresh: started_at and finished_at are cleared, so the claim writes a
+ * new started_at and the time left is projected from this run's start,
+ * never from one that stopped hours ago (a running row the scan
+ * reclaims as stale keeps its start: it was never stopped).
+ */
 async function queueSearch(client: ServiceClient, orgId: string, searchId: string): Promise<void> {
   await client.patch(
     "searches",
     { id: searchId, org_id: orgId },
-    { status: "queued", stop_requested: false, error: null },
+    { status: "queued", stop_requested: false, error: null, started_at: null, finished_at: null },
   );
 }
 
@@ -216,9 +228,12 @@ export const runSearch = createServerFn({ method: "POST" })
 
     let saved: Pick<SearchRow, "id" | "created_at">;
     let resumed = false;
+    // A done run whose full readings failed for some profiles is resumed too: the runner reads them again.
     const resumable =
       latest !== null &&
-      (latest.status === "stopped" || latest.status === "failed") &&
+      (latest.status === "stopped" ||
+        latest.status === "failed" ||
+        (latest.status === "done" && unreadOf(latest.error) > 0)) &&
       latest.method === "triage" &&
       !needsDerivation(brief) &&
       sameCriteria(latest.criteria, brief.criteria);
@@ -266,15 +281,20 @@ export const runSearch = createServerFn({ method: "POST" })
 
 export interface StopResult {
   searchId: string;
-  /** True when the runner was asked to stop; false when the run had already ended. */
+  /** True when the run was stopped, or the runner asked to stop; false when the run had already ended. */
   requested: boolean;
 }
 
 /**
- * Asks the runner to stop the run at its next step ("Interrompre"): the
- * row says so, the processor reads it between two steps and writes
- * status stopped; what was stored stays, and "Reprendre" queues the same
- * row again. A run that already ended is left as it is.
+ * Stops the run ("Interrompre"). A row no processor claimed yet is
+ * stopped here and now: nothing holds it, and the flag alone would
+ * leave the band on "Démarrage…" until a processor exists to read it
+ * (one down, or redeploying). The patch holds only while the row is
+ * still queued, as the claim's own patch does, so the two never both
+ * take it: a row claimed meanwhile is asked to stop like a running one,
+ * the processor reads the flag between two steps and writes status
+ * stopped. What was stored stays, and "Reprendre" queues the same row
+ * again. A run that already ended is left as it is.
  */
 export const stopAnalysis = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => searchInput.parse(data))
@@ -284,15 +304,26 @@ export const stopAnalysis = createServerFn({ method: "POST" })
     const search = await loadSearch(client, member.orgId, data.briefId, data.searchId);
     const live = search.status === "queued" || search.status === "running";
     if (live) {
-      await client.patch(
-        "searches",
-        { id: search.id, org_id: member.orgId },
-        { stop_requested: true },
-      );
+      const stoppedNow =
+        search.status === "queued" &&
+        (
+          await client.patch(
+            "searches",
+            { id: search.id, org_id: member.orgId, status: "queued" },
+            { status: "stopped", stop_requested: false, finished_at: new Date().toISOString() },
+          )
+        ).length > 0;
+      if (!stoppedNow) {
+        await client.patch(
+          "searches",
+          { id: search.id, org_id: member.orgId },
+          { stop_requested: true },
+        );
+      }
       console.info(
         "[briefs]",
         JSON.stringify({
-          event: "search_stop_requested",
+          event: stoppedNow ? "search_stopped_queued" : "search_stop_requested",
           orgId: member.orgId,
           searchId: search.id,
           userId: member.userId,

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   analysisOfSummary,
   CANDIDATE_LOT,
-  countOutsideSnapshot,
+  listScreened,
   listSetAside,
   readCandidatesById,
   readCandidateYears,
@@ -33,6 +33,7 @@ interface FakeBuilder extends PromiseLike<FakeAnswer> {
   eq(...args: unknown[]): FakeBuilder;
   in(...args: unknown[]): FakeBuilder;
   is(...args: unknown[]): FakeBuilder;
+  not(...args: unknown[]): FakeBuilder;
   gt(...args: unknown[]): FakeBuilder;
   order(...args: unknown[]): FakeBuilder;
   range(...args: unknown[]): FakeBuilder;
@@ -61,6 +62,7 @@ function fakeSupabase(answer: (calls: readonly Call[]) => FakeAnswer) {
       eq: step("eq"),
       in: step("in"),
       is: step("is"),
+      not: step("not"),
       gt: step("gt"),
       order: step("order"),
       range: step("range"),
@@ -82,7 +84,7 @@ function argsOf(calls: readonly Call[], name: string): unknown[][] {
 }
 
 describe("SEARCH_SUMMARY_COLUMNS", () => {
-  it("names the summary columns a list reads, never the results", () => {
+  it("names the summary columns and the job's columns a list reads, never the results", () => {
     const columns = SEARCH_SUMMARY_COLUMNS.split(",").map((column) => column.trim());
     for (const column of [
       "id",
@@ -93,6 +95,14 @@ describe("SEARCH_SUMMARY_COLUMNS", () => {
       "assessed_count",
       "match_count",
       "near_count",
+      "status",
+      "stage",
+      "progress_done",
+      "progress_total",
+      "stop_requested",
+      "error",
+      "started_at",
+      "finished_at",
     ])
       expect(columns).toContain(column);
     expect(columns).not.toContain("results");
@@ -101,13 +111,14 @@ describe("SEARCH_SUMMARY_COLUMNS", () => {
 });
 
 describe("analysisOfSummary", () => {
-  it("reads an analysis off the summary columns of a row", () => {
+  it("reads an analysis off the summary columns of a row, where its job stands among them", () => {
     expect(
       analysisOfSummary({
         id: "s1",
         brief_id: "b1",
         created_at: "2026-10-14T09:00:00Z",
         method: "triage",
+        status: "running",
         pool_size: 1091,
         result_count: 140,
         assessed_count: 96,
@@ -121,6 +132,7 @@ describe("analysisOfSummary", () => {
         searchId: "s1",
         createdAt: "2026-10-14T09:00:00Z",
         method: "triage",
+        status: "running",
         poolSize: 1091,
         total: 140,
         assessed: 96,
@@ -133,7 +145,7 @@ describe("analysisOfSummary", () => {
     });
   });
 
-  it("reads a missing count as 0, a missing pool size as null and an unknown method as text", () => {
+  it("reads a missing count as 0, a missing pool size as null, an unknown method as text and a missing or unknown status as done", () => {
     const read = analysisOfSummary({
       id: "s2",
       brief_id: "b2",
@@ -146,6 +158,7 @@ describe("analysisOfSummary", () => {
       searchId: "s2",
       createdAt: "2026-10-14T09:00:00Z",
       method: "text",
+      status: "done",
       poolSize: null,
       total: 0,
       assessed: 0,
@@ -155,6 +168,10 @@ describe("analysisOfSummary", () => {
       triagePending: null,
       kept: null,
     });
+    expect(
+      analysisOfSummary({ id: "s3", brief_id: "b3", created_at: "2026-10-14", status: "paused" })
+        ?.analysis.status,
+    ).toBe("done");
   });
 
   it("answers null for a row without its id, its brief or its date", () => {
@@ -166,12 +183,13 @@ describe("analysisOfSummary", () => {
 });
 
 describe("listSetAside", () => {
-  it("reads the first page of the search's triage at no, ordered by candidate, with the count of all", async () => {
+  it("reads the first page of the profiles the triage set aside (no, unknown), ordered by candidate, with the count of all", async () => {
     const { supabase, queries } = fakeSupabase(() => ({
       data: [
-        { candidate_id: "c1", reason: "Comptable fournisseurs." },
-        { candidate_id: "c2", reason: null },
-        { candidate_id: 7, reason: "ignored" },
+        { candidate_id: "c1", verdict: "no", reason: "Comptable fournisseurs." },
+        { candidate_id: "c2", verdict: "unknown", reason: null },
+        { candidate_id: "c3", verdict: "yes", reason: "ignored" },
+        { candidate_id: 7, verdict: "no", reason: "ignored" },
       ],
       error: null,
       count: 812,
@@ -179,19 +197,21 @@ describe("listSetAside", () => {
     const page = await listSetAside(supabase, "org", "search", { after: null, limit: 50 });
     expect(page).toEqual({
       rows: [
-        { candidateId: "c1", reason: "Comptable fournisseurs." },
-        { candidateId: "c2", reason: null },
+        { candidateId: "c1", verdict: "no", reason: "Comptable fournisseurs." },
+        { candidateId: "c2", verdict: "unknown", reason: null },
       ],
       total: 812,
     });
     const calls = queries[0] ?? [];
     expect(argsOf(calls, "from")).toEqual([["search_triage"]]);
-    expect(argsOf(calls, "select")).toEqual([["candidate_id, reason", { count: "exact" }]]);
+    expect(argsOf(calls, "select")).toEqual([
+      ["candidate_id, verdict, reason", { count: "exact" }],
+    ]);
     expect(argsOf(calls, "eq")).toEqual([
       ["org_id", "org"],
       ["search_id", "search"],
-      ["verdict", "no"],
     ]);
+    expect(argsOf(calls, "in")).toEqual([["verdict", ["no", "unknown"]]]);
     expect(argsOf(calls, "gt")).toEqual([]);
     expect(argsOf(calls, "order")).toEqual([["candidate_id", { ascending: true }]]);
     expect(argsOf(calls, "range")).toEqual([[0, 49]]);
@@ -199,16 +219,16 @@ describe("listSetAside", () => {
 
   it("starts each next page after the last id read, without counting again", async () => {
     const { supabase, queries } = fakeSupabase(() => ({
-      data: [{ candidate_id: "c9", reason: "Autre métier." }],
+      data: [{ candidate_id: "c9", verdict: "no", reason: "Autre métier." }],
       error: null,
       count: null,
     }));
     expect(await listSetAside(supabase, "org", "search", { after: "c2", limit: 50 })).toEqual({
-      rows: [{ candidateId: "c9", reason: "Autre métier." }],
+      rows: [{ candidateId: "c9", verdict: "no", reason: "Autre métier." }],
       total: null,
     });
     const calls = queries[0] ?? [];
-    expect(argsOf(calls, "select")).toEqual([["candidate_id, reason", undefined]]);
+    expect(argsOf(calls, "select")).toEqual([["candidate_id, verdict, reason", undefined]]);
     expect(argsOf(calls, "gt")).toEqual([["candidate_id", "c2"]]);
     expect(argsOf(calls, "range")).toEqual([[0, 49]]);
   });
@@ -232,8 +252,105 @@ describe("listSetAside", () => {
   });
 });
 
+describe("listScreened", () => {
+  it("reads the first page of the kept profiles with a score, best first, the ones in the results left out, with the count of all", async () => {
+    const { supabase, queries } = fakeSupabase(() => ({
+      data: [
+        { candidate_id: "c1", verdict: "yes", score: 82, score_reason: "Senior, huit ans." },
+        { candidate_id: "c2", verdict: "close", score: 64, score_reason: null },
+        { candidate_id: "in-results", verdict: "yes", score: 60, score_reason: "late" },
+        { candidate_id: "c4", verdict: "yes", score: null, score_reason: "unscored" },
+        { candidate_id: "c5", verdict: "no", score: 50, score_reason: "ignored" },
+        { candidate_id: 7, verdict: "yes", score: 40, score_reason: "ignored" },
+      ],
+      error: null,
+      count: 328,
+    }));
+    const page = await listScreened(supabase, "org", "search", {
+      exclude: ["in-results", "other"],
+      from: 0,
+      limit: 50,
+    });
+    expect(page).toEqual({
+      rows: [
+        { candidateId: "c1", verdict: "yes", score: 82, reason: "Senior, huit ans." },
+        { candidateId: "c2", verdict: "close", score: 64, reason: null },
+      ],
+      fetched: 6,
+      total: 328,
+    });
+    const calls = queries[0] ?? [];
+    expect(argsOf(calls, "from")).toEqual([["search_triage"]]);
+    expect(argsOf(calls, "select")).toEqual([
+      ["candidate_id, verdict, score, score_reason", { count: "exact" }],
+    ]);
+    expect(argsOf(calls, "eq")).toEqual([
+      ["org_id", "org"],
+      ["search_id", "search"],
+    ]);
+    expect(argsOf(calls, "in")).toEqual([["verdict", ["yes", "close"]]]);
+    expect(argsOf(calls, "not")).toEqual([
+      ["score", "is", null],
+      ["candidate_id", "in", "(in-results,other)"],
+    ]);
+    expect(argsOf(calls, "order")).toEqual([
+      ["score", { ascending: false }],
+      ["candidate_id", { ascending: true }],
+    ]);
+    expect(argsOf(calls, "range")).toEqual([[0, 49]]);
+  });
+
+  it("reads the next page by offset, without counting again, and names nothing to leave out when the results are empty", async () => {
+    const { supabase, queries } = fakeSupabase(() => ({
+      data: [{ candidate_id: "c9", verdict: "close", score: 51, score_reason: "Voisin." }],
+      error: null,
+      count: null,
+    }));
+    expect(
+      await listScreened(supabase, "org", "search", { exclude: [], from: 50, limit: 50 }),
+    ).toEqual({
+      rows: [{ candidateId: "c9", verdict: "close", score: 51, reason: "Voisin." }],
+      fetched: 1,
+      total: null,
+    });
+    const calls = queries[0] ?? [];
+    expect(argsOf(calls, "select")).toEqual([
+      ["candidate_id, verdict, score, score_reason", undefined],
+    ]);
+    expect(argsOf(calls, "not")).toEqual([["score", "is", null]]);
+    expect(argsOf(calls, "range")).toEqual([[50, 99]]);
+  });
+
+  it("names a hundred ids at most in the query and leaves the rest out here", async () => {
+    const exclude = Array.from({ length: 130 }, (_, index) => `x${index}`);
+    const { supabase, queries } = fakeSupabase(() => ({
+      data: [
+        { candidate_id: "x129", verdict: "yes", score: 90, score_reason: null },
+        { candidate_id: "kept", verdict: "yes", score: 70, score_reason: null },
+      ],
+      error: null,
+      count: 2,
+    }));
+    const page = await listScreened(supabase, "org", "search", { exclude, from: 0, limit: 50 });
+    expect(page.rows.map((row) => row.candidateId)).toEqual(["kept"]);
+    expect(page.fetched).toBe(2);
+    const named = argsOf(queries[0] ?? [], "not")[1]?.[2];
+    expect(typeof named === "string" ? named.split(",").length : 0).toBe(100);
+  });
+
+  it("throws an error", async () => {
+    const { supabase } = fakeSupabase(() => ({
+      data: null,
+      error: { code: "42501", message: "permission denied" },
+    }));
+    await expect(
+      listScreened(supabase, "org", "search", { exclude: [], from: 0, limit: 50 }),
+    ).rejects.toEqual({ code: "42501", message: "permission denied" });
+  });
+});
+
 describe("readTriageProgress", () => {
-  it("counts the profiles still to read and the ones kept, no row travelling", async () => {
+  it("counts the profiles still to read and the ones kept (yes, close), no row travelling", async () => {
     const { supabase, queries } = fakeSupabase((calls) => ({
       data: null,
       error: null,
@@ -245,30 +362,12 @@ describe("readTriageProgress", () => {
       ["candidate_id", { head: true, count: "exact" }],
     ]);
     expect(argsOf(pending ?? [], "is")).toEqual([["verdict", null]]);
-    expect(argsOf(kept ?? [], "in")).toEqual([["verdict", ["yes", "close", "unknown"]]]);
-  });
-});
-
-describe("countOutsideSnapshot", () => {
-  it("counts the active candidates the snapshot lacks with an anti-join", async () => {
-    const { supabase, queries } = fakeSupabase(() => ({ data: null, error: null, count: 7 }));
-    expect(await countOutsideSnapshot(supabase, "org", "search")).toBe(7);
-    const calls = queries[0] ?? [];
-    expect(argsOf(calls, "from")).toEqual([["candidates"]]);
-    expect(argsOf(calls, "select")).toEqual([
-      ["id, search_triage()", { head: true, count: "exact" }],
-    ]);
-    expect(argsOf(calls, "eq")).toEqual([
-      ["org_id", "org"],
-      ["status", "active"],
-      ["search_triage.search_id", "search"],
-    ]);
-    expect(argsOf(calls, "is")).toEqual([["search_triage", null]]);
+    expect(argsOf(kept ?? [], "in")).toEqual([["verdict", ["yes", "close"]]]);
   });
 });
 
 describe("readLatestAnalyses", () => {
-  it("keeps the newest analysis of each brief and reads the triage's counts of a whole-pool one read through", async () => {
+  it("keeps the newest analysis of each brief with where its job stands, reading nothing else", async () => {
     const summary = (id: string, brief: string, at: string, extra: Record<string, unknown>) => ({
       id,
       brief_id: brief,
@@ -279,36 +378,44 @@ describe("readLatestAnalyses", () => {
       near_count: 0,
       ...extra,
     });
-    const { supabase, queries } = fakeSupabase((calls) => {
-      if (argsOf(calls, "from")[0]?.[0] === "searches")
-        return {
-          data: [
-            summary("s1", "b1", "2026-10-14T10:00:00Z", { method: "triage" }),
-            summary("s0", "b1", "2026-10-13T10:00:00Z", { method: "hybrid" }),
-            summary("s2", "b2", "2026-10-14T09:00:00Z", {
-              method: "triage",
-              result_count: 8,
-              assessed_count: 3,
-            }),
-            summary("s3", "b3", "2026-10-14T08:00:00Z", { method: "hybrid", result_count: 5 }),
-          ],
-          error: null,
-        };
-      // The triage of s1 kept nobody and has nothing left to read.
-      return { data: null, error: null, count: 0 };
-    });
+    const { supabase, queries } = fakeSupabase(() => ({
+      data: [
+        summary("s1", "b1", "2026-10-14T10:00:00Z", { method: "triage", status: "running" }),
+        summary("s0", "b1", "2026-10-13T10:00:00Z", { method: "hybrid" }),
+        summary("s2", "b2", "2026-10-14T09:00:00Z", {
+          method: "triage",
+          status: "done",
+          result_count: 30,
+          assessed_count: 29,
+        }),
+        summary("s3", "b3", "2026-10-14T08:00:00Z", { method: "hybrid", result_count: 5 }),
+      ],
+      error: null,
+    }));
     const latest = await readLatestAnalyses(supabase, "org", ["b1", "b2", "b3"]);
-    expect(latest.get("b1")).toMatchObject({ searchId: "s1", triagePending: 0, kept: 0 });
-    // Results still to read: the card is unfinished whatever the triage says, no count is read.
-    expect(latest.get("b2")).toMatchObject({ searchId: "s2", triagePending: null, kept: null });
-    expect(latest.get("b3")).toMatchObject({ searchId: "s3", triagePending: null, kept: null });
-    const counted = queries.filter((calls) => argsOf(calls, "from")[0]?.[0] === "search_triage");
-    expect(counted).toHaveLength(2);
-    for (const calls of counted)
-      expect(argsOf(calls, "eq")).toEqual([
-        ["org_id", "org"],
-        ["search_id", "s1"],
-      ]);
+    expect(latest.get("b1")).toMatchObject({
+      searchId: "s1",
+      status: "running",
+      triagePending: null,
+      kept: null,
+    });
+    expect(latest.get("b2")).toMatchObject({
+      searchId: "s2",
+      status: "done",
+      total: 30,
+      assessed: 29,
+    });
+    expect(latest.get("b3")).toMatchObject({ searchId: "s3", status: "done" });
+    expect(queries).toHaveLength(1);
+    const calls = queries[0] ?? [];
+    expect(argsOf(calls, "from")).toEqual([["searches"]]);
+    expect(argsOf(calls, "in")).toEqual([["brief_id", ["b1", "b2", "b3"]]]);
+  });
+
+  it("reads nothing for no brief", async () => {
+    const { supabase, queries } = fakeSupabase(() => ({ data: [], error: null }));
+    expect((await readLatestAnalyses(supabase, "org", [])).size).toBe(0);
+    expect(queries).toEqual([]);
   });
 });
 

@@ -3,7 +3,7 @@
  * slim sticky header carries the title, the status when it is not
  * simply open, when it changed, the one filled action ("Lancer
  * l'analyse", then "Relancer"; held while one runs, and outline while
- * the band or the board carries the primary: Reprendre, Analyser,
+ * the band or the board carries the primary: Reprendre, Relancer,
  * Partager) and a menu (close or reopen the brief, delete it for
  * administrators), with the way to the team's thread on a phone. Under
  * it, the brief folded to three lines with the way to edit it, then two
@@ -298,9 +298,8 @@ function BriefView({
     : analysis.view || analysis.latest
       ? t("briefs.search.rerun")
       : t("briefs.search.run");
-  // One filled button per view: outline while the band offers Reprendre or Analyser, or the board its Partager.
-  const runVariant =
-    tab === "shortlist" || analysis.canResume || analysis.canAnalyseNew ? "outline" : "primary";
+  // One filled button per view: outline while the band offers Reprendre or Relancer, or the board its Partager.
+  const runVariant = tab === "shortlist" || analysis.canResume ? "outline" : "primary";
 
   return (
     <div>

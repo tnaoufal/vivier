@@ -20,7 +20,10 @@ function processorBase(): { url: string; secret: string } | null {
   return { url: s.processorUrl.replace(/\/+$/, ""), secret: s.processorSecret };
 }
 
-export async function pokeProcessor(documentIds: string[], fetchImpl: typeof fetch = fetch): Promise<PokeResult> {
+export async function pokeProcessor(
+  documentIds: string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<PokeResult> {
   const base = processorBase();
   if (!base || !documentIds.length) return { reached: false };
   try {
@@ -31,11 +34,17 @@ export async function pokeProcessor(documentIds: string[], fetchImpl: typeof fet
       signal: AbortSignal.timeout(8000),
     });
     if (!response.ok) {
-      console.warn("[processor]", JSON.stringify({ event: "poke_refused", status: response.status }));
+      console.warn(
+        "[processor]",
+        JSON.stringify({ event: "poke_refused", status: response.status }),
+      );
     }
     return { reached: response.ok };
   } catch (error) {
-    console.warn("[processor]", JSON.stringify({ event: "poke_failed", error: String(error).slice(0, 200) }));
+    console.warn(
+      "[processor]",
+      JSON.stringify({ event: "poke_failed", error: String(error).slice(0, 200) }),
+    );
     return { reached: false };
   }
 }
@@ -69,7 +78,11 @@ export async function pokeAnalysis(
   } catch (error) {
     console.warn(
       "[processor]",
-      JSON.stringify({ event: "analysis_poke_failed", searchId, error: String(error).slice(0, 200) }),
+      JSON.stringify({
+        event: "analysis_poke_failed",
+        searchId,
+        error: String(error).slice(0, 200),
+      }),
     );
     return { reached: false };
   }
