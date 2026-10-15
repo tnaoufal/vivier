@@ -29,11 +29,10 @@ import appCss from "../styles.css?url";
 /*
  * The browser chrome's colour (the address bar on a phone) follows the
  * app's theme, not the OS: the two are the page background of each theme
- * (`--background` in styles.css, in hex because the meta takes no oklch:
- * oklch 0.985 0.003 100 and oklch 0.155 0.008 160 converted to sRGB; change
- * them together).
+ * (`--background` in styles.css: the paper, and the ink; change them
+ * together).
  */
-const THEME_COLOR = { light: "#fafaf8", dark: "#090d0b" } as const;
+const THEME_COLOR = { light: "#ffffff", dark: "#0a0a0a" } as const;
 
 /*
  * Light is the default; a saved dark preference applies before CSS
@@ -48,9 +47,7 @@ const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('${THEME_S
 function ThemeColor() {
   const { theme } = useTheme();
   useEffect(() => {
-    document
-      .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", THEME_COLOR[theme]);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLOR[theme]);
   }, [theme]);
   return null;
 }
@@ -61,7 +58,7 @@ function NotFoundComponent() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="rise-in w-full max-w-md text-center">
         <BrandMark size="md" className="mb-10 justify-center" />
-        <p className="font-display text-6xl text-primary tabular-nums">404</p>
+        <p className="font-display text-6xl text-ink tabular-nums">404</p>
         <h1 className="mt-4 font-display text-2xl text-ink">{t("common.notFound")}</h1>
         <div className="mt-8">
           <Button asChild>

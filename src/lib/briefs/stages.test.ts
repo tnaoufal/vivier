@@ -213,7 +213,7 @@ describe("runPool", () => {
     expect(started).toEqual(items);
     expect(most).toBe(3);
     expect(outcome).toEqual({ done: items, failed: [], stopped: false });
-    expect(READ_CONCURRENCY).toBe(2);
+    expect(READ_CONCURRENCY).toBe(3);
   });
 
   it("stops starting new items once asked to, and lets the ones in flight finish", async () => {

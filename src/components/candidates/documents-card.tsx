@@ -1,14 +1,15 @@
 /**
- * The CVs behind a profile, in the aside: each with its name, what is
- * known of it (size, date, pages, how it was structured), its status
- * pill (which says a set-aside file or a quota wait on its own) and the
- * service's sentence when it failed, a "Read" button that opens the
- * viewer in place, a retry for a
+ * The CVs behind a profile: each with its name, what is known of it
+ * (size, date, pages, how it was structured), a status pill only when
+ * it is not simply processed (queued, in progress, failed, unreadable,
+ * set aside or waiting for the quota: the pill says it on its own), the
+ * service's sentence when it failed (an icon and the words, never a
+ * hue), a "Lire" button that opens the viewer in place, a retry for a
  * failed, unreadable or set-aside one (a person may disagree with the
  * service's reading), and a button to add another CV to this profile.
  */
 import { useState } from "react";
-import { FileSearch, FileText, RefreshCw, Upload } from "lucide-react";
+import { CircleAlert, FileSearch, FileText, RefreshCw, Upload } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { Pill } from "@/components/app-shell/pill";
@@ -23,7 +24,9 @@ import { UploadDialog, type UploadTargetCandidate } from "./upload-dialog";
 
 /** A real failure: the service's sentence says why, on a line of its own. A quota wait or a set-aside file is said by its pill. */
 function hasNote(document: DocumentRow): boolean {
-  return (document.status === "failed" || document.status === "needs_ocr") && !isQuotaFailure(document);
+  return (
+    (document.status === "failed" || document.status === "needs_ocr") && !isQuotaFailure(document)
+  );
 }
 
 export function DocumentsCard({
@@ -51,7 +54,8 @@ export function DocumentsCard({
   ) : null;
 
   /** The line under a failed document: the service's own sentence (the stored one stays for the audit). */
-  const note = (document: DocumentRow): string => document.error?.trim() || t("candidates.documents.noError");
+  const note = (document: DocumentRow): string =>
+    document.error?.trim() || t("candidates.documents.noError");
 
   const details = (document: DocumentRow): string =>
     [
@@ -62,7 +66,9 @@ export function DocumentsCard({
           ? t("candidates.documents.pages.one")
           : t("candidates.documents.pages.many", { count: document.page_count }),
       formatDate(locale, document.created_at),
-      document.structuring_method ? t(`candidates.documents.method.${document.structuring_method}`) : null,
+      document.structuring_method
+        ? t(`candidates.documents.method.${document.structuring_method}`)
+        : null,
     ]
       .filter((part): part is string => typeof part === "string" && part.length > 0)
       .join(" · ");
@@ -73,7 +79,9 @@ export function DocumentsCard({
         <h2 className="text-base font-semibold text-ink">
           {t("candidates.documents.title")}
           {documents.length > 1 ? (
-            <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">{documents.length}</span>
+            <span className="ml-2 text-sm font-normal text-muted-foreground tabular-nums">
+              {documents.length}
+            </span>
           ) : null}
         </h2>
         {documents.length ? addButton : null}
@@ -85,27 +93,38 @@ export function DocumentsCard({
               key={document.id}
               className="rise-in flex items-start gap-3 py-4 first:pt-0 last:pb-0"
             >
-              <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                <FileText className="size-4" aria-hidden="true" />
-              </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{document.file_name}</span>
-                  {/* A quota refusal is a wait, not a failure: it reads as one. */}
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+                    {document.file_name}
+                  </span>
+                  {/* A quota refusal is a wait, not a failure: it reads as one. A processed document is the normal case and wears no pill. */}
                   {isQuotaFailure(document) ? (
                     <Pill size="sm" tone="caution" dot>
                       {t("candidates.documents.status.quota")}
                     </Pill>
-                  ) : (
+                  ) : document.status !== "processed" ? (
                     <Pill size="sm" tone={documentTone(document.status)} dot>
                       {t(documentStatusKey(document.status))}
                     </Pill>
-                  )}
+                  ) : null}
                 </div>
-                <p className="mt-0.5 text-meta text-muted-foreground tabular-nums">{details(document)}</p>
-                {hasNote(document) ? <p className="mt-1 text-meta text-negative">{note(document)}</p> : null}
+                <p className="mt-0.5 text-meta text-muted-foreground tabular-nums">
+                  {details(document)}
+                </p>
+                {hasNote(document) ? (
+                  <p className="mt-1 flex items-start gap-1.5 text-meta text-ink">
+                    <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                    <span className="min-w-0">{note(document)}</span>
+                  </p>
+                ) : null}
                 <div className="mt-2.5 flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" icon={<FileSearch />} onClick={() => onRead(document)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    icon={<FileSearch />}
+                    onClick={() => onRead(document)}
+                  >
                     {t("candidates.documents.read")}
                   </Button>
                   {canEdit && canRetry(document.status) ? (

@@ -8,17 +8,19 @@
  * a missed poke is quiet (the service polls its queue). The dialog
  * shows the overall progress, four counters (the summary: no sentence
  * repeats them), the current lot alone (the list never holds 10 000
- * rows) and, once over, the failed files with a retry. Closing is refused while a lot runs; between lots the person
- * may stop, and resume later. With a `candidate`, every new document is
- * attached to that profile so the processor merges into it. On opening,
- * the dialog reads what the month's quota has left (the CVs processed
- * this month and those already in the queue, which the service reads
- * first) and says so; files past it are still sent (the processor sets
- * them aside, waiting) and a sentence says how many, as soon as the
- * selection and the quota are both known.
+ * rows) and, once over, the failed files with a retry. Closing is
+ * refused while a lot runs; between lots the person may stop, and
+ * resume later. With a `candidate`, every new document is attached to
+ * that profile so the processor merges into it. On opening, the dialog
+ * reads what the month's quota has left (the CVs processed this month
+ * and those already in the queue, which the service reads first) and
+ * says it as a figure under the title; files past it are still sent
+ * (the processor sets them aside, waiting) and one line says how many,
+ * as soon as the selection and the quota are both known. One filled
+ * button at a time: resume, or close once the import is done.
  */
 import { useRef, useState } from "react";
-import { ChevronDown, FileText, RefreshCw, Upload } from "lucide-react";
+import { ChevronDown, CircleAlert, FileText, RefreshCw, Upload } from "lucide-react";
 
 import { Pill, type PillTone } from "@/components/app-shell/pill";
 import { ProgressBar } from "@/components/app-shell/progress-bar";
@@ -143,7 +145,8 @@ export function UploadDialog({
   // The hook keeps the last answer while it reads again: on a second opening, nothing is said
   // from the previous one until the fresh figures are in.
   const quotaRead = !quotaUse.loading && quotaUse.data !== null ? quotaUse.data : null;
-  const room = quotaRead === null ? null : quotaRemaining(quota, quotaRead.processed, quotaRead.pending);
+  const room =
+    quotaRead === null ? null : quotaRemaining(quota, quotaRead.processed, quotaRead.pending);
   // The dispatch reads the newest items synchronously; the state only feeds the render.
   const latest = useRef<UploadItem[]>([]);
   // Read by the runner between lots; the state only changes the button's label.
@@ -157,8 +160,12 @@ export function UploadDialog({
   const summary = summarizeUpload(items);
   const refusedCount = countRefused(refused);
   const currentLot: CurrentLot | null = lot;
-  const lotItems: UploadItem[] = currentLot ? items.filter((item: UploadItem) => currentLot.ids.has(item.id)) : [];
-  const failedItems: UploadItem[] = over ? items.filter((item: UploadItem) => item.status === "failed") : [];
+  const lotItems: UploadItem[] = currentLot
+    ? items.filter((item: UploadItem) => currentLot.ids.has(item.id))
+    : [];
+  const failedItems: UploadItem[] = over
+    ? items.filter((item: UploadItem) => item.status === "failed")
+    : [];
 
   function reset() {
     latest.current = [];
@@ -187,7 +194,9 @@ export function UploadDialog({
   /** Tells the processor about a lot's documents; false when it did not answer (the queue is polled anyway). */
   async function poke(documentIds: string[]): Promise<boolean> {
     try {
-      const answer = await notifyProcessor({ data: { ...(await withToken()), orgId: org.id, documentIds } });
+      const answer = await notifyProcessor({
+        data: { ...(await withToken()), orgId: org.id, documentIds },
+      });
       return answer.reached;
     } catch (error) {
       console.warn("[upload] poke failed", error);
@@ -215,7 +224,12 @@ export function UploadDialog({
       });
       result = await runUploads(toRun, deps, dispatch, {
         onLotStart: (started, index, count) => {
-          setLot({ ids: new Set(started.map((item) => item.id)), index: index + offset, count: count + offset, mode });
+          setLot({
+            ids: new Set(started.map((item) => item.id)),
+            index: index + offset,
+            count: count + offset,
+            mode,
+          });
         },
         onLotDone: async (_finished, stored) => {
           if (mode === "import") lotsRun.current += 1;
@@ -291,7 +305,9 @@ export function UploadDialog({
       .map((group) =>
         group.count === 1
           ? t(`candidates.upload.refused.${group.reason}.one`)
-          : t(`candidates.upload.refused.${group.reason}.many`, { count: formatCount(locale, group.count) }),
+          : t(`candidates.upload.refused.${group.reason}.many`, {
+              count: formatCount(locale, group.count),
+            }),
       )
       .join(", ");
   }
@@ -304,8 +320,12 @@ export function UploadDialog({
       ? null
       : refusedCount === 1
         ? t("candidates.upload.refused.one", { reasons })
-        : t("candidates.upload.refused.many", { count: formatCount(locale, refusedCount), reasons });
-  const refusedReasonsText = reasons === null ? null : t("candidates.upload.refused.reasons", { reasons });
+        : t("candidates.upload.refused.many", {
+            count: formatCount(locale, refusedCount),
+            reasons,
+          });
+  const refusedReasonsText =
+    reasons === null ? null : t("candidates.upload.refused.reasons", { reasons });
   // The one line under the title: the file rule, then what the month has left (the queue counted)
   // or that it could not be read; the file rule alone while the quota loads.
   const metaLine = quotaUse.loading
@@ -314,7 +334,10 @@ export function UploadDialog({
       ? t("candidates.upload.quota.unknown", { quota: formatCount(locale, quota) })
       : room === null
         ? t("candidates.upload.text")
-        : t("candidates.upload.quota.line", { remaining: formatCount(locale, room), quota: formatCount(locale, quota) });
+        : t("candidates.upload.quota.line", {
+            remaining: formatCount(locale, room),
+            quota: formatCount(locale, quota),
+          });
   // How many of the chosen files are past the month's quota (an upper bound: the items are the accepted
   // files, a retry replaces its failures one for one): derived here so it appears as soon as both the
   // selection and the quota are known, whichever came first.
@@ -325,7 +348,9 @@ export function UploadDialog({
       : beyond === 1
         ? t("candidates.upload.quota.beyond.one")
         : t("candidates.upload.quota.beyond.many", { count: formatCount(locale, beyond) });
-  const title = candidate ? t("candidates.upload.titleFor", { name: candidate.name }) : t("candidates.upload.title");
+  const title = candidate
+    ? t("candidates.upload.titleFor", { name: candidate.name })
+    : t("candidates.upload.title");
   const stoppedText =
     phase !== "stopped"
       ? null
@@ -351,12 +376,7 @@ export function UploadDialog({
       >
         <DialogHeader>
           <DialogTitle className="truncate">{title}</DialogTitle>
-          <DialogDescription
-            className={cn(
-              "text-meta tabular-nums",
-              room === 0 ? "text-caution-foreground dark:text-caution" : "text-muted-foreground",
-            )}
-          >
+          <DialogDescription className="text-meta text-muted-foreground tabular-nums">
             {metaLine}
           </DialogDescription>
         </DialogHeader>
@@ -381,11 +401,11 @@ export function UploadDialog({
                 void start(Array.from(dropped));
               }}
               className={cn(
-                "flex flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed px-6 py-12 text-center transition-colors duration-fast ease-out-soft",
-                dragging ? "border-primary bg-primary/5" : "border-input",
+                "flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed px-6 py-12 text-center transition-colors duration-fast ease-out-soft",
+                dragging ? "border-ink bg-muted" : "border-input",
               )}
             >
-              <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <div className="flex size-14 items-center justify-center rounded-full bg-muted text-ink">
                 <Upload className="size-6" aria-hidden="true" />
               </div>
               <p className="text-body font-medium text-ink">{t("candidates.upload.drop")}</p>
@@ -411,7 +431,12 @@ export function UploadDialog({
             </div>
           ) : null}
 
-          {refusedText && !items.length ? <p className="text-sm text-negative">{refusedText}</p> : null}
+          {refusedText && !items.length ? (
+            <p className="flex items-start gap-2 text-sm text-ink">
+              <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0">{refusedText}</span>
+            </p>
+          ) : null}
 
           {items.length ? (
             <div className="space-y-4">
@@ -424,10 +449,15 @@ export function UploadDialog({
                 </span>
                 {currentLot ? (
                   <span className="text-sm tabular-nums text-muted-foreground">
-                    {t(currentLot.mode === "retry" ? "candidates.upload.lotRetry" : "candidates.upload.lot", {
-                      index: currentLot.index,
-                      count: currentLot.count,
-                    })}
+                    {t(
+                      currentLot.mode === "retry"
+                        ? "candidates.upload.lotRetry"
+                        : "candidates.upload.lot",
+                      {
+                        index: currentLot.index,
+                        count: currentLot.count,
+                      },
+                    )}
                   </span>
                 ) : null}
               </div>
@@ -441,33 +471,48 @@ export function UploadDialog({
               />
 
               <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Counter label={t("candidates.upload.stat.uploaded")} value={summary.uploaded} locale={locale} />
-                <Counter label={t("candidates.upload.stat.duplicate")} value={summary.duplicate} locale={locale} />
+                <Counter
+                  label={t("candidates.upload.stat.uploaded")}
+                  value={summary.uploaded}
+                  locale={locale}
+                />
+                <Counter
+                  label={t("candidates.upload.stat.duplicate")}
+                  value={summary.duplicate}
+                  locale={locale}
+                />
                 <Counter
                   label={t("candidates.upload.stat.failed")}
                   value={summary.failed}
                   locale={locale}
-                  tone={summary.failed > 0 ? "negative" : "ink"}
                 />
-                <Counter label={t("candidates.upload.stat.rejected")} value={refusedCount} locale={locale} />
+                <Counter
+                  label={t("candidates.upload.stat.rejected")}
+                  value={refusedCount}
+                  locale={locale}
+                />
               </dl>
 
-              {beyondText ? (
-                <p className="text-meta text-caution-foreground dark:text-caution">{beyondText}</p>
+              {beyondText ? <p className="text-meta text-ink tabular-nums">{beyondText}</p> : null}
+              {refusedReasonsText ? (
+                <p className="text-meta text-muted-foreground">{refusedReasonsText}</p>
               ) : null}
-              {refusedReasonsText ? <p className="text-meta text-muted-foreground">{refusedReasonsText}</p> : null}
-              {running ? <p className="text-meta text-muted-foreground">{t("candidates.upload.keepOpen")}</p> : null}
 
               {lotItems.length ? (
                 <ul className="max-h-[40vh] divide-y divide-border overflow-y-auto rounded-lg border border-border">
                   {lotItems.map((item: UploadItem) => (
                     <li key={item.id} className="flex items-center gap-3 px-4 py-2.5">
-                      <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <FileText
+                        className="size-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm text-ink">{item.file.name}</p>
                         <p className="truncate text-meta text-muted-foreground">
                           {formatBytes(item.file.size, locale)}
-                          {item.status === "failed" && item.error ? ` · ${t(`candidates.upload.error.${item.error}`)}` : ""}
+                          {item.status === "failed" && item.error
+                            ? ` · ${t(`candidates.upload.error.${item.error}`)}`
+                            : ""}
                         </p>
                       </div>
                       <Pill size="sm" dot tone={STATUS_TONE[item.status]} className="shrink-0">
@@ -501,13 +546,15 @@ export function UploadDialog({
                         )}
                         aria-hidden="true"
                       />
-                      <span className="min-w-0 truncate">
-                        {failedOpen
-                          ? t("candidates.upload.failed.hide")
-                          : t("candidates.upload.failed.show", { count: formatCount(locale, failedItems.length) })}
-                      </span>
+                      {/* One label in both states: the chevron and aria-expanded say open or closed, the counter above says how many. */}
+                      <span className="min-w-0 truncate">{t("candidates.upload.failed.show")}</span>
                     </button>
-                    <Button type="button" variant="outline" icon={<RefreshCw />} onClick={() => void retry()}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      icon={<RefreshCw />}
+                      onClick={() => void retry()}
+                    >
                       {t("candidates.upload.retryFailed")}
                     </Button>
                   </div>
@@ -515,11 +562,16 @@ export function UploadDialog({
                     <ul className="max-h-[30vh] divide-y divide-border overflow-y-auto border-t border-border">
                       {failedItems.map((item: UploadItem) => (
                         <li key={item.id} className="flex items-center gap-3 px-4 py-2.5">
-                          <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                          <FileText
+                            className="size-4 shrink-0 text-muted-foreground"
+                            aria-hidden="true"
+                          />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm text-ink">{item.file.name}</p>
-                            <p className="truncate text-meta text-negative">
-                              {item.error ? t(`candidates.upload.error.${item.error}`) : t("candidates.upload.status.failed")}
+                            <p className="truncate text-meta text-muted-foreground">
+                              {item.error
+                                ? t(`candidates.upload.error.${item.error}`)
+                                : t("candidates.upload.status.failed")}
                             </p>
                           </div>
                         </li>
@@ -535,7 +587,9 @@ export function UploadDialog({
         <DialogFooter>
           {running ? (
             <Button type="button" variant="outline" onClick={requestStop} disabled={stopRequested}>
-              {stopRequested ? t("candidates.upload.stopping") : t("candidates.upload.stopAfterLot")}
+              {stopRequested
+                ? t("candidates.upload.stopping")
+                : t("candidates.upload.stopAfterLot")}
             </Button>
           ) : null}
           {over ? (
@@ -573,22 +627,12 @@ function countRefused(groups: readonly RejectedGroup[]): number {
   return groups.reduce((sum, group) => sum + group.count, 0);
 }
 
-/** One of the four counters: a label and a tabular number; the negative tone only when something failed. */
-function Counter({
-  label,
-  value,
-  locale,
-  tone = "ink",
-}: {
-  label: string;
-  value: number;
-  locale: Locale;
-  tone?: "ink" | "negative";
-}) {
+/** One of the four counters: a label and a tabular number in the ink; the label says which is which. */
+function Counter({ label, value, locale }: { label: string; value: number; locale: Locale }) {
   return (
     <div className="min-w-0 rounded-lg border border-border px-4 py-3">
       <dt className="label-caps">{label}</dt>
-      <dd className={cn("mt-0.5 font-display text-xl tabular-nums", tone === "negative" ? "text-negative" : "text-ink")}>
+      <dd className="mt-0.5 font-display text-xl text-ink tabular-nums">
         {formatCount(locale, value)}
       </dd>
     </div>

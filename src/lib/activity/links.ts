@@ -6,9 +6,10 @@
  */
 
 export const CANDIDATES_PATH: string = "/app/candidates";
+/** The pool's page with its import dialog opened on arrival (the page reads `import=1` once and drops it). */
+export const CANDIDATES_IMPORT_HREF: string = "/app/candidates?import=1";
 export const BRIEFS_PATH: string = "/app/briefs";
 export const NEW_BRIEF_PATH: string = "/app/briefs/new";
-export const SHORTLISTS_PATH: string = "/app/shortlists";
 
 export function briefPath(briefId: string): string {
   return `/app/briefs/${encodeURIComponent(briefId)}`;

@@ -45,7 +45,9 @@ export function resendSender(input: {
         body: JSON.stringify({
           from: input.from,
           to: [message.to],
-          ...(message.replyTo || input.replyTo ? { reply_to: message.replyTo ?? input.replyTo } : {}),
+          ...(message.replyTo || input.replyTo
+            ? { reply_to: message.replyTo ?? input.replyTo }
+            : {}),
           subject: message.subject,
           html: message.html,
           text: message.text,
@@ -70,7 +72,11 @@ export function emailSetup(): EmailSetup {
   const siteUrl = siteOriginOf(s.siteUrl);
   if (!s.resend.apiKey || !siteUrl) throw new AppError("SETUP:email");
   return {
-    sender: resendSender({ apiKey: s.resend.apiKey, from: s.resend.from ?? BRAND.emailFrom, replyTo: s.resend.replyTo }),
+    sender: resendSender({
+      apiKey: s.resend.apiKey,
+      from: s.resend.from ?? BRAND.emailFrom,
+      replyTo: s.resend.replyTo,
+    }),
     siteUrl,
   };
 }
@@ -125,8 +131,13 @@ export async function sendRecorded(setup: EmailSetup, input: SendInput): Promise
     return sent ?? { ...row, status: "sent" };
   } catch (error) {
     const reason = error instanceof Error ? error.message.slice(0, 200) : "send failed";
-    await client.patch("email_sends", { id: row.id }, { status: "failed", error: reason }).catch(() => undefined);
-    console.error("[email]", JSON.stringify({ event: "send_failed", id: row.id, kind: input.kind, error: reason }));
+    await client
+      .patch("email_sends", { id: row.id }, { status: "failed", error: reason })
+      .catch(() => undefined);
+    console.error(
+      "[email]",
+      JSON.stringify({ event: "send_failed", id: row.id, kind: input.kind, error: reason }),
+    );
     throw new Error("EMAIL:failed");
   }
 }
@@ -142,9 +153,10 @@ export function escapeHtml(value: string): string {
 }
 
 /**
- * The one email layout: a white card, the product name, a title, the
- * paragraphs, one button. Inline styles only (email clients). `paragraphs`
- * are plain text, escaped here.
+ * The one email layout: a white card on grey 100, the product name, a
+ * title, the paragraphs, one button, all the ink on paper (the button
+ * the ink filled, paper text; the secondary lines grey 500). Inline
+ * styles only (email clients). `paragraphs` are plain text, escaped here.
  */
 export function emailLayout(input: {
   title: string;
@@ -153,12 +165,22 @@ export function emailLayout(input: {
   footer: string;
 }): { html: string; text: string } {
   const paragraphsHtml = input.paragraphs
-    .map((p) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#1f2a24">${escapeHtml(p)}</p>`)
+    .map(
+      (p) =>
+        `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#0a0a0a">${escapeHtml(p)}</p>`,
+    )
     .join("");
   const buttonHtml = input.button
-    ? `<p style="margin:22px 0 6px"><a href="${escapeHtml(input.button.url)}" style="display:inline-block;background:#2f7a5b;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:999px">${escapeHtml(input.button.label)}</a></p><p style="margin:0 0 14px;font-size:12px;color:#6b7470;word-break:break-all">${escapeHtml(input.button.url)}</p>`
+    ? `<p style="margin:22px 0 6px"><a href="${escapeHtml(input.button.url)}" style="display:inline-block;background:#0a0a0a;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:999px">${escapeHtml(input.button.label)}</a></p><p style="margin:0 0 14px;font-size:12px;color:#6f6f6f;word-break:break-all">${escapeHtml(input.button.url)}</p>`
     : "";
-  const html = `<!doctype html><html><body style="margin:0;background:#f4f7f5;padding:28px 12px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center"><table role="presentation" width="560" style="max-width:560px;width:100%;background:#ffffff;border:1px solid #e3e9e5;border-radius:16px" cellspacing="0" cellpadding="0"><tr><td style="padding:28px 32px"><p style="margin:0 0 18px;font-size:13px;font-weight:700;letter-spacing:.02em;color:#2f7a5b">${escapeHtml(BRAND.name)}</p><h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;color:#141c17">${escapeHtml(input.title)}</h1>${paragraphsHtml}${buttonHtml}<p style="margin:22px 0 0;font-size:12px;line-height:1.5;color:#6b7470">${escapeHtml(input.footer)}</p></td></tr></table></td></tr></table></body></html>`;
-  const text = [input.title, "", ...input.paragraphs, ...(input.button ? ["", `${input.button.label}: ${input.button.url}`] : []), "", input.footer].join("\n");
+  const html = `<!doctype html><html><body style="margin:0;background:#f4f4f4;padding:28px 12px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center"><table role="presentation" width="560" style="max-width:560px;width:100%;background:#ffffff;border:1px solid #e6e6e6;border-radius:16px" cellspacing="0" cellpadding="0"><tr><td style="padding:28px 32px"><p style="margin:0 0 18px;font-size:13px;font-weight:700;letter-spacing:.02em;color:#0a0a0a">${escapeHtml(BRAND.name)}</p><h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;color:#0a0a0a">${escapeHtml(input.title)}</h1>${paragraphsHtml}${buttonHtml}<p style="margin:22px 0 0;font-size:12px;line-height:1.5;color:#6f6f6f">${escapeHtml(input.footer)}</p></td></tr></table></td></tr></table></body></html>`;
+  const text = [
+    input.title,
+    "",
+    ...input.paragraphs,
+    ...(input.button ? ["", `${input.button.label}: ${input.button.url}`] : []),
+    "",
+    input.footer,
+  ].join("\n");
   return { html, text };
 }

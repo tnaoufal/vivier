@@ -17,7 +17,7 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
   return (
     <PublicFrame width="md">
       <article className="rise-in">
-        <PageHeader eyebrow={BRAND.name} title={page.title} description={page.lead} />
+        <PageHeader eyebrow={BRAND.name} title={page.title} />
         <nav className="sheet p-6" aria-label={t("legal.contents")}>
           <p className="label-caps">{t("legal.contents")}</p>
           <ol className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
@@ -25,7 +25,7 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
               <li key={section.h}>
                 <a
                   href={`#section-${index + 1}`}
-                  className="inline-flex gap-2 rounded-sm py-0.5 text-ink hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="inline-flex gap-2 rounded-sm py-0.5 text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="text-muted-foreground tabular-nums">{index + 1}.</span>
                   <span>{section.h}</span>

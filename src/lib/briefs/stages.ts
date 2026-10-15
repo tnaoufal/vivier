@@ -48,8 +48,8 @@ export const ANALYSIS_STEPS: readonly AnalysisStep[] = [
 /** The most candidates one second-opinion call takes. */
 export const CHALLENGE_BATCH_MAX = 6;
 
-/** How many reading calls the browser keeps in flight at once: their write-backs merge entry by entry, so two batches add up. */
-export const READ_CONCURRENCY = 2;
+/** How many reading calls the browser keeps in flight at once: their write-backs merge entry by entry (merge_search_results), so three batches add up. */
+export const READ_CONCURRENCY = 3;
 
 /** The ids of the results no model read yet, not settled. */
 export function pendingReads(results: readonly MatchResult[], skip: ReadonlySet<string>): string[] {

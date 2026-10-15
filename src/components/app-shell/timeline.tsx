@@ -1,8 +1,9 @@
 /**
  * A vertical timeline, for the experiences of a candidate: a rail with a
  * dot per item, the dates on the left from `sm` (above the content on a
- * phone), the content on the right. The current position has a filled
- * dot. Items rise in one after the other.
+ * phone), the content on the right. Every dot is an ink outline on the
+ * card; the current position is filled with the ink. Items rise in one
+ * after the other.
  */
 import type { ReactNode } from "react";
 
@@ -48,8 +49,8 @@ export function TimelineItem({
         <span
           aria-hidden="true"
           className={cn(
-            "size-2.5 shrink-0 rounded-full border-2 border-primary",
-            current ? "bg-primary ring-4 ring-primary/15" : "bg-card",
+            "size-2.5 shrink-0 rounded-full border-2 border-ink",
+            current ? "bg-ink" : "bg-card",
           )}
         />
       </span>

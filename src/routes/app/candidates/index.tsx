@@ -1,25 +1,26 @@
 /**
- * /app/candidates: the talent pool. One toolbar that wraps (a debounced
- * search over the name, the headline and the location; a segmented
- * control for active and archived; a sort in a select, so it does not
- * read as a third option; quick filters on the location, the years and
- * one skill, folded behind a chip until used; tag chips from the loaded
- * page), fifty rows a page in a sheet that rise in once, and the two
- * ways in: a batch of CVs or a candidate typed by hand (the import is
- * the one filled button, in the header while the pool holds rows and in
- * the empty state before). A banner above the list follows the documents
- * the service is reading (the set-aside counts and the wave's progress),
- * live through realtime on documents, and every fifteen seconds while
+ * /app/candidates: the talent pool. The header carries the pool's one
+ * figure (the profiles, and the CVs being read while a wave runs) and
+ * the one filled action, the import; a person typed in by hand waits in
+ * the header's menu and in the empty state. One toolbar: a search over
+ * the name, the headline and the location (debounced), a sort, and a
+ * "Filtrer" button that opens the filters in a popover (the location,
+ * the years, a skill, a tag when the page holds some, and whether the
+ * archived profiles are listed too), its count on the button. Then
+ * fifty rows a page in a sheet, 64px each, rising in once. A banner
+ * above the list follows the documents the service is reading (the
+ * wave's progress, what waits for the month's quota, what failed), live
+ * through realtime on documents and every fifteen seconds while
  * something is pending (the list too: a dense burst of events keeps the
- * debounce from firing) so the rate and the estimate move even between
- * two events. The page keeps the start of the wave it follows between
- * two reads, so the bar never steps back as the queue's earliest
- * document moves on, and the end of the wave is counted from it.
+ * debounce from firing), and keeps the start of the wave it follows
+ * between two reads so the bar never steps back. The page accepts
+ * `?import=1` (the dashboard's "Importer des CV"): the import dialog
+ * opens once for a member and the param is dropped.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
-  MapPin,
+  Ellipsis,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -31,14 +32,22 @@ import {
 } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
-import { FilterChip } from "@/components/app-shell/filter-chip";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { CandidateRow } from "@/components/candidates/candidate-row";
 import { ManualCandidateDialog } from "@/components/candidates/manual-candidate-dialog";
 import { ProcessingBanner } from "@/components/candidates/processing-banner";
 import { UploadDialog } from "@/components/candidates/upload-dialog";
+import { Switch } from "@/components/team/switch";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -47,9 +56,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SkeletonRows } from "@/components/ui/skeleton";
-import { Segmented } from "@/components/ui/tabs";
 import { requireSupabase } from "@/lib/auth/supabase-client";
-import { distinctSkills, distinctTags, parseYearsMin } from "@/lib/candidates/format";
+import { distinctSkills, distinctTags, formatCount, parseYearsMin } from "@/lib/candidates/format";
 import {
   CANDIDATE_SORTS,
   EMPTY_FILTERS,
@@ -63,50 +71,67 @@ import {
 } from "@/lib/candidates/queries";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
-import type { CandidateStatus } from "@/lib/db/types";
-import { useT } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n";
 import { useCurrentOrg, useOrg } from "@/lib/org/org-context";
 
 export const Route = createFileRoute("/app/candidates/")({
+  // `?import=1` opens the import dialog once (the dashboard's button); the router parses
+  // the value as a number, a link written by hand may carry a string: both are accepted.
+  validateSearch: (search: Record<string, unknown>): { import?: true } =>
+    search["import"] === 1 || search["import"] === "1" || search["import"] === true
+      ? { import: true }
+      : {},
   component: CandidatesPage,
 });
 
 const SEARCH_DEBOUNCE_MS = 300;
-const SKELETON_ROWS = 5;
+const SKELETON_ROWS = 6;
 /** While something is pending, the wave is read again this often: the rate and the estimate follow the clock. */
 const PROGRESS_INTERVAL_MS = 15_000;
 
-/** The quick filters as typed, before the debounce turns them into a query. */
+/** The typed filters, before the debounce turns them into a query; the archived switch applies at once. */
 interface FilterText {
   location: string;
   years: string;
   skill: string;
+  tag: string;
 }
 
-const EMPTY_TEXT: FilterText = { location: "", years: "", skill: "" };
+const EMPTY_TEXT: FilterText = { location: "", years: "", skill: "", tag: "" };
 
-function toFilters(text: FilterText): CandidateListFilters {
+/** What a popover field may add to its input: the digits keyboard, a shorter length, a datalist. */
+interface FilterFieldExtra {
+  inputMode?: "numeric";
+  maxLength?: number;
+  className?: string;
+  list?: string;
+}
+
+function toFilters(text: FilterText, archived: boolean): CandidateListFilters {
   return {
     location: text.location.trim(),
     yearsMin: parseYearsMin(text.years),
     skill: text.skill.trim(),
+    tag: text.tag.trim(),
+    archived,
   };
 }
 
 function CandidatesPage() {
-  const t = useT();
+  const { t, locale } = useI18n();
   const { org } = useCurrentOrg();
   const { can, showPhotos } = useOrg();
+  const { import: importParam } = Route.useSearch();
   const navigate = useNavigate();
   const canEdit = can("member");
+  const ids = useId();
 
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<CandidateStatus>("active");
   const [sort, setSort] = useState<CandidateSort>("recent");
-  const [tag, setTag] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filterText, setFilterText] = useState<FilterText>(EMPTY_TEXT);
+  const [archived, setArchived] = useState(false);
   const [filters, setFilters] = useState<CandidateListFilters>(EMPTY_FILTERS);
   const [page, setPage] = useState(0);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -118,27 +143,26 @@ function CandidatesPage() {
   }, [text]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setFilters(toFilters(filterText)), SEARCH_DEBOUNCE_MS);
+    const timer = setTimeout(() => setFilters(toFilters(filterText, archived)), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [filterText]);
+  }, [filterText, archived]);
 
-  const filterKey = `${filters.location}|${filters.yearsMin ?? ""}|${filters.skill}`;
+  // The dashboard's way in: the dialog opens once, then the address reads as the plain page.
+  const importHandled = useRef(false);
+  useEffect(() => {
+    if (!importParam || importHandled.current) return;
+    importHandled.current = true;
+    if (canEdit) setUploadOpen(true);
+    void navigate({ to: "/app/candidates", search: {}, replace: true });
+  }, [importParam, canEdit, navigate]);
+
+  const filterKey = `${filters.location}|${filters.yearsMin ?? ""}|${filters.skill}|${filters.tag}|${filters.archived ? 1 : 0}`;
   useEffect(() => {
     setPage(0);
-  }, [query, status, tag, sort, filterKey]);
+  }, [query, sort, filterKey]);
 
-  const list = useQuery(
-    `candidates:${org.id}:${status}:${query}:${tag ?? ""}:${sort}:${filterKey}:${page}`,
-    async () =>
-      listCandidates(await requireSupabase(), {
-        orgId: org.id,
-        status,
-        text: query,
-        tag,
-        page,
-        sort,
-        filters,
-      }),
+  const list = useQuery(`candidates:${org.id}:${query}:${sort}:${filterKey}:${page}`, async () =>
+    listCandidates(await requireSupabase(), { orgId: org.id, text: query, page, sort, filters }),
   );
   const counts = useQuery(`processing:${org.id}`, async () =>
     readProcessingCounts(await requireSupabase(), org.id),
@@ -170,7 +194,8 @@ function CandidatesPage() {
 
   // The throughput is a window on the clock: between two events it moves on its own. Keyed on
   // whether something is pending, not on how much, so the clock is steady across refreshes.
-  const reading = (wave.data?.pending ?? 0) > 0;
+  const pending = wave.data?.pending ?? 0;
+  const reading = pending > 0;
   useEffect(() => {
     if (!reading) return;
     const timer = setInterval(() => {
@@ -189,20 +214,25 @@ function CandidatesPage() {
   const rows = list.data?.rows ?? [];
   const total = list.data?.total ?? 0;
   const pageCount = list.data?.pageCount ?? 1;
+  // The suggestions come from the page on screen; a tag or a skill typed stays suggested while it filters.
   const tags = useMemo(() => {
     const onPage = distinctTags(rows);
-    return tag && !onPage.includes(tag) ? [tag, ...onPage] : onPage;
-  }, [rows, tag]);
+    const chosen = filters.tag;
+    return chosen && !onPage.includes(chosen) ? [chosen, ...onPage] : onPage;
+  }, [rows, filters.tag]);
   const skillOptions = useMemo(() => distinctSkills(rows), [rows]);
   const activeFilters = activeFilterCount(filters);
-  const filtered = query.length > 0 || tag !== null || activeFilters > 0;
-  const showFilters = filtersOpen || activeFilters > 0;
+  const filtered = query.length > 0 || activeFilters > 0;
+
+  function clearFilters() {
+    setFilterText(EMPTY_TEXT);
+    setArchived(false);
+    setFilters(EMPTY_FILTERS);
+  }
 
   function clearAll() {
     setText("");
-    setTag(null);
-    setFilterText(EMPTY_TEXT);
-    setFilters(EMPTY_FILTERS);
+    clearFilters();
   }
 
   const countText =
@@ -212,44 +242,80 @@ function CandidatesPage() {
         ? t("candidates.count.none")
         : total === 1
           ? t("candidates.count.one")
-          : t("candidates.count.many", { count: total });
+          : t("candidates.count.many", { count: formatCount(locale, total) });
+  const pendingText =
+    pending === 1
+      ? t("candidates.processing.pending.one")
+      : t("candidates.processing.pending.many", { count: formatCount(locale, pending) });
 
   const importButton = canEdit ? (
     <Button type="button" icon={<Upload />} onClick={() => setUploadOpen(true)}>
       {t("candidates.import")}
     </Button>
   ) : null;
-  // The same condition as the plain empty state below: it carries the one filled button then,
-  // and the header keeps it the rest of the time, so a view never shows two.
-  const poolEmpty =
-    !list.error &&
-    !(list.loading && !list.data) &&
-    rows.length === 0 &&
-    !filtered &&
-    status === "active";
+  const manualButton = canEdit ? (
+    <Button type="button" variant="outline" icon={<UserPlus />} onClick={() => setManualOpen(true)}>
+      {t("candidates.manual")}
+    </Button>
+  ) : null;
+  // The same condition as the plain empty state below: it carries the two buttons then, and the
+  // header keeps them the rest of the time, so a view never shows the filled one twice.
+  const poolEmpty = !list.error && !(list.loading && !list.data) && rows.length === 0 && !filtered;
+
+  /** One field of the popover: a label and its input; `extra` is what a field needs beyond the text. */
+  const filterField = (key: keyof FilterText, label: string, extra: FilterFieldExtra = {}) => (
+    <div className="space-y-2">
+      <Label htmlFor={`${ids}-${key}`}>{label}</Label>
+      <Input
+        id={`${ids}-${key}`}
+        value={filterText[key]}
+        onChange={(event) => setFilterText({ ...filterText, [key]: event.target.value })}
+        maxLength={100}
+        {...extra}
+      />
+    </div>
+  );
 
   return (
     <div>
       <PageHeader
         title={t("candidates.title")}
         meta={
-          // The count is the page's one figure; announced when a search or a filter changes it.
-          <span role="status" className="text-meta font-medium text-muted-foreground tabular-nums">
-            {countText}
-          </span>
+          <>
+            {/* The count is the page's one figure; announced when a search or a filter changes it. */}
+            <span
+              role="status"
+              className="text-meta font-medium text-muted-foreground tabular-nums"
+            >
+              {countText}
+            </span>
+            {/* The pending figure moves with every CV read: shown, never announced. */}
+            {pending > 0 ? (
+              <span className="text-meta text-muted-foreground tabular-nums">· {pendingText}</span>
+            ) : null}
+          </>
         }
         actions={
-          canEdit ? (
+          canEdit && !poolEmpty ? (
             <>
-              <Button
-                type="button"
-                variant="outline"
-                icon={<UserPlus />}
-                onClick={() => setManualOpen(true)}
-              >
-                {t("candidates.manual")}
-              </Button>
-              {poolEmpty ? null : importButton}
+              {importButton}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    icon={<Ellipsis />}
+                    aria-label={t("candidates.moreActions")}
+                  />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setManualOpen(true)}>
+                    <UserPlus />
+                    {t("candidates.manual")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           ) : null
         }
@@ -263,138 +329,96 @@ function CandidatesPage() {
         onChanged={refreshProcessing}
       />
 
-      <div className="mb-6 space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-0 flex-1 basis-64">
-            <Search
-              className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              type="search"
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              placeholder={t("candidates.search.placeholder")}
-              aria-label={t("common.search")}
-              maxLength={200}
-              className="pl-11"
-            />
-          </div>
-          <Segmented<CandidateStatus>
-            value={status}
-            onChange={setStatus}
-            aria-label={t("candidates.tab.label")}
-            options={[
-              { value: "active", label: t("candidates.tab.active") },
-              { value: "archived", label: t("candidates.tab.archived") },
-            ]}
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-0 basis-full sm:flex-1 sm:basis-64">
+          <Search
+            className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
           />
-          <Select
-            value={sort}
-            onValueChange={(value) => {
-              if (isCandidateSort(value)) setSort(value);
-            }}
-          >
-            <SelectTrigger className="w-44" aria-label={t("candidates.sort.label")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CANDIDATE_SORTS.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {t(`candidates.sort.${value}`)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <FilterChip
-            active={showFilters}
-            onClick={() => setFiltersOpen((value) => !value)}
-            icon={<SlidersHorizontal />}
-            count={activeFilters > 0 ? activeFilters : undefined}
-            expanded={showFilters}
-            controls="candidate-filters"
-          >
-            {t("candidates.filters")}
-          </FilterChip>
+          <Input
+            type="search"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder={t("candidates.search.placeholder")}
+            aria-label={t("common.search")}
+            maxLength={200}
+            className="pl-11"
+          />
         </div>
-
-        {showFilters ? (
-          <div id="candidate-filters" className="fade-in flex flex-wrap items-center gap-2">
-            <div className="relative min-w-0 basis-56">
-              <MapPin
-                className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <Input
-                value={filterText.location}
-                onChange={(event) => setFilterText({ ...filterText, location: event.target.value })}
-                placeholder={t("candidates.filter.location")}
-                aria-label={t("candidates.field.location")}
-                maxLength={100}
-                className="pl-11"
-              />
-            </div>
-            <Input
-              inputMode="numeric"
-              value={filterText.years}
-              onChange={(event) => setFilterText({ ...filterText, years: event.target.value })}
-              placeholder={t("candidates.filter.years")}
-              aria-label={t("candidates.filter.years")}
-              maxLength={2}
-              className="w-32 tabular-nums"
-            />
-            <Input
-              list="candidate-skill-options"
-              value={filterText.skill}
-              onChange={(event) => setFilterText({ ...filterText, skill: event.target.value })}
-              placeholder={t("candidates.filter.skill")}
-              aria-label={t("candidates.filter.skill")}
-              maxLength={60}
-              className="min-w-0 basis-56"
-            />
-            <datalist id="candidate-skill-options">
+        <Select
+          value={sort}
+          onValueChange={(value) => {
+            if (isCandidateSort(value)) setSort(value);
+          }}
+        >
+          <SelectTrigger className="w-40" aria-label={t("candidates.sort.label")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CANDIDATE_SORTS.map((value) => (
+              <SelectItem key={value} value={value}>
+                {t(`candidates.sort.${value}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="outline" icon={<SlidersHorizontal />}>
+              {t("candidates.filters")}
+              {activeFilters > 0 ? (
+                <span className="font-normal text-muted-foreground tabular-nums">
+                  {/* Keeps the label and the count two words in the accessible name ("Filtrer, 2"). */}
+                  <span className="sr-only">, </span>
+                  {activeFilters}
+                </span>
+              ) : null}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            aria-label={t("candidates.filters")}
+            className="w-80 space-y-4"
+          >
+            {filterField("location", t("candidates.field.location"))}
+            {filterField("years", t("candidates.filter.years"), {
+              inputMode: "numeric",
+              maxLength: 2,
+              className: "tabular-nums",
+            })}
+            {filterField("skill", t("candidates.filter.skill"), { list: `${ids}-skills` })}
+            <datalist id={`${ids}-skills`}>
               {skillOptions.map((skill) => (
                 <option key={skill} value={skill} />
               ))}
             </datalist>
+            {tags.length ? (
+              <>
+                {filterField("tag", t("candidates.field.tags"), { list: `${ids}-tags` })}
+                <datalist id={`${ids}-tags`}>
+                  {tags.map((value) => (
+                    <option key={value} value={value} />
+                  ))}
+                </datalist>
+              </>
+            ) : null}
+            <div className="flex items-center justify-between gap-3">
+              <span id={`${ids}-archived`} className="text-sm text-ink">
+                {t("candidates.filter.archived")}
+              </span>
+              <Switch
+                checked={archived}
+                onCheckedChange={setArchived}
+                aria-labelledby={`${ids}-archived`}
+              />
+            </div>
             {activeFilters > 0 ? (
-              <Button
-                type="button"
-                variant="ghost"
-                icon={<X />}
-                onClick={() => {
-                  setFilterText(EMPTY_TEXT);
-                  setFilters(EMPTY_FILTERS);
-                }}
-              >
+              <Button type="button" variant="ghost" icon={<X />} onClick={clearFilters}>
                 {t("candidates.filters.clear")}
               </Button>
             ) : null}
-          </div>
-        ) : null}
-
-        {tags.length ? (
-          <ul
-            className="flex w-full flex-wrap items-center gap-2"
-            aria-label={t("candidates.tags.filterLabel")}
-          >
-            <li>
-              <FilterChip active={tag === null} onClick={() => setTag(null)}>
-                {t("common.all")}
-              </FilterChip>
-            </li>
-            {tags.map((value) => (
-              <li key={value} className="min-w-0">
-                <FilterChip
-                  active={tag === value}
-                  onClick={() => setTag(tag === value ? null : value)}
-                >
-                  {value}
-                </FilterChip>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+          </PopoverContent>
+        </Popover>
       </div>
 
       {list.error ? (
@@ -415,7 +439,7 @@ function CandidatesPage() {
       ) : list.loading && !list.data ? (
         <div className="sheet overflow-hidden">
           <p className="sr-only">{t("common.loading")}</p>
-          <SkeletonRows rows={SKELETON_ROWS} avatarSize="lg" />
+          <SkeletonRows rows={SKELETON_ROWS} avatarSize="sm" className="[&>li]:py-3" />
         </div>
       ) : rows.length === 0 ? (
         filtered ? (
@@ -428,10 +452,19 @@ function CandidatesPage() {
               </Button>
             }
           />
-        ) : status === "archived" ? (
-          <EmptyState icon={<Users />} title={t("candidates.empty.archived.title")} />
         ) : (
-          <EmptyState icon={<Users />} title={t("candidates.empty.title")} action={importButton} />
+          <EmptyState
+            icon={<Users />}
+            title={t("candidates.empty.title")}
+            action={
+              canEdit ? (
+                <>
+                  {importButton}
+                  {manualButton}
+                </>
+              ) : undefined
+            }
+          />
         )
       ) : (
         <>

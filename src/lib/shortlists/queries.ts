@@ -1,27 +1,29 @@
 /**
- * The typed reads and writes of the shortlists, through supabase-js
- * under RLS: the organisation's shortlists with their brief, the board
- * of one shortlist (items with their candidate, votes, comment counts),
- * one item's comments and history, and the writes the grants allow
- * (status, assignee, note, removal, the caller's own vote and comments).
- * Every call filters by the organisation and casts rows at the boundary.
+ * The typed reads and writes of a brief's shortlist, through supabase-js
+ * under RLS: the shortlist of a brief (read, or created on first use by
+ * a member), the brief a shortlist belongs to (for the old links that
+ * still name a shortlist), the board (the items with their candidate
+ * and the thread's message count per item), the candidate a drawer
+ * reads in full, and the writes the grants allow (status, assignee,
+ * removal). Every call filters by the organisation and casts rows at
+ * the boundary.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { parseCriteria } from "@/lib/briefs/criteria";
 import type {
-  ActivityRow,
-  BriefRow,
+  BriefCriterion,
   CandidateRow,
-  CommentRow,
   ShortlistItemRow,
   ShortlistItemStatus,
-  ShortlistRow,
-  VoteRow,
 } from "@/lib/db/types";
 
-import { countByItem, type VoteValue } from "./tally";
+import { countByItem } from "./tally";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Postgres: a row that already exists under a unique key (a shortlist of this brief). */
+const UNIQUE_VIOLATION = "23505";
 
 export function isUuid(value: string | null | undefined): value is string {
   return typeof value === "string" && UUID.test(value);
@@ -34,77 +36,92 @@ function one<T>(value: unknown): T | null {
 }
 
 // ---------------------------------------------------------------------
-// the list page
+// the shortlist of a brief
 // ---------------------------------------------------------------------
 
-export type ListBrief = Pick<BriefRow, "id" | "title" | "status">;
-
-export interface ShortlistListRow extends ShortlistRow {
-  briefs: ListBrief | null;
-}
-
-export async function listShortlists(supabase: SupabaseClient, orgId: string): Promise<ShortlistListRow[]> {
+/** The id of the brief's shortlist, null until someone adds the first candidate. */
+export async function readShortlistId(
+  supabase: SupabaseClient,
+  orgId: string,
+  briefId: string,
+): Promise<string | null> {
   const { data, error } = await supabase
     .from("shortlists")
-    .select("*, briefs(id, title, status)")
+    .select("id")
     .eq("org_id", orgId)
-    .order("updated_at", { ascending: false });
+    .eq("brief_id", briefId)
+    .maybeSingle();
   if (error) throw error;
-  return ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => ({
-    ...(row as unknown as ShortlistRow),
-    briefs: one<ListBrief>(row["briefs"]),
-  }));
+  return (data as { id: string } | null)?.id ?? null;
 }
 
-export interface ItemSummary {
-  shortlist_id: string;
-  status: ShortlistItemStatus;
-  assigned_to: string | null;
+/** The brief's shortlist, created now when it does not exist yet (a lost race is fine: the row is then read). */
+export async function ensureShortlist(
+  supabase: SupabaseClient,
+  input: { orgId: string; briefId: string; userId: string },
+): Promise<string> {
+  const inserted = await supabase
+    .from("shortlists")
+    .insert({ org_id: input.orgId, brief_id: input.briefId, created_by: input.userId })
+    .select("id")
+    .single();
+  if (!inserted.error) return (inserted.data as { id: string }).id;
+  if (inserted.error.code !== UNIQUE_VIOLATION) throw inserted.error;
+  const id = await readShortlistId(supabase, input.orgId, input.briefId);
+  if (!id) throw inserted.error;
+  return id;
 }
 
-/** Every item of the organisation, three columns: the list page counts them in the browser. */
-export async function listItemSummaries(supabase: SupabaseClient, orgId: string): Promise<ItemSummary[]> {
-  const { data, error } = await supabase
-    .from("shortlist_items")
-    .select("shortlist_id, status, assigned_to")
-    .eq("org_id", orgId);
-  if (error) throw error;
-  return (data ?? []) as unknown as ItemSummary[];
-}
-
-// ---------------------------------------------------------------------
-// the board of one shortlist
-// ---------------------------------------------------------------------
-
-export type ShortlistBrief = Pick<BriefRow, "id" | "title" | "status" | "criteria">;
-
-export interface ShortlistWithBrief extends ShortlistRow {
-  briefs: ShortlistBrief | null;
-}
-
-export async function readShortlist(
+/** The brief a shortlist belongs to, for a link that still names the shortlist; null when it does not exist. */
+export async function readShortlistBriefId(
   supabase: SupabaseClient,
   orgId: string,
   shortlistId: string,
-): Promise<ShortlistWithBrief | null> {
+): Promise<string | null> {
+  if (!isUuid(shortlistId)) return null;
   const { data, error } = await supabase
     .from("shortlists")
-    .select("*, briefs(id, title, status, criteria)")
+    .select("brief_id")
     .eq("org_id", orgId)
     .eq("id", shortlistId)
     .maybeSingle();
   if (error) throw error;
-  if (!data) return null;
-  const row = data as unknown as Record<string, unknown>;
-  return { ...(row as unknown as ShortlistRow), briefs: one<ShortlistBrief>(row["briefs"]) };
+  return (data as { brief_id: string } | null)?.brief_id ?? null;
 }
 
+/** What the board needs of the brief: its title (the dossier's) and its criteria (the rows of an older match). */
+export interface BoardBrief {
+  title: string;
+  criteria: BriefCriterion[];
+}
+
+export async function readBoardBrief(
+  supabase: SupabaseClient,
+  orgId: string,
+  briefId: string,
+): Promise<BoardBrief | null> {
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("title, criteria")
+    .eq("org_id", orgId)
+    .eq("id", briefId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const row = data as { title: string | null; criteria: unknown };
+  return { title: row.title ?? "", criteria: parseCriteria(row.criteria) };
+}
+
+// ---------------------------------------------------------------------
+// the board
+// ---------------------------------------------------------------------
+
 /** The photo path rides along for the card's avatar: a signed URL in the browser, never a model's input. */
-export const ITEM_CANDIDATE_COLUMNS = "id, full_name, headline, location, skills, confidence, photo_path";
+export const ITEM_CANDIDATE_COLUMNS = "id, full_name, headline, years_experience, photo_path";
 
 export type ItemCandidate = Pick<
   CandidateRow,
-  "id" | "full_name" | "headline" | "location" | "skills" | "confidence" | "photo_path"
+  "id" | "full_name" | "headline" | "years_experience" | "photo_path"
 >;
 
 export interface BoardItem extends ShortlistItemRow {
@@ -114,9 +131,8 @@ export interface BoardItem extends ShortlistItemRow {
 
 export interface Board {
   items: BoardItem[];
-  votes: VoteRow[];
-  /** Comments per item id. */
-  commentCounts: Map<string, number>;
+  /** The thread's messages per item id. */
+  threadCounts: Map<string, number>;
 }
 
 export async function listBoardItems(
@@ -138,26 +154,29 @@ export async function listBoardItems(
   }));
 }
 
-/** The items, every vote on them and the number of comments per item, in three reads. */
-export async function readBoard(supabase: SupabaseClient, orgId: string, shortlistId: string): Promise<Board> {
+/** The items and the number of messages on each one's thread, in two reads. */
+export async function readBoard(
+  supabase: SupabaseClient,
+  orgId: string,
+  shortlistId: string,
+): Promise<Board> {
   const items = await listBoardItems(supabase, orgId, shortlistId);
   const ids = items.map((item) => item.id);
-  if (!ids.length) return { items, votes: [], commentCounts: new Map() };
-  const [votes, comments] = await Promise.all([
-    supabase.from("votes").select("*").eq("org_id", orgId).in("shortlist_item_id", ids),
-    supabase.from("comments").select("shortlist_item_id").eq("org_id", orgId).in("shortlist_item_id", ids),
-  ]);
-  if (votes.error) throw votes.error;
-  if (comments.error) throw comments.error;
+  if (!ids.length) return { items, threadCounts: new Map() };
+  const { data, error } = await supabase
+    .from("comments")
+    .select("shortlist_item_id")
+    .eq("org_id", orgId)
+    .in("shortlist_item_id", ids);
+  if (error) throw error;
   return {
     items,
-    votes: (votes.data ?? []) as unknown as VoteRow[],
-    commentCounts: countByItem((comments.data ?? []) as unknown as { shortlist_item_id: string | null }[]),
+    threadCounts: countByItem((data ?? []) as unknown as { shortlist_item_id: string | null }[]),
   };
 }
 
 // ---------------------------------------------------------------------
-// the drawer of one item
+// the candidate a drawer reads in full (shared with the brief's match drawer)
 // ---------------------------------------------------------------------
 
 export const DRAWER_CANDIDATE_COLUMNS =
@@ -190,52 +209,6 @@ export async function readDrawerCandidate(
     .maybeSingle();
   if (error) throw error;
   return (data as unknown as DrawerCandidate | null) ?? null;
-}
-
-export async function listItemComments(
-  supabase: SupabaseClient,
-  orgId: string,
-  itemId: string,
-): Promise<CommentRow[]> {
-  const { data, error } = await supabase
-    .from("comments")
-    .select("*")
-    .eq("org_id", orgId)
-    .eq("shortlist_item_id", itemId)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as unknown as CommentRow[];
-}
-
-export const HISTORY_LIMIT = 50;
-
-/**
- * What happened to this item, newest first: the rows that target it
- * (added, decided, assigned, removed) and those about the same candidate
- * on the same brief (comments, an earlier line). Ids are checked before
- * they go into the filter string.
- */
-export async function listItemHistory(
-  supabase: SupabaseClient,
-  orgId: string,
-  item: { id: string; candidate_id: string },
-  briefId: string | null,
-): Promise<ActivityRow[]> {
-  if (!isUuid(item.id)) return [];
-  const parts = [`target_id.eq.${item.id}`];
-  if (isUuid(briefId) && isUuid(item.candidate_id)) {
-    parts.push(`and(candidate_id.eq.${item.candidate_id},brief_id.eq.${briefId})`);
-  }
-  const { data, error } = await supabase
-    .from("activities")
-    .select("*")
-    .eq("org_id", orgId)
-    .or(parts.join(","))
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(HISTORY_LIMIT);
-  if (error) throw error;
-  return (data ?? []) as unknown as ActivityRow[];
 }
 
 // ---------------------------------------------------------------------
@@ -271,88 +244,15 @@ export async function setItemAssignee(
   if (error) throw error;
 }
 
-export const NOTE_MAX = 4000;
-
-export async function setItemNote(
+export async function removeItem(
   supabase: SupabaseClient,
   orgId: string,
   itemId: string,
-  note: string | null,
 ): Promise<void> {
   const { error } = await supabase
     .from("shortlist_items")
-    .update({ note: note ? note.slice(0, NOTE_MAX) : null })
+    .delete()
     .eq("id", itemId)
     .eq("org_id", orgId);
-  if (error) throw error;
-}
-
-export async function removeItem(supabase: SupabaseClient, orgId: string, itemId: string): Promise<void> {
-  const { error } = await supabase.from("shortlist_items").delete().eq("id", itemId).eq("org_id", orgId);
-  if (error) throw error;
-}
-
-/** The caller's vote on an item, inserted or replaced on the primary key (item, user). */
-export async function castVote(
-  supabase: SupabaseClient,
-  input: { orgId: string; itemId: string; userId: string; value: VoteValue },
-): Promise<void> {
-  const { error } = await supabase
-    .from("votes")
-    .upsert(
-      { shortlist_item_id: input.itemId, org_id: input.orgId, user_id: input.userId, value: input.value },
-      { onConflict: "shortlist_item_id,user_id" },
-    );
-  if (error) throw error;
-}
-
-export async function clearVote(
-  supabase: SupabaseClient,
-  orgId: string,
-  itemId: string,
-  userId: string,
-): Promise<void> {
-  const { error } = await supabase
-    .from("votes")
-    .delete()
-    .eq("shortlist_item_id", itemId)
-    .eq("user_id", userId)
-    .eq("org_id", orgId);
-  if (error) throw error;
-}
-
-export const COMMENT_MAX = 8000;
-
-export async function addComment(
-  supabase: SupabaseClient,
-  input: { orgId: string; itemId: string; authorId: string; body: string; mentions: string[] },
-): Promise<void> {
-  const { error } = await supabase.from("comments").insert({
-    org_id: input.orgId,
-    shortlist_item_id: input.itemId,
-    author_id: input.authorId,
-    body: input.body.slice(0, COMMENT_MAX),
-    mentions: input.mentions,
-  });
-  if (error) throw error;
-}
-
-export async function editComment(
-  supabase: SupabaseClient,
-  orgId: string,
-  commentId: string,
-  body: string,
-  mentions: string[],
-): Promise<void> {
-  const { error } = await supabase
-    .from("comments")
-    .update({ body: body.slice(0, COMMENT_MAX), mentions })
-    .eq("id", commentId)
-    .eq("org_id", orgId);
-  if (error) throw error;
-}
-
-export async function deleteComment(supabase: SupabaseClient, orgId: string, commentId: string): Promise<void> {
-  const { error } = await supabase.from("comments").delete().eq("id", commentId).eq("org_id", orgId);
   if (error) throw error;
 }

@@ -1,150 +1,258 @@
 /**
- * The dashboard's "open briefs" column: for the few most recently
- * touched open briefs, where each one stands. The last analysis is read
- * from the searches' summary columns (when, how many profiles match:
- * `match_count`, kept by merge_search_results; the results themselves
- * stay in the database, they weigh megabytes); the
- * shortlist's counts come from its items' three small columns (the
- * status the team gave, the decision and the tier the model gave), so
- * the card can say "3 proposed (model), 1 retained" without loading a board.
- * The pure parts (one search per brief, the counts) are tested apart.
+ * The dashboard's reads under RLS and their pure parts, tested apart.
+ * For the open briefs: where each one stands, read off the searches'
+ * summary columns (never the results, which weigh megabytes), the
+ * retained off the shortlist items' status column, the team's last
+ * word off the threads, and the rows sorted by the last thing that
+ * happened to them. For the pool: the active profiles and the CVs
+ * being read. A secondary read that fails leaves its part empty (the
+ * row then says "no analysis" honestly) rather than taking the page
+ * down; a count that could not be read is null, never a zero.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { listBriefs } from "@/lib/briefs/queries";
+import { listBriefs, readLatestAnalyses, type AnalysisSummary } from "@/lib/briefs/queries";
+import { readWaveCounts, readWaveStart, type WaveStart } from "@/lib/candidates/queries";
 import type { BriefRow, ShortlistItemStatus } from "@/lib/db/types";
+import { threadSummaries } from "@/lib/threads/queries";
+import type { ThreadSummary } from "@/lib/threads/thread";
 
-/** The most open briefs the dashboard shows. */
-export const OVERVIEW_BRIEFS = 4;
+/** The most open briefs the dashboard shows, the most active first. */
+export const OVERVIEW_BRIEFS = 8;
+/** The most recently updated open briefs whose analyses and threads are read to find those. */
+export const OVERVIEW_SCAN = 50;
 
-/** A search's summary: the brief it ran for, when, and how many profiles match. */
-export interface SearchGlance {
-  brief_id: string | null;
-  match_count: number;
-  created_at: string;
+/** What a row says of the newest analysis: nothing ran, it is not finished, N match, or N ranked without a model. */
+export type AnalysisGlance =
+  | { kind: "none" }
+  | { kind: "unfinished" }
+  | { kind: "matches"; count: number }
+  | { kind: "ranked"; count: number };
+
+/** The counts of a summary the glance reads; the triage's progress is optional (null when not read). */
+export type AnalysisFacts = Pick<AnalysisSummary, "method" | "total" | "assessed" | "matches"> &
+  Partial<Pick<AnalysisSummary, "triagePending" | "kept">>;
+
+/**
+ * The glance of an analysis. A whole-pool one is unfinished while its
+ * results are not all read in full, while its triage has profiles left
+ * or kept more than the results hold, and, when the triage's progress is
+ * unknown, while nothing was read yet; done, its matches count. An
+ * analysis of another method counts its matches once something was
+ * read; without a model it ranked its results on text alone, which the
+ * row says as such (an empty result is "0 matches" either way).
+ */
+export function analysisGlanceOf(analysis: AnalysisFacts | null | undefined): AnalysisGlance {
+  if (!analysis) return { kind: "none" };
+  if (analysis.method === "triage") {
+    if (analysis.assessed < analysis.total) return { kind: "unfinished" };
+    const pending = analysis.triagePending ?? null;
+    const kept = analysis.kept ?? null;
+    if (pending === null || kept === null) {
+      return analysis.assessed === 0
+        ? { kind: "unfinished" }
+        : { kind: "matches", count: analysis.matches };
+    }
+    if (pending > 0 || kept > analysis.total) return { kind: "unfinished" };
+    return { kind: "matches", count: analysis.matches };
+  }
+  if (analysis.assessed > 0 || analysis.total === 0)
+    return { kind: "matches", count: analysis.matches };
+  return { kind: "ranked", count: analysis.total };
 }
 
-/** One shortlist item as the overview reads it: the team's status, the model's decision and tier. */
+/** One shortlist item as the overview reads it: its shortlist and the status the team gave. */
 export interface ItemGlance {
   shortlist_id: string;
   status: ShortlistItemStatus;
-  decision: string | null;
-  tier: string | null;
 }
 
-export interface ShortlistCounts {
-  /** The model's "fit" with tier A (or not tiered yet), not dismissed by the team: the proposals. */
-  present: number;
-  /** What the team retained. */
-  retained: number;
-  /** What the team has still to decide on. */
-  toReview: number;
-  /** Every item, whatever its status. */
-  total: number;
+/** How many items each shortlist has retained, by shortlist id; a shortlist seen without one answers 0. */
+export function retainedByShortlist(items: readonly ItemGlance[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const seen = counts.get(item.shortlist_id) ?? 0;
+    counts.set(item.shortlist_id, item.status === "retained" ? seen + 1 : seen);
+  }
+  return counts;
 }
 
-export interface BriefOverview {
-  brief: Pick<BriefRow, "id" | "title" | "status" | "criteria" | "updated_at">;
-  /** The latest analysis (when, how many matches), null when none ran. */
-  lastSearch: { at: string; matches: number } | null;
-  /** The shortlist's counts, null when the brief has no shortlist yet. */
-  shortlist: ShortlistCounts | null;
-}
-
-/** The newest search of each brief, from rows in any order. */
-export function latestPerBrief(rows: readonly SearchGlance[]): Map<string, SearchGlance> {
-  const latest = new Map<string, SearchGlance>();
-  for (const row of rows) {
-    if (!row.brief_id) continue;
-    const seen = latest.get(row.brief_id);
-    if (!seen || Date.parse(row.created_at) > Date.parse(seen.created_at)) latest.set(row.brief_id, row);
+/** The newest readable instant among the brief's own update, its analysis and its thread. */
+export function lastActivityOf(input: {
+  updatedAt: string;
+  analysedAt: string | null;
+  threadAt: string | null;
+}): string {
+  let latest = input.updatedAt;
+  let latestTime = Date.parse(input.updatedAt);
+  for (const candidate of [input.analysedAt, input.threadAt]) {
+    if (!candidate) continue;
+    const time = Date.parse(candidate);
+    if (Number.isNaN(time)) continue;
+    if (Number.isNaN(latestTime) || time > latestTime) {
+      latest = candidate;
+      latestTime = time;
+    }
   }
   return latest;
 }
 
-/** True when the model's reading of this item says "present": a fit, tier A or not tiered yet. */
-export function isProposed(item: Pick<ItemGlance, "decision" | "tier">): boolean {
-  return item.decision === "fit" && (item.tier === null || item.tier === "A");
+export interface BriefOverview {
+  brief: Pick<BriefRow, "id" | "title" | "updated_at">;
+  analysis: AnalysisGlance;
+  /** When the newest analysis ran; null without one. */
+  analysedAt: string | null;
+  /** What the team retained on the brief's shortlist; 0 without a shortlist. */
+  retained: number;
+  /** The brief's thread, null while nobody wrote. */
+  thread: ThreadSummary | null;
+  /** The newest of the brief's update, its analysis and its thread: the rows' order. */
+  lastActivityAt: string;
 }
 
-/** The counts of one shortlist's items. */
-export function countItems(items: readonly Pick<ItemGlance, "status" | "decision" | "tier">[]): ShortlistCounts {
-  const counts: ShortlistCounts = { present: 0, retained: 0, toReview: 0, total: 0 };
-  for (const item of items) {
-    counts.total += 1;
-    if (item.status === "retained") counts.retained += 1;
-    if (item.status === "to_review") counts.toReview += 1;
-    if (item.status !== "dismissed" && isProposed(item)) counts.present += 1;
-  }
-  return counts;
+/** The rows newest activity first; two rows of one instant keep their order. */
+export function sortByActivity<Row extends Pick<BriefOverview, "lastActivityAt">>(
+  rows: readonly Row[],
+): Row[] {
+  return rows
+    .map((row, index) => ({ row, index, time: Date.parse(row.lastActivityAt) }))
+    .sort((a, b) => {
+      const at = Number.isNaN(a.time) ? -Infinity : a.time;
+      const bt = Number.isNaN(b.time) ? -Infinity : b.time;
+      return bt - at || a.index - b.index;
+    })
+    .map((entry) => entry.row);
 }
 
-/** The counts of every shortlist, by shortlist id. */
-export function countByShortlist(items: readonly ItemGlance[]): Map<string, ShortlistCounts> {
-  const grouped = new Map<string, ItemGlance[]>();
-  for (const item of items) {
-    const list = grouped.get(item.shortlist_id);
-    if (list) list.push(item);
-    else grouped.set(item.shortlist_id, [item]);
+/** The retained count of each brief's shortlist, from two reads; a failed read leaves every brief at 0. */
+async function readRetained(
+  supabase: SupabaseClient,
+  orgId: string,
+  briefIds: readonly string[],
+): Promise<Map<string, number>> {
+  const retained = new Map<string, number>();
+  const shortlists = await supabase
+    .from("shortlists")
+    .select("id, brief_id")
+    .eq("org_id", orgId)
+    .in("brief_id", [...briefIds]);
+  if (shortlists.error) {
+    console.error(shortlists.error);
+    return retained;
   }
-  const counts = new Map<string, ShortlistCounts>();
-  for (const [id, list] of grouped) counts.set(id, countItems(list));
-  return counts;
+  const lists = (shortlists.data ?? []) as { id: string; brief_id: string }[];
+  if (!lists.length) return retained;
+  const items = await supabase
+    .from("shortlist_items")
+    .select("shortlist_id, status")
+    .eq("org_id", orgId)
+    .in(
+      "shortlist_id",
+      lists.map((list) => list.id),
+    );
+  if (items.error) {
+    console.error(items.error);
+    return retained;
+  }
+  const counts = retainedByShortlist((items.data ?? []) as unknown as ItemGlance[]);
+  for (const list of lists) retained.set(list.brief_id, counts.get(list.id) ?? 0);
+  return retained;
 }
 
 /**
- * The open briefs' overview, three reads after the briefs: the recent
- * searches of those briefs (a few per brief at most), their shortlists,
- * and the items' glance columns. A failed secondary read leaves its part
- * null (the card then says "no analysis" or "empty shortlist" honestly)
- * rather than taking the whole column down.
+ * The open briefs with where each stands, the most recently active
+ * first: the briefs (the fifty most recently updated at most), then in
+ * parallel their newest analyses (summary columns), their shortlists'
+ * retained counts and their threads' last message. A secondary read
+ * that fails leaves its part empty.
  */
 export async function readBriefsOverview(
   supabase: SupabaseClient,
   orgId: string,
   limit: number = OVERVIEW_BRIEFS,
 ): Promise<BriefOverview[]> {
-  const briefs = (await listBriefs(supabase, orgId, "open")).slice(0, Math.max(0, limit));
+  const briefs = (await listBriefs(supabase, orgId, "open")).slice(0, OVERVIEW_SCAN);
   if (!briefs.length) return [];
   const ids = briefs.map((brief) => brief.id);
-
-  const [searches, shortlists] = await Promise.all([
-    supabase
-      .from("searches")
-      .select("brief_id, match_count, created_at")
-      .eq("org_id", orgId)
-      .in("brief_id", ids)
-      .order("created_at", { ascending: false })
-      .limit(ids.length * 8),
-    supabase.from("shortlists").select("id, brief_id").eq("org_id", orgId).in("brief_id", ids),
+  const empty = <T>(caught: unknown): Map<string, T> => {
+    console.error(caught);
+    return new Map<string, T>();
+  };
+  const [analyses, retained, threads] = await Promise.all([
+    readLatestAnalyses(supabase, orgId, ids).catch(empty<AnalysisSummary>),
+    readRetained(supabase, orgId, ids),
+    threadSummaries(supabase, orgId, ids).catch(empty<ThreadSummary>),
   ]);
-  if (searches.error) console.error(searches.error);
-  if (shortlists.error) console.error(shortlists.error);
-  const latest = latestPerBrief((searches.data ?? []) as SearchGlance[]);
-  const lists = (shortlists.data ?? []) as { id: string; brief_id: string }[];
-
-  let counts = new Map<string, ShortlistCounts>();
-  if (lists.length) {
-    const items = await supabase
-      .from("shortlist_items")
-      .select("shortlist_id, status, decision:match->assessment->>decision, tier:match->assessment->>tier")
-      .eq("org_id", orgId)
-      .in(
-        "shortlist_id",
-        lists.map((list) => list.id),
-      );
-    if (items.error) console.error(items.error);
-    else counts = countByShortlist((items.data ?? []) as unknown as ItemGlance[]);
-  }
-  const shortlistOf = new Map(lists.map((list) => [list.brief_id, list.id]));
-
-  return briefs.map((brief) => {
-    const search = latest.get(brief.id);
-    const shortlistId = shortlistOf.get(brief.id);
+  const rows = briefs.map((brief): BriefOverview => {
+    const analysis = analyses.get(brief.id) ?? null;
+    const thread = threads.get(brief.id) ?? null;
     return {
-      brief: { id: brief.id, title: brief.title, status: brief.status, criteria: brief.criteria, updated_at: brief.updated_at },
-      lastSearch: search ? { at: search.created_at, matches: search.match_count } : null,
-      shortlist: shortlistId ? (counts.get(shortlistId) ?? { present: 0, retained: 0, toReview: 0, total: 0 }) : null,
+      brief: { id: brief.id, title: brief.title, updated_at: brief.updated_at },
+      analysis: analysisGlanceOf(analysis),
+      analysedAt: analysis?.createdAt ?? null,
+      retained: retained.get(brief.id) ?? 0,
+      thread,
+      lastActivityAt: lastActivityOf({
+        updatedAt: brief.updated_at,
+        analysedAt: analysis?.createdAt ?? null,
+        threadAt: thread?.lastAt ?? null,
+      }),
     };
   });
+  return sortByActivity(rows).slice(0, Math.max(0, limit));
+}
+
+export interface PoolGlance {
+  /** Active profiles; null when the count could not be read. */
+  candidates: number | null;
+  /** Documents queued or being read; null when unread. */
+  processing: number | null;
+  /** Every document of the wave in progress; 0 when nothing is pending, null when unread. */
+  processingTotal: number | null;
+}
+
+/**
+ * The wave's pending and total: null for what could not be read. The
+ * pending count is one request; when it was read, a failure of the
+ * wave's counts leaves it and takes the bar alone.
+ */
+async function wave(
+  supabase: SupabaseClient,
+  orgId: string,
+): Promise<{ pending: number | null; total: number | null }> {
+  let start: WaveStart;
+  try {
+    start = await readWaveStart(supabase, orgId);
+  } catch (error) {
+    console.error(error);
+    return { pending: null, total: null };
+  }
+  if (start.pending === 0) return { pending: 0, total: 0 };
+  try {
+    const read = await readWaveCounts(supabase, orgId, start);
+    return { pending: start.pending, total: read.total };
+  } catch (error) {
+    console.error(error);
+    return { pending: start.pending, total: null };
+  }
+}
+
+/** One glance at the pool: the active profiles (a HEAD count) and the CVs being read. Never throws. */
+export async function readPoolGlance(supabase: SupabaseClient, orgId: string): Promise<PoolGlance> {
+  const [candidates, processing] = await Promise.all([
+    supabase
+      .from("candidates")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .eq("status", "active")
+      .then(({ count, error }) => {
+        if (error) {
+          console.error(error);
+          return null;
+        }
+        return typeof count === "number" ? count : null;
+      }),
+    wave(supabase, orgId),
+  ]);
+  return { candidates, processing: processing.pending, processingTotal: processing.total };
 }

@@ -1,16 +1,17 @@
 /**
  * The "Correspondances" tab of a brief, top to bottom and nothing else:
- * the analysis band; the matches alone, as compact rows in tier then
- * rank order (or, for an analysis no model could read, the head of the
- * ranking on the text, 20 rows at most); right under them the toggle of
- * the near profiles and, when it is open, their rows, so the list opens
- * where its control is; and the drawer of the row opened, which walks
- * the list it was opened from and follows its person when a batch
- * reorders the list. While the analysis is not through, a match the
- * second opinion has not seen is marked as such. A profile set aside by
- * the analysis is a figure of the band, never a row here: the figure
- * opens their own drawer, where each one is listed with its reason, and
- * one the triage set aside can be brought back to be read in full.
+ * the analysis band; the matches alone, as 64px rows in tier then rank
+ * order (or, for an analysis no model could read, the head of the
+ * ranking on the text, 20 rows at most); right under them the quiet
+ * toggle of the near profiles and, when it is open, their rows, muted,
+ * so the list opens where its control is; and the drawer of the row
+ * opened, which walks the list it was opened from and follows its
+ * person when a batch reorders the list. While the analysis is not
+ * through, a match the second opinion has not seen is marked as such.
+ * A profile set aside by the analysis is a figure of the band, never a
+ * row here: the figure opens their own drawer, where each one is listed
+ * with its reason, and one the triage set aside can be brought back to
+ * be read in full.
  */
 import { Fragment, useEffect, useId, useState } from "react";
 
@@ -33,13 +34,17 @@ export function MatchesTab({
   orgId,
   canEdit,
   modelAvailable,
-  onCheckRole,
+  briefStale,
+  onShowShortlist,
 }: {
   analysis: AnalysisController;
   orgId: string;
   canEdit: boolean;
   modelAvailable: boolean | null;
-  onCheckRole: () => void;
+  /** True when the brief's text changed since the analysis on screen ran. */
+  briefStale: boolean;
+  /** Shows the brief's shortlist tab (from a drawer whose profile is already on it). */
+  onShowShortlist: () => void;
 }) {
   const { t, locale } = useI18n();
   const nearId = useId();
@@ -69,9 +74,12 @@ export function MatchesTab({
 
   const tally = (result: MatchResult): string | null => {
     const { met, total } = requirementTally(result);
-    return total > 0 ? t("briefs.match.tally", { met, total }) : null;
+    if (total === 0) return null;
+    return total === 1
+      ? t("briefs.match.tally.one", { met })
+      : t("briefs.match.tally", { met, total });
   };
-  const opening = analysis.opening || (view === null && analysis.searchesLoading);
+  const opening = analysis.opening || (view === null && analysis.latestLoading);
   // While a new search is prepared the previous analysis's rows step aside: the band says what runs.
   const rowsShown = view !== null && !analysis.starting;
   const canAdd = canEdit;
@@ -87,7 +95,7 @@ export function MatchesTab({
         analysis={analysis}
         canEdit={canEdit}
         modelAvailable={modelAvailable}
-        onCheckRole={onCheckRole}
+        briefStale={briefStale}
         onShowSetAside={() => setSetAsideOpen(true)}
       />
 
@@ -101,7 +109,6 @@ export function MatchesTab({
           candidateOf={analysis.candidateOf}
           addedIds={analysis.addedIds}
           canAdd={canAdd}
-          showScore={!textOnly}
           provisional={band === "running" || band === "incomplete"}
           onOpen={(index) => openRow("main", index)}
           onAdd={analysis.add}
@@ -155,9 +162,12 @@ export function MatchesTab({
         candidateOf={analysis.candidateOf}
         orgId={orgId}
         added={(candidateId) => analysis.addedIds.has(candidateId)}
-        shortlistId={analysis.shortlistId}
         canAdd={canAdd}
         onAdd={analysis.add}
+        onShowShortlist={() => {
+          setDrawer(null);
+          onShowShortlist();
+        }}
       />
 
       {view ? (

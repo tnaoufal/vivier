@@ -16,24 +16,22 @@ import {
   bandStateOf,
   BRIEF_FILTERS,
   appendPage,
-  briefSubtitle,
+  briefChangedSince,
   cardAnalysisOf,
-  countByFilter,
   digestResults,
   ETA_MIN_ELAPSED_MS,
+  figuresLine,
   filterBriefs,
-  firstLine,
   firstSentence,
   funnelOf,
   isBriefFilter,
-  jobChangedSince,
-  latestPerBrief,
   matchesOf,
   mergeResults,
   nearOf,
   remainingMs,
   requirementTally,
   reservationLine,
+  retainedByBrief,
   roleChangedSince,
   SET_ASIDE_PAGE,
   setAsideOf,
@@ -43,8 +41,10 @@ import {
   withAnalysis,
   withTriageProgress,
   type BandInputs,
+  type Funnel,
   type LatestAnalysis,
 } from "./presentation";
+import { briefSourceHash } from "./role-profile";
 
 function profile(domain: string): RoleProfile {
   return {
@@ -88,78 +88,38 @@ function assessed(decision: Assessment["decision"], extra: Partial<Assessment> =
   return { decision, score: 80, summary: "s", requirements: [], model: "m", ...extra };
 }
 
-describe("firstLine", () => {
-  it("answers the first line that says something, trimmed", () => {
-    expect(firstLine("\n   \n  Un poste à Lyon  \nsuite")).toBe("Un poste à Lyon");
-  });
-
-  it("answers nothing for a blank or missing text", () => {
-    expect(firstLine("  \n\n")).toBe("");
-    expect(firstLine(null)).toBe("");
-    expect(firstLine(undefined)).toBe("");
-  });
-});
-
-describe("briefSubtitle", () => {
-  it("prefers the domain of the role profile", () => {
-    expect(
-      briefSubtitle({
-        description: "Un contrôleur de gestion",
-        role_profile: profile("finance d'entreprise"),
-      }),
-    ).toBe("finance d'entreprise");
-  });
-
-  it("falls back to the first line of the need when the profile has no domain", () => {
-    expect(
-      briefSubtitle({ description: "\nUn contrôleur\nsenior", role_profile: profile("  ") }),
-    ).toBe("Un contrôleur");
-    expect(briefSubtitle({ description: "Un contrôleur", role_profile: null })).toBe(
-      "Un contrôleur",
-    );
-  });
-
-  it("answers nothing when the brief states neither", () => {
-    expect(briefSubtitle({ description: "", role_profile: null })).toBe("");
-  });
-});
-
 describe("the status filter", () => {
   const rows = [brief("open", "a"), brief("draft", "b"), brief("open", "c"), brief("closed", "d")];
 
-  it("knows its four values and nothing else", () => {
-    expect(BRIEF_FILTERS).toEqual(["all", "open", "draft", "closed"]);
+  it("knows its three values and nothing else", () => {
+    expect(BRIEF_FILTERS).toEqual(["open", "closed", "all"]);
     expect(isBriefFilter("open")).toBe(true);
     expect(isBriefFilter("all")).toBe(true);
-    expect(isBriefFilter("archived")).toBe(false);
+    expect(isBriefFilter("draft")).toBe(false);
     expect(isBriefFilter(3)).toBe(false);
   });
 
-  it("keeps the rows of one status in their order, or every row", () => {
-    expect(filterBriefs(rows, "open").map((row) => row.id)).toEqual(["a", "c"]);
+  it("keeps the briefs being worked on (a draft among them), the closed ones, or every row, in their order", () => {
+    expect(filterBriefs(rows, "open").map((row) => row.id)).toEqual(["a", "b", "c"]);
     expect(filterBriefs(rows, "closed").map((row) => row.id)).toEqual(["d"]);
     expect(filterBriefs(rows, "all").map((row) => row.id)).toEqual(["a", "b", "c", "d"]);
   });
-
-  it("counts what each filter would show", () => {
-    expect(countByFilter(rows)).toEqual({ all: 4, open: 2, draft: 1, closed: 1 });
-    expect(countByFilter([])).toEqual({ all: 0, open: 0, draft: 0, closed: 0 });
-  });
 });
 
-describe("latestPerBrief", () => {
-  it("keeps the newest row of each brief whatever the order, and skips rows without a brief", () => {
-    const rows = [
-      { id: "s1", brief_id: "b1", created_at: "2026-10-01T10:00:00Z" },
-      { id: "s2", brief_id: "b1", created_at: "2026-10-03T10:00:00Z" },
-      { id: "s3", brief_id: "b2", created_at: "2026-10-02T10:00:00Z" },
-      { id: "s4", brief_id: "b1", created_at: "2026-10-02T10:00:00Z" },
-      { id: "s5", brief_id: null, created_at: "2026-10-09T10:00:00Z" },
-    ];
-    const latest = latestPerBrief(rows);
-    expect([...latest.keys()].sort()).toEqual(["b1", "b2"]);
-    expect(latest.get("b1")?.id).toBe("s2");
-    expect(latest.get("b2")?.id).toBe("s3");
+describe("retainedByBrief", () => {
+  it("counts the retained items per brief and skips rows without one", () => {
+    const counts = retainedByBrief([
+      { briefId: "b1" },
+      { briefId: "b2" },
+      { briefId: "b1" },
+      { briefId: null },
+      { briefId: "b1" },
+    ]);
+    expect([...counts.entries()]).toEqual([
+      ["b1", 3],
+      ["b2", 1],
+    ]);
+    expect(retainedByBrief([]).size).toBe(0);
   });
 });
 
@@ -488,49 +448,6 @@ describe("appendPage", () => {
   });
 });
 
-describe("jobChangedSince", () => {
-  function criterion(id: string, kind: BriefCriterion["kind"], value: string): BriefCriterion {
-    return { id, kind, label: id, value, required: kind === "role", weight: 3 };
-  }
-  const role = criterion("role", "role", "finance d'entreprise");
-  const skill = criterion("skill", "skill", "contrôle de gestion");
-
-  it("is false while the brief holds the criteria the search took and its profile defines the same role", () => {
-    expect(
-      jobChangedSince({ criteria: [role, skill], role_profile: profile("finance d'entreprise") }, [
-        role,
-        skill,
-      ]),
-    ).toBe(false);
-    expect(jobChangedSince({ criteria: [skill], role_profile: null }, [skill])).toBe(false);
-  });
-
-  it("is true once the team saved other criteria", () => {
-    expect(
-      jobChangedSince({ criteria: [role, { ...skill, value: "audit" }], role_profile: null }, [
-        role,
-        skill,
-      ]),
-    ).toBe(true);
-    expect(jobChangedSince({ criteria: [role], role_profile: null }, [role, skill])).toBe(true);
-  });
-
-  it("is true once the profile defines the role otherwise than the search did", () => {
-    expect(
-      jobChangedSince({ criteria: [role, skill], role_profile: profile("audit interne") }, [
-        role,
-        skill,
-      ]),
-    ).toBe(true);
-  });
-
-  it("ignores a profile without a role criterion to rewrite", () => {
-    expect(
-      jobChangedSince({ criteria: [skill], role_profile: profile("audit interne") }, [skill]),
-    ).toBe(false);
-  });
-});
-
 describe("roleChangedSince", () => {
   const role: BriefCriterion = {
     id: "role",
@@ -557,6 +474,24 @@ describe("roleChangedSince", () => {
     expect(roleChangedSince(null, [role])).toBe(false);
     expect(roleChangedSince(profile("audit interne"), [])).toBe(false);
     expect(roleChangedSince({ ...profile(""), title: " " }, [role])).toBe(false);
+  });
+});
+
+describe("briefChangedSince", () => {
+  const text = { title: "Contrôleur de gestion", description: "Un contrôleur senior, Lyon." };
+
+  it("is true once the brief's text differs from the one its profile was read from", () => {
+    const read = { ...profile("finance"), sourceHash: briefSourceHash(text) };
+    expect(briefChangedSince({ ...text, role_profile: read })).toBe(false);
+    expect(
+      briefChangedSince({ ...text, description: "Un contrôleur junior.", role_profile: read }),
+    ).toBe(true);
+    expect(briefChangedSince({ ...text, title: "DAF", role_profile: read })).toBe(true);
+  });
+
+  it("says nothing for a brief never read, or read before the hash existed", () => {
+    expect(briefChangedSince({ ...text, role_profile: null })).toBe(false);
+    expect(briefChangedSince({ ...text, role_profile: profile("finance") })).toBe(false);
   });
 });
 
@@ -681,6 +616,39 @@ describe("funnelOf", () => {
   });
 });
 
+describe("figuresLine", () => {
+  const funnel: Funnel = { analysed: 1091, kept: 84, assessed: 61, matches: 12, setAside: 1010 };
+
+  it("says the profiles analysed, kept by the triage, read so far and set aside, each once, never the matches", () => {
+    expect(figuresLine(funnel, true)).toEqual([
+      { key: "analysed", count: 1091 },
+      { key: "kept", count: 84 },
+      { key: "assessed", count: 61 },
+      { key: "setAside", count: 1010 },
+    ]);
+  });
+
+  it("leaves out the profiles read in full once every kept profile was, and the set-aside figure when there is none", () => {
+    expect(figuresLine({ ...funnel, assessed: 84, setAside: 0 }, true)).toEqual([
+      { key: "analysed", count: 1091 },
+      { key: "kept", count: 84 },
+    ]);
+  });
+
+  it("never counts the triage's kept profiles for an analysis without one", () => {
+    expect(
+      figuresLine({ analysed: 120, kept: 120, assessed: 96, matches: 3, setAside: 7 }, false),
+    ).toEqual([
+      { key: "analysed", count: 120 },
+      { key: "assessed", count: 96 },
+      { key: "setAside", count: 7 },
+    ]);
+    expect(
+      figuresLine({ analysed: 5, kept: 5, assessed: 5, matches: 2, setAside: 0 }, false),
+    ).toEqual([{ key: "analysed", count: 5 }]);
+  });
+});
+
 describe("firstSentence", () => {
   it("stops at the first full stop followed by a space", () => {
     expect(firstSentence("  Huit ans en contrôle de gestion. Puis un poste de DAF.  ")).toBe(
@@ -759,7 +727,6 @@ describe("bandStateOf", () => {
     model: true,
     method: "triage",
     running: false,
-    needsCheck: false,
     criteriaCount: 4,
     resultCount: 40,
     poolSize: 1091,
@@ -770,12 +737,11 @@ describe("bandStateOf", () => {
 
   it("says running first, whatever else holds", () => {
     expect(bandStateOf({ ...settled, running: true, method: null })).toBe("running");
-    expect(bandStateOf({ ...settled, running: true, needsCheck: true })).toBe("running");
+    expect(bandStateOf({ ...settled, running: true, triagePending: 1091 })).toBe("running");
   });
 
-  it("says empty without an analysis, then the check before anything else", () => {
+  it("says empty without an analysis", () => {
     expect(bandStateOf({ ...settled, method: null })).toBe("empty");
-    expect(bandStateOf({ ...settled, needsCheck: true, triagePending: 1091 })).toBe("needsCheck");
   });
 
   it("reads a whole-pool analysis as done once nothing waits, incomplete otherwise", () => {

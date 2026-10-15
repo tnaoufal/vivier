@@ -1,18 +1,27 @@
 /**
  * GDPR on one card, folded by default behind one line that says what
  * matters ("Consentement inconnu · suppression le 14 oct. 2028"): the
- * consent (unknown, given, withdrawn), the last contact, and the date
- * the hourly purge deletes the profile, read from retention_due_at()
- * and never computed in the browser. Withdrawing consent is confirmed
- * first, because the purge then deletes the profile at once.
+ * consent (unknown, given, withdrawn), the last contact (the rule it
+ * drives, so many months after it, behind the field's info icon) and
+ * the date the hourly purge deletes the profile, read from
+ * retention_due_at() and never computed in the browser. Withdrawing
+ * consent is confirmed first, because the purge then deletes the
+ * profile at once.
  */
 import { useEffect, useId, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, CircleAlert } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
+import { InfoTip } from "@/components/app-shell/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { dateInputToIso, dateInputValue } from "@/lib/candidates/format";
 import type { CandidateRow, ConsentStatus } from "@/lib/db/types";
 import { formatDate, useI18n } from "@/lib/i18n";
@@ -107,12 +116,7 @@ export function ConsentCard({
         >
           <span className="min-w-0 flex-1">
             <span className="block">{t("candidates.consent.title")}</span>
-            <span
-              className={cn(
-                "mt-1 block text-meta font-normal",
-                candidate.consent_status === "withdrawn" ? "text-negative" : "text-muted-foreground",
-              )}
-            >
+            <span className="mt-1 block text-meta font-normal text-muted-foreground">
               {summary}
             </span>
           </span>
@@ -123,14 +127,20 @@ export function ConsentCard({
             )}
             aria-hidden="true"
           />
-          <span className="sr-only">{open ? t("candidates.section.collapse") : t("candidates.section.expand")}</span>
+          <span className="sr-only">
+            {open ? t("candidates.section.collapse") : t("candidates.section.expand")}
+          </span>
         </button>
       </h2>
       {open ? (
         <div id={bodyId} className="fade-in space-y-4 border-t border-border p-6">
           <div className="space-y-2">
             <Label htmlFor="consent-status">{t("candidates.consent.status")}</Label>
-            <Select value={candidate.consent_status} onValueChange={changeConsent} disabled={!canEdit || busy}>
+            <Select
+              value={candidate.consent_status}
+              onValueChange={changeConsent}
+              disabled={!canEdit || busy}
+            >
               <SelectTrigger id="consent-status">
                 <SelectValue />
               </SelectTrigger>
@@ -144,15 +154,28 @@ export function ConsentCard({
             </Select>
             {candidate.consent_status === "given" && candidate.consent_at ? (
               <p className="text-meta text-muted-foreground">
-                {t("candidates.consent.givenAt", { date: formatDate(locale, candidate.consent_at) })}
+                {t("candidates.consent.givenAt", {
+                  date: formatDate(locale, candidate.consent_at),
+                })}
               </p>
             ) : null}
             {candidate.consent_status === "withdrawn" ? (
-              <p className="text-meta text-negative">{t("candidates.consent.withdrawn.note")}</p>
+              <p className="flex items-start gap-1.5 text-meta text-ink">
+                <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span className="min-w-0">{t("candidates.consent.withdrawn.note")}</span>
+              </p>
             ) : null}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="last-contact">{t("candidates.consent.lastContact")}</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="last-contact">{t("candidates.consent.lastContact")}</Label>
+              {/* The rule this date drives, on demand; the summary above already says the date it gives. */}
+              <InfoTip label={t("candidates.consent.lastContact")}>
+                {retentionMonths === 1
+                  ? t("candidates.consent.retention.one")
+                  : t("candidates.consent.retention", { months: retentionMonths })}
+              </InfoTip>
+            </div>
             <Input
               id="last-contact"
               type="date"
@@ -162,15 +185,6 @@ export function ConsentCard({
               disabled={!canEdit || busy}
             />
           </div>
-          {/* An unknown date is already said by the summary above: the rule shows only beside a known one. */}
-          {retentionDueAt ? (
-            <p className="text-meta text-muted-foreground">
-              {t("candidates.consent.retention", {
-                date: formatDate(locale, retentionDueAt),
-                months: retentionMonths,
-              })}
-            </p>
-          ) : null}
         </div>
       ) : null}
       <ConfirmDialog

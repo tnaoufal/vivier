@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Assessment, BriefCriterion, RoleProfile } from "@/lib/db/types";
 
+import { LABEL_MAX, VALUE_MAX } from "./criteria";
 import {
   ASSESSMENT_PAYLOAD_MAX,
   assessmentPayload,
@@ -9,22 +10,24 @@ import {
   challengePayload,
   challengeSystemPrompt,
   compactRoleProfile,
-  extractionSystemPrompt,
-  extractionUserPrompt,
+  enforceBriefReading,
+  EXTRACTION_MAX,
   FULL_POOL_MAX,
   payloadTexts,
   queryTextOf,
+  readBriefAnswer,
+  readBriefPrompt,
   redactIdentity,
   RETRIEVAL_LIMIT,
   ROLE_DEFINITION_MAX,
   ROLE_DEFINITION_QUERY_TERMS,
-  roleDefinitionPrompt,
   roleDefinitionText,
   TEXT_QUERY_MAX_TERMS,
   textQueryOf,
   type AssessmentProfile,
+  type BriefReadingAnswer,
 } from "./prompts";
-import { roleDefinitionOf } from "./role-profile";
+import { briefSourceHash, ROLE_PROFILE_BRIEF_MAX, roleDefinitionOf } from "./role-profile";
 
 const criteria: BriefCriterion[] = [
   {
@@ -120,13 +123,10 @@ describe("textQueryOf", () => {
 
 describe("prompts", () => {
   it("say the rules once", () => {
-    const system = extractionSystemPrompt();
+    const { system } = readBriefPrompt(brief);
     expect(system).toContain('"criteria"');
     expect(system).toContain("protected characteristic");
     expect(system).toContain("At most 12");
-    expect(extractionUserPrompt({ title: " T ", description: "" })).toBe(
-      "Title: T\n\nBrief:\n(no description)",
-    );
     const assessment = assessmentSystemPrompt();
     expect(assessment).toContain("senior recruitment consultant");
     expect(assessment).toContain('"unknown", not "no"');
@@ -140,8 +140,8 @@ describe("prompts", () => {
     expect(assessment).toContain("The team reviews your reading and decides");
   });
 
-  it("ask for the role first: the extraction opens with it, the assessment judges it before anything else", () => {
-    const system = extractionSystemPrompt();
+  it("ask for the role first: the reading opens with it, the assessment judges it before anything else", () => {
+    const { system } = readBriefPrompt(brief);
     expect(system).toContain('"kind":"role|skill|');
     expect(system).toContain("The FIRST criterion is always the role, exactly one");
     expect(system).toContain(`up to ${ROLE_DEFINITION_MAX} characters`);
@@ -165,17 +165,13 @@ describe("prompts", () => {
 
   it("write the role's definition from the job as it is in the market, in words the guard lets through", () => {
     // "Famille de métiers" would read as a family situation to the wider guard; the definition names the job's domain instead.
-    for (const system of [
-      extractionSystemPrompt(),
-      roleDefinitionPrompt({ title: "T", description: "" }).system,
-    ]) {
-      expect(system).toContain("the domain of the job");
-      expect(system).not.toContain("job family");
-      expect(system).toContain('not "family" or "famille"');
-      expect(system).toContain("from what this job is in the market");
-    }
-    // The extraction's "nothing the brief does not say" makes the role definition its one exception.
-    expect(extractionSystemPrompt()).toContain(
+    const { system } = readBriefPrompt(brief);
+    expect(system).toContain("the domain of the job");
+    expect(system).not.toContain("job family");
+    expect(system).toContain('not "family" or "famille"');
+    expect(system).toContain("from what this job is in the market");
+    // "Nothing the brief does not say" makes the role definition its one exception.
+    expect(system).toContain(
       "except the role definition, which you write from your knowledge of the job",
     );
   });
@@ -203,18 +199,6 @@ describe("prompts", () => {
     );
     expect(assessment).toContain("before how the positions were titled");
     expect(assessment).not.toContain("never how the positions were titled");
-  });
-
-  it("derive the role of a brief written before the role existed with the title and the text", () => {
-    const prompt = roleDefinitionPrompt({
-      title: " Business Developer ",
-      description: "Conquête de nouveaux comptes.",
-    });
-    expect(prompt.system).toContain('{"label":"...","value":"..."}');
-    expect(prompt.system).toContain("the job title as the brief names it");
-    expect(prompt.system).toContain("equivalent titles");
-    expect(prompt.system).toContain("never a protected characteristic");
-    expect(prompt.user).toBe("Title: Business Developer\n\nBrief:\nConquête de nouveaux comptes.");
   });
 
   it("say what the brief's text and the profile's must-haves are for: never a requirement of their own", () => {
@@ -532,16 +516,6 @@ describe("the role profile in the payloads", () => {
     ).toBeNull();
   });
 
-  it("goes with the brief's text when the extraction has one, so the must-haves come back required", () => {
-    expect(extractionUserPrompt({ title: "T", description: "D" }, null)).toBe(
-      "Title: T\n\nBrief:\nD",
-    );
-    const prompt = extractionUserPrompt({ title: "T", description: "D" }, roleProfile);
-    expect(prompt.startsWith("Title: T\n\nBrief:\nD\n\nRole profile")).toBe(true);
-    expect(prompt).toContain('"mustHaves":["Anglais courant"]');
-    expect(extractionSystemPrompt()).toContain("make each of its must-haves a required criterion");
-  });
-
   it("asks the screening for the five dimensions, the lists and a summary that ends on the main reservation", () => {
     const system = assessmentSystemPrompt();
     expect(system).toContain('"dimensions":{"role":{"score":0,"note":"...","evidence":"..."}');
@@ -564,6 +538,272 @@ describe("the role profile in the payloads", () => {
     expect(system).toContain("Rules for questions: up to 3 points");
     expect(system).toContain("the last sentence names the main reservation");
     expect(system).toContain("read the CV as a trajectory");
+  });
+});
+
+// ---------------------------------------------------------------------
+// the one reading of a brief
+// ---------------------------------------------------------------------
+
+describe("the one reading of a brief", () => {
+  const answer: BriefReadingAnswer = {
+    profile: {
+      assumptions: ["Le brief ne précise pas le périmètre : supposé un site."],
+      domain: "Finance : contrôle de gestion",
+      seniority: "senior",
+      yearsMin: 5,
+      yearsMax: 10,
+      missions: ["Budgets et forecasts", "Reporting mensuel", "Analyse des écarts"],
+      equivalentTitles: ["Business controller"],
+      adjacentProfiles: ["Comptable général : tient les comptes, n'analyse pas"],
+      context: { sector: null, product: null, clients: null, scope: null },
+      mustHaves: ["Anglais courant"],
+      niceToHaves: ["SAP"],
+      successFactors: ["Rigueur"],
+      questions: ["Quel ERP ?"],
+    },
+    criteria: [
+      {
+        kind: "skill",
+        label: " Contrôle de gestion ",
+        value: "contrôle de gestion",
+        required: true,
+        weight: 3,
+      },
+      {
+        kind: "role",
+        label: " Contrôleur de gestion ",
+        value: "Finance : budgets, reporting…",
+        required: true,
+        weight: 3,
+      },
+      {
+        kind: "language",
+        label: "Anglais courant",
+        value: "anglais C1",
+        required: true,
+        weight: 2.4,
+      },
+      { kind: "other", label: "Moins de 40 ans", value: "age", required: false, weight: 1 },
+      { kind: "magic", label: "Permis B", value: "permis b" },
+      { kind: "skill", label: "", value: "rien" },
+    ],
+    warnings: [" La demande sur l'âge a été écartée. ", "   "],
+  };
+  const defaults = { model: "m", createdAt: "2026-10-15T08:00:00Z" };
+  const withoutRole = answer.criteria.filter((item) => item.kind !== "role");
+
+  it("asks for the profile and the criteria in one JSON, from the brief exactly as it was written", () => {
+    const { system, user } = readBriefPrompt({ title: " T ", description: "" });
+    expect(system).toContain('"profile":{"assumptions":["..."],"domain":"..."');
+    expect(system).toContain(
+      '"criteria":[{"kind":"role|skill|experience|language|location|education|availability|other"',
+    );
+    expect(system).toContain('"warnings":["..."]');
+    expect(system).toContain("exactly as its author wrote it");
+    expect(system).toContain("The brief is the only source");
+    expect(system).toContain(`At most ${EXTRACTION_MAX} criteria`);
+    expect(system).toContain("core missions that define the job");
+    expect(system).toContain("what the brief does not state and you had to assume");
+    expect(system).toContain('"seniority":"junior|confirmed|senior|manager|executive"');
+    expect(system).toContain("ONLY when the brief states them");
+    expect(system).toContain("three to five points to verify in an interview");
+    // A ceiling on years is the brief's to state, never the model's to infer: the classic indirect age criterion.
+    expect(system).toContain("yearsMax: ONLY when the brief itself states a maximum");
+    expect(system).toContain("never infer one from the level");
+    expect(system).toContain("proxy for age");
+    expect(system).toContain("Each of profile.mustHaves is a required criterion");
+    expect(system).toContain("write them from one reading");
+    expect(system).toContain("add one sentence to warnings naming the dropped request");
+    expect(system).toContain("warnings is [] when nothing was dropped");
+    // Nobody checks or edits the answer before the analysis reads it.
+    expect(system).not.toContain("The team edits what you write");
+    expect(system).not.toContain("The team reviews every proposal");
+    expect(user).toBe("Title: T\n\nBrief:\n(no description)");
+    expect(readBriefPrompt({ title: "T", description: " Le besoin. " }).user).toBe(
+      "Title: T\n\nBrief:\nLe besoin.",
+    );
+  });
+
+  it("clips the brief's text to what the reading takes", () => {
+    const { user } = readBriefPrompt({
+      title: "T",
+      description: "x".repeat(ROLE_PROFILE_BRIEF_MAX + 500),
+    });
+    expect(user).toHaveLength("Title: T\n\nBrief:\n".length + ROLE_PROFILE_BRIEF_MAX);
+    expect(EXTRACTION_MAX).toBe(12);
+  });
+
+  it("wants three missions at least in the answer, and lets the warnings go", () => {
+    const profile = { domain: "x", seniority: "senior", missions: ["a", "b", "c"] };
+    expect(readBriefAnswer.safeParse({ profile, criteria: [] }).success).toBe(true);
+    expect(
+      readBriefAnswer.safeParse({
+        profile,
+        criteria: [{ kind: "skill", label: "l", value: "v" }],
+        warnings: ["w"],
+      }).success,
+    ).toBe(true);
+    expect(
+      readBriefAnswer.safeParse({ profile: { ...profile, missions: ["a", "b"] }, criteria: [] })
+        .success,
+    ).toBe(false);
+    expect(readBriefAnswer.safeParse({ criteria: [] }).success).toBe(false);
+    expect(
+      readBriefAnswer.safeParse({ profile, criteria: [{ kind: "skill", label: "l" }] }).success,
+    ).toBe(false);
+  });
+
+  it("binds the answer: the role first with the profile's definition, the criteria cleaned, a protected one dropped and counted", () => {
+    const reading = enforceBriefReading(brief, answer, defaults);
+    expect(reading.criteria.map((criterion) => criterion.kind)).toEqual([
+      "role",
+      "skill",
+      "language",
+      "other",
+    ]);
+    expect(reading.criteria[0]).toMatchObject({
+      kind: "role",
+      label: "Contrôleur de gestion",
+      value: roleDefinitionOf(reading.profile),
+      required: true,
+      weight: 3,
+    });
+    expect(roleDefinitionOf(reading.profile)).toBe(
+      "Finance : contrôle de gestion. Budgets et forecasts ; Reporting mensuel ; Analyse des écarts. Business controller",
+    );
+    expect(reading.criteria[1]).toMatchObject({
+      kind: "skill",
+      label: "Contrôle de gestion",
+      value: "contrôle de gestion",
+      required: true,
+      weight: 3,
+    });
+    expect(reading.criteria[2]).toMatchObject({ kind: "language", required: true, weight: 2 });
+    // A kind the schema does not know reads as "other"; a weight not given is 2, required not given is false.
+    expect(reading.criteria[3]).toMatchObject({
+      kind: "other",
+      label: "Permis B",
+      value: "permis b",
+      required: false,
+      weight: 2,
+    });
+    expect(new Set(reading.criteria.map((criterion) => criterion.id)).size).toBe(4);
+    expect(reading.criteria.every((criterion) => criterion.id.length > 0)).toBe(true);
+    expect(reading.dropped).toBe(1);
+    expect(reading.warnings).toEqual(["La demande sur l'âge a été écartée."]);
+  });
+
+  it("reads the profile from the brief's text: the title as the brief names the job, a ceiling on years only when the brief states one, the hash of the text", () => {
+    const reading = enforceBriefReading(brief, answer, defaults);
+    expect(reading.profile).toMatchObject({
+      title: brief.title,
+      domain: "Finance : contrôle de gestion",
+      seniority: "senior",
+      yearsMin: 5,
+      yearsMax: null,
+      missions: answer.profile.missions,
+      mustHaves: ["Anglais courant"],
+      model: "m",
+      createdAt: defaults.createdAt,
+      sourceHash: briefSourceHash(brief),
+    });
+    const stated = { ...brief, description: `${brief.description} 10 ans d'expérience maximum.` };
+    const ceiling = enforceBriefReading(stated, answer, defaults);
+    expect(ceiling.profile.yearsMax).toBe(10);
+    expect(ceiling.profile.sourceHash).toBe(briefSourceHash(stated));
+    expect(ceiling.profile.sourceHash).not.toBe(briefSourceHash(brief));
+  });
+
+  it("drops a field of the profile that names a protected characteristic and counts it with the criteria", () => {
+    const reading = enforceBriefReading(
+      brief,
+      {
+        ...answer,
+        profile: {
+          ...answer.profile,
+          missions: [...answer.profile.missions, "Recruter une femme de moins de 30 ans"],
+          context: { sector: "Confession religieuse", product: null, clients: null, scope: null },
+        },
+      },
+      defaults,
+    );
+    expect(reading.profile.missions).toEqual(answer.profile.missions);
+    expect(reading.profile.context.sector).toBeNull();
+    expect(reading.dropped).toBe(3);
+  });
+
+  it("names the job from the profile when the model answered no role, and leaves out a role that names a protected characteristic", () => {
+    const unnamed = enforceBriefReading(brief, { ...answer, criteria: withoutRole }, defaults);
+    expect(unnamed.criteria[0]).toMatchObject({
+      kind: "role",
+      label: brief.title,
+      value: roleDefinitionOf(unnamed.profile),
+    });
+    const guarded = enforceBriefReading(
+      brief,
+      {
+        ...answer,
+        criteria: [
+          { kind: "role", label: "Hôtesse d'accueil, nationalité française", value: "accueil" },
+          ...withoutRole,
+        ],
+      },
+      defaults,
+    );
+    expect(guarded.criteria.some((criterion) => criterion.kind === "role")).toBe(false);
+    expect(guarded.criteria.map((criterion) => criterion.kind)).toEqual([
+      "skill",
+      "language",
+      "other",
+    ]);
+    expect(guarded.dropped).toBe(2);
+  });
+
+  it("keeps EXTRACTION_MAX criteria, the role among them, and clips the labels and the values", () => {
+    const many = Array.from({ length: 20 }, (_, index) => ({
+      kind: "skill",
+      label: `Skill ${index}`,
+      value: `skill ${index}`,
+    }));
+    const reading = enforceBriefReading(
+      brief,
+      { ...answer, criteria: [...many, { kind: "role", label: "l".repeat(200), value: "v" }] },
+      defaults,
+    );
+    expect(reading.criteria).toHaveLength(EXTRACTION_MAX);
+    expect(reading.criteria[0]?.kind).toBe("role");
+    expect(reading.criteria[0]?.label).toHaveLength(LABEL_MAX);
+    expect(reading.criteria[EXTRACTION_MAX - 1]?.label).toBe("Skill 10");
+    const long = enforceBriefReading(
+      brief,
+      { ...answer, criteria: [{ kind: "skill", label: "x".repeat(200), value: "y".repeat(1000) }] },
+      defaults,
+    );
+    expect(long.criteria[1]).toMatchObject({
+      label: "x".repeat(LABEL_MAX),
+      value: "y".repeat(VALUE_MAX),
+    });
+    expect(VALUE_MAX).toBe(ROLE_DEFINITION_MAX);
+  });
+
+  it("lets the model's own definition stand only when the profile names nothing", () => {
+    const bare = enforceBriefReading(
+      { title: "Nationality officer", description: "" },
+      {
+        ...answer,
+        profile: { ...answer.profile, domain: "", missions: [], equivalentTitles: [] },
+        criteria: [{ kind: "role", label: "Officer", value: "d".repeat(700) }],
+      },
+      defaults,
+    );
+    expect(bare.profile.title).toBe("");
+    expect(bare.criteria[0]).toMatchObject({
+      kind: "role",
+      label: "Officer",
+      value: "d".repeat(ROLE_DEFINITION_MAX),
+    });
+    expect(bare.dropped).toBe(1);
   });
 });
 

@@ -1,17 +1,17 @@
 /**
- * Words of the similar profiles: the button on a profile, the drawer that
- * lists them, the two measures the database may have used. The one
- * sentence (behind an info icon) says a proximity is a calculation a
- * person weighs, never a verdict.
+ * Words of the similar profiles: the button on a profile, the drawer
+ * that lists them seniority first, the proximity line and the two
+ * measures the database may have used, and the years when a profile
+ * states none.
  */
 const fr = {
   "similar.button": "Profils similaires",
-  "similar.title": "Profils similaires",
+  "similar.title": "Profils proches",
   "similar.subtitle": "Proches de {name}",
-  "similar.help":
-    "Calcul sur le parcours, ou à défaut sur le titre et les compétences : pas un avis.",
   "similar.method.embedding": "Sens du parcours",
   "similar.method.skills": "Compétences",
+  "similar.proximity": "{percent} % · {method}",
+  "similar.years.unknown": "Non renseigné",
   "similar.empty.title": "Aucun profil proche",
   "similar.loadError": "Les profils similaires n'ont pas pu être chargés.",
   "similar.open": "Ouvrir la fiche",
@@ -19,11 +19,12 @@ const fr = {
 
 const en = {
   "similar.button": "Similar profiles",
-  "similar.title": "Similar profiles",
+  "similar.title": "Close profiles",
   "similar.subtitle": "Close to {name}",
-  "similar.help": "Computed from the career, else from the headline and skills: not an opinion.",
   "similar.method.embedding": "Career meaning",
   "similar.method.skills": "Skills",
+  "similar.proximity": "{percent}% · {method}",
+  "similar.years.unknown": "Not stated",
   "similar.empty.title": "No close profile",
   "similar.loadError": "The similar profiles could not be loaded.",
   "similar.open": "Open the profile",

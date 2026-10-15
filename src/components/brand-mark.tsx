@@ -1,8 +1,9 @@
 /**
  * The product's mark: a sprout in a circle (a vivier is where talent
- * grows) next to the wordmark. Drawn inline so it takes the current
- * colour on either theme; the gradient only on the landing page. The
- * mark is a link, so it gets the press feedback of every control.
+ * grows) next to the wordmark, the ink on paper (paper on ink in dark).
+ * Drawn inline so it takes the current colour on either theme; the
+ * `gradient` prop is kept for the landing page and draws the same ink.
+ * The mark is a link, so it gets the press feedback of every control.
  */
 import { Link } from "@tanstack/react-router";
 
@@ -51,7 +52,7 @@ export function BrandMark({
       )}
       aria-label={BRAND.name}
     >
-      <BrandIcon className={cn(icon, "text-primary")} />
+      <BrandIcon className={cn(icon, "text-ink")} />
       <span className={cn("font-display leading-none", text, gradient && "brand-text")}>
         {BRAND.name}
       </span>

@@ -2,17 +2,18 @@
  * What leaves for the model and the database, built here so it can be
  * read and tested without either: the brief as one query text (stored
  * with the search and embedded), the full-text terms the search
- * function gets, the system prompts (criteria extraction, the role's
- * definition for a brief that has none, the screening of one candidate
- * against one brief the way a senior recruiter reads a CV: the métier
- * first, then the seniority, the context, the trajectory and the
- * achievements, with strengths, concerns and interview questions; the
- * second opinion on a retained profile), and the payloads of those
- * requests, where the role (the job itself) comes first and apart from
- * the other requirements, its definition read off the role profile
- * whenever the brief has one (the team edits the profile; the criterion
- * follows it), and the role profile (the team's understanding of the
- * job) travels compact (the guard against a criterion about a protected
+ * function gets, the system prompts (the one reading of a brief, which
+ * answers the role profile and the criteria together, the role first;
+ * the screening of one candidate against one brief the way a senior
+ * recruiter reads a CV: the métier first, then the seniority, the
+ * context, the trajectory and the achievements, with strengths,
+ * concerns and interview questions; the second opinion on a retained
+ * profile), the rules that bind a brief's reading before it is stored
+ * (enforceBriefReading), and the payloads of those requests, where the
+ * role (the job itself) comes first and apart from the other
+ * requirements, its definition read off the role profile whenever the
+ * brief has one, and the role profile (the understanding of the job)
+ * travels compact (the guard against a criterion about a protected
  * characteristic is criteria.ts's). payloadTexts() lists what the model
  * was given, so assessment.ts can check that a quote it answers exists.
  * Prompts are in English; the model answers in the brief's language. A
@@ -21,20 +22,49 @@
  * so redactIdentity() can take it out of every text (the CV's indexed
  * text starts with it), along with e-mail addresses and phone numbers.
  */
+import { z } from "zod";
+
 import type {
   Assessment,
   AssessmentDimension,
   BriefCriterion,
   BriefRow,
   CandidateRow,
+  CriterionKind,
   RequirementMet,
   RoleProfile,
   RoleSeniority,
 } from "@/lib/db/types";
 
-import { LABEL_MAX, roleCriterion, roleFirst, VALUE_MAX } from "./criteria";
+import {
+  isCriterionKind,
+  LABEL_MAX,
+  protectedCriterion,
+  roleCriterion,
+  roleCriterionOf,
+  roleFirst,
+  toWeight,
+  VALUE_MAX,
+  withId,
+} from "./criteria";
 import { escapeRegExp, normalise, type MatchProfile } from "./matching";
-import { roleDefinitionOf } from "./role-profile";
+import {
+  briefSourceHash,
+  cleanRoleProfile,
+  guardRoleProfile,
+  jobTitleOf,
+  ROLE_ASSUMPTIONS_MAX,
+  ROLE_MISSIONS_MAX,
+  ROLE_MISSIONS_MIN,
+  ROLE_PROFILE_BRIEF_MAX,
+  ROLE_PROFILE_ITEM_MAX,
+  ROLE_PROFILE_LIST_MAX,
+  ROLE_PROFILE_TEXT_MAX,
+  roleDefinitionOf,
+  roleProfileAnswer,
+  statesMaximumYears,
+  type RoleProfileAnswer,
+} from "./role-profile";
 
 /** The brief as the payloads read it: its text, its criteria, and the role profile when it has one. */
 export type BriefText = Pick<BriefRow, "title" | "description" | "criteria"> & {
@@ -314,13 +344,12 @@ export function textQueryOf(brief: BriefText, maxTerms = TEXT_QUERY_MAX_TERMS): 
 }
 
 // ---------------------------------------------------------------------
-// criteria extraction
+// the one reading of a brief: the role profile and the criteria
 // ---------------------------------------------------------------------
 
 /**
- * How the role's definition is written, shared by the extraction and
- * the one-call derivation: what the assessment reads to judge whether a
- * profile's métier is this job, whatever the titles.
+ * How the role's definition is written: what the assessment reads to
+ * judge whether a profile's métier is this job, whatever the titles.
  */
 const ROLE_DEFINITION_RULES = [
   `- The role's value is the ROLE DEFINITION, up to ${ROLE_DEFINITION_MAX} characters, in the language of the brief, as prose: the domain of the job (sales, finance, engineering...), the three to six core missions that define the job (for a business developer: prospecting new accounts, selling and negotiating, growing revenue from new clients), the usual equivalent titles under which other companies name the same job (commercial grands comptes, ingénieur d'affaires, chargé d'affaires, sales executive, account executive), and, only when the brief says so, the sector or the product.`,
@@ -328,60 +357,172 @@ const ROLE_DEFINITION_RULES = [
   '- Missions, scope and titles only: never a protected characteristic (age, gender, origin, family situation, health, religion, politics, appearance...), and none of the words that name one (write "domain" or "métier", not "family" or "famille", for the job\'s domain).',
 ];
 
-export function extractionSystemPrompt(): string {
-  return [
-    "You extract hiring criteria from a job brief for an HR team. The team reviews every proposal; nothing you answer is applied by itself.",
-    'Answer with JSON only: {"criteria":[{"kind":"role|skill|experience|language|location|education|availability|other","label":"...","value":"...","required":true,"weight":2}],"warnings":["..."]}.',
-    "Rules:",
-    `- At most ${EXTRACTION_MAX} criteria, the most useful first, one criterion per requirement, nothing the brief does not say, except the role definition, which you write from your knowledge of the job (the brief rarely spells out the missions).`,
-    '- The FIRST criterion is always the role, exactly one, built from the title and the text: "kind":"role", label = the job title as the brief names it (e.g. "Business Developer"), "required":true, "weight":3.',
-    ...ROLE_DEFINITION_RULES,
-    "- When the brief comes with a role profile (the team's understanding of the job: domain, missions, equivalent titles, must-haves), write the role's definition from it, and make each of its must-haves a required criterion of the matching kind, in the brief's words.",
-    '- Then the other criteria. kind: "skill" for a tool, technique, method or domain; "experience" for years of experience (value is the number of years alone, e.g. "5"); "language" for a spoken language (value is the language with its level when stated, e.g. "anglais C1", "english fluent"); "location" for a city, region or country (value is the place alone); "education" for a degree or a school; "availability" for a start date or notice period; "other" for anything else.',
-    '- label: short, in the language of the brief, as it reads on a chip (e.g. "Anglais courant", "5 ans en contrôle de gestion"). value: the thing to find in a profile, lowercase, no filler words.',
-    "- required: true only when the brief states the requirement as mandatory (must, required, mandatory, obligatoire, impératif, indispensable, exigé). Otherwise false.",
-    "- weight: 3 for what the brief insists on, 2 for what it asks for, 1 for what it only welcomes (a plus, apprécié, idéalement, nice to have).",
-    "- Never produce a criterion about age, date of birth, gender, origin, nationality, ethnicity, family situation, pregnancy, health, disability, religion, union membership, political opinion, sexual orientation, appearance or any other protected characteristic, even when the brief asks for it: drop it and add one sentence to warnings naming the dropped request, in the language of the brief.",
-    "- warnings is [] when nothing was dropped.",
-  ].join("\n");
+/** One criterion as the model answers it, before the enforcement reads it. */
+const criterionAnswer = z.object({
+  kind: z.string(),
+  label: z.string(),
+  value: z.string(),
+  required: z.boolean().optional(),
+  weight: z.number().optional(),
+});
+
+/**
+ * The shape the model must answer: the role profile as role-profile.ts
+ * asks for it (three missions at least: fewer is not a job
+ * understanding, and the call is retried with the error quoted back),
+ * the criteria (forty at most here; the enforcement keeps
+ * EXTRACTION_MAX) and the sentences about requests it dropped.
+ */
+export const readBriefAnswer = z.object({
+  profile: roleProfileAnswer,
+  criteria: z.array(criterionAnswer).max(40),
+  warnings: z.array(z.string()).max(10).optional(),
+});
+
+/** What the answer schema lets through; named so the handler and the enforcement read a typed value. */
+export interface BriefReadingAnswer {
+  profile: RoleProfileAnswer;
+  criteria: {
+    kind: string;
+    label: string;
+    value: string;
+    required?: boolean | undefined;
+    weight?: number | undefined;
+  }[];
+  warnings?: string[] | undefined;
 }
 
 /**
- * The one small call that gives a brief written before the role existed
- * its role criterion (runSearch adds it in front of the criteria the
- * brief already has): the job title as the brief names it, and the
- * definition the assessment reads.
+ * The one call that reads a brief: the system prompt asks, in one JSON,
+ * for the role profile (the understanding of the job a senior recruiter
+ * writes down before reading a CV) and for the criteria (the role
+ * first, then one per requirement the brief states); the user message
+ * is the brief's title and text, clipped to ROLE_PROFILE_BRIEF_MAX. The
+ * brief is the only source and nobody checks or edits the answer before
+ * the analysis reads it, so the prompt says what is read from the text
+ * and what from the job as it is in the market.
  */
-export function roleDefinitionPrompt(brief: Pick<BriefRow, "title" | "description">): {
+export function readBriefPrompt(brief: Pick<BriefRow, "title" | "description">): {
   system: string;
   user: string;
 } {
+  const description = brief.description.trim().slice(0, ROLE_PROFILE_BRIEF_MAX);
   return {
     system: [
-      "You read a job brief for an HR team and name the job it is about. The team reviews your answer; nothing you answer is applied by itself.",
-      'Answer with JSON only: {"label":"...","value":"..."}.',
-      "Rules:",
-      `- label: the job title as the brief names it, at most ${LABEL_MAX} characters, in the language of the brief (the title of the brief when it is one).`,
+      "You are a senior recruitment consultant. You read ONE job brief, exactly as its author wrote it, and write down in one JSON what you would brief a junior recruiter with before a single CV is read: your understanding of the job (profile) and the brief's requirements as criteria (criteria), the job itself first. The brief is the only source: what you answer is what the analysis reads, and it decides nothing about a person.",
+      'Answer with JSON only: {"profile":{"assumptions":["..."],"domain":"...","seniority":"junior|confirmed|senior|manager|executive","yearsMin":3,"yearsMax":null,"missions":["..."],"equivalentTitles":["..."],"adjacentProfiles":["..."],"context":{"sector":null,"product":null,"clients":null,"scope":null},"mustHaves":["..."],"niceToHaves":["..."],"successFactors":["..."],"questions":["..."]},"criteria":[{"kind":"role|skill|experience|language|location|education|availability|other","label":"...","value":"...","required":true,"weight":2}],"warnings":["..."]}.',
+      "Rules for profile:",
+      `- assumptions: two to four sentences saying what the brief does not state and you had to assume (the exact métier when the title is ambiguous, the level, the scope); [] when the brief is explicit. At most ${ROLE_ASSUMPTIONS_MAX} sentences.`,
+      `- domain: the domain of the job as it is in the market (sales, finance, engineering, care...), written from what this job is, not only from the brief's words; at most ${ROLE_PROFILE_TEXT_MAX} characters. Write "domain" or "métier", not "family" or "famille", for the job's domain.`,
+      '- seniority: the level the brief asks for: "junior" (first years), "confirmed" (autonomous in the role), "senior" (reference in the role, mentors), "manager" (leads people doing the job), "executive" (leads the function).',
+      "- yearsMin: the years of experience in the role the brief states, or the minimum the level implies; null when nothing says. yearsMax: ONLY when the brief itself states a maximum; never infer one from the level: a ceiling on experience is a proxy for age and is not yours to write.",
+      `- missions: the ${ROLE_MISSIONS_MIN} to ${ROLE_MISSIONS_MAX} core missions that define the job (for a business developer: prospecting new accounts, selling and negotiating, growing revenue from new clients), from your knowledge of the job: the brief rarely spells them out.`,
+      "- equivalentTitles: the usual titles under which other companies name the same job, in the brief's language and in English when the market uses it.",
+      '- adjacentProfiles: the neighbouring backgrounds that can succeed in the job, each with what it lacks in a few words (e.g. "account manager : keeps clients, does not win them").',
+      "- context: the sector, the product, the clients and the scope markers (team size, budget, deal size, territory) ONLY when the brief states them; null for each one the brief does not state. Never guess a context.",
+      "- mustHaves: the deal-breakers in words, as the brief states them (a language, a degree, a place, a tool, years in the role), nothing the brief does not say. niceToHaves: what the brief welcomes without requiring it.",
+      "- successFactors: what makes someone succeed in this job, as a senior recruiter would say it: the behaviours and the know-how that separate a good hire from a bad one.",
+      "- questions: three to five points to verify in an interview with every candidate for this job.",
+      `- Lists hold at most ${ROLE_PROFILE_LIST_MAX} items of at most ${ROLE_PROFILE_ITEM_MAX} characters, in the language of the brief, plain words, no markdown.`,
+      "Rules for criteria:",
+      `- At most ${EXTRACTION_MAX} criteria, the most useful first, one criterion per requirement, nothing the brief does not say, except the role definition, which you write from your knowledge of the job (the brief rarely spells out the missions).`,
+      '- The FIRST criterion is always the role, exactly one, built from the title and the text: "kind":"role", label = the job title as the brief names it (e.g. "Business Developer"), "required":true, "weight":3.',
       ...ROLE_DEFINITION_RULES,
+      "- The role's definition and profile.domain, profile.missions and profile.equivalentTitles describe the same job: write them from one reading.",
+      "- Each of profile.mustHaves is a required criterion of the matching kind, in the brief's words; what the brief welcomes without requiring it is a criterion that is not required.",
+      '- Then the other criteria. kind: "skill" for a tool, technique, method or domain; "experience" for years of experience (value is the number of years alone, e.g. "5"); "language" for a spoken language (value is the language with its level when stated, e.g. "anglais C1", "english fluent"); "location" for a city, region or country (value is the place alone); "education" for a degree or a school; "availability" for a start date or notice period; "other" for anything else.',
+      '- label: short, in the language of the brief, as it reads on a chip (e.g. "Anglais courant", "5 ans en contrôle de gestion"). value: the thing to find in a profile, lowercase, no filler words.',
+      "- required: true only when the brief states the requirement as mandatory (must, required, mandatory, obligatoire, impératif, indispensable, exigé). Otherwise false.",
+      "- weight: 3 for what the brief insists on, 2 for what it asks for, 1 for what it only welcomes (a plus, apprécié, idéalement, nice to have).",
+      "- Never produce a criterion about age, date of birth, gender, origin, nationality, ethnicity, family situation, pregnancy, health, disability, religion, union membership, political opinion, sexual orientation, appearance or any other protected characteristic, even when the brief asks for it: drop it and add one sentence to warnings naming the dropped request, in the language of the brief. warnings is [] when nothing was dropped.",
+      "- Never a protected characteristic in any field of the profile either, and none of the words that name one, even when the brief asks for it: leave it out.",
     ].join("\n"),
-    user: extractionUserPrompt(brief),
+    user: `Title: ${brief.title.trim()}\n\nBrief:\n${description || "(no description)"}`,
   };
 }
 
+/** A brief's reading bound by the rules, as it is stored. */
+export interface BriefReading {
+  profile: RoleProfile;
+  /** The role first and once, then the other criteria the brief states, EXTRACTION_MAX at most, each with a fresh id. */
+  criteria: BriefCriterion[];
+  /** The model's sentences about requests it dropped, in the brief's language. */
+  warnings: string[];
+  /** Criteria and fields of the profile dropped here because they named a protected characteristic. */
+  dropped: number;
+}
+
 /**
- * The user message of an extraction: the title and the text, and, when
- * the brief has a role profile, the profile compact after them, so the
- * must-haves become required criteria and the role's definition follows
- * the team's understanding of the job.
+ * The answer bound before anything is stored: the profile cleaned (a
+ * ceiling on years the brief did not state is the model's, and a proxy
+ * for age: dropped) and guarded, with the hash of the text it was read
+ * from; the criteria cleaned, capped at EXTRACTION_MAX and stripped of
+ * protected characteristics, the role first and once. The role's label
+ * is the job as the model names it (else as the profile does); its
+ * definition is the profile's (domain, missions, equivalent titles), so
+ * the criterion, the payloads and the triage read one job, and a
+ * profile read again from a changed text reads as a changed job
+ * (roleChangedSince, presentation.ts); the model's own definition
+ * stands only when the profile names nothing. A role that names a
+ * protected characteristic is left out, and the profile's title stands
+ * for the job (triage.ts). Pure: no model, no data access.
  */
-export function extractionUserPrompt(
+export function enforceBriefReading(
   brief: Pick<BriefRow, "title" | "description">,
-  profile?: RoleProfile | null,
-): string {
-  const description = brief.description.trim().slice(0, 12000);
-  const base = `Title: ${brief.title.trim()}\n\nBrief:\n${description || "(no description)"}`;
-  if (!profile) return base;
-  return `${base}\n\nRole profile (the team's understanding of the job):\n${JSON.stringify(compactRoleProfile(profile))}`;
+  answer: BriefReadingAnswer,
+  defaults: { model: string | null; createdAt: string },
+): BriefReading {
+  const cleaned = cleanRoleProfile(
+    {
+      ...answer.profile,
+      yearsMax: statesMaximumYears(brief) ? answer.profile.yearsMax : null,
+      sourceHash: briefSourceHash(brief),
+    },
+    { title: jobTitleOf(brief), model: defaults.model, createdAt: defaults.createdAt },
+  );
+  const guarded = guardRoleProfile(cleaned);
+  const profile = guarded.profile;
+  let dropped = guarded.dropped;
+  const others: BriefCriterion[] = [];
+  let named: { label: string; value: string } | null = null;
+  for (const item of answer.criteria) {
+    const label = item.label.trim().slice(0, LABEL_MAX);
+    const value = item.value.trim().slice(0, VALUE_MAX);
+    if (!label || !value) continue;
+    const kind: CriterionKind = isCriterionKind(item.kind) ? item.kind : "other";
+    if (kind === "role") {
+      if (!named) named = { label, value };
+      continue;
+    }
+    // The other criteria stop at the cap; the role is read wherever the model put it.
+    if (others.length >= EXTRACTION_MAX) continue;
+    if (protectedCriterion(label, value, kind)) {
+      dropped += 1;
+      continue;
+    }
+    others.push(
+      withId({
+        kind,
+        label,
+        value,
+        required: item.required === true,
+        weight: toWeight(item.weight),
+      }),
+    );
+  }
+  const label = named?.label || profile.title;
+  const value = roleDefinitionOf(profile) || named?.value || label;
+  let role: BriefCriterion | null = null;
+  if (label && value) {
+    if (protectedCriterion(label, value, "role")) dropped += 1;
+    else role = roleCriterionOf(label, value);
+  }
+  const criteria = (role ? [role, ...others] : others).slice(0, EXTRACTION_MAX);
+  const warnings = (answer.warnings ?? [])
+    .map((warning) => warning.trim().slice(0, 300))
+    .filter((warning) => warning.length > 0)
+    .slice(0, 5);
+  return { profile, criteria, warnings, dropped };
 }
 
 // ---------------------------------------------------------------------

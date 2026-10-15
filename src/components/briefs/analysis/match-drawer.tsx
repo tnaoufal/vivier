@@ -1,39 +1,32 @@
 /**
  * One profile of an analysis in a drawer from the right, to decide
  * whether to present it without leaving the list: the header names the
- * person (photo or initials, the position held today, where, the years)
- * with the tier, the decision when it is not "matches" (a near profile;
- * every row of the main list matches) and the score, the buttons (and
+ * person (photo or initials, the position held today, the years, "Non
+ * renseigné" when the CV states none, and where) with the tier, the
+ * decision when it is not "matches" (a near profile; every row of the
+ * main list matches) and the score as a plain figure, the buttons (and
  * the left and right arrow keys) that walk the list, and one row of
  * actions (add to the shortlist, open the profile); then, in this
- * order, why this profile (the ranking's note first, why it ranks
- * there, then the reading's summary, marked as the model's), the
- * requirements of the brief with the evidence (the role first; what the
- * CV does not say reads "Non renseigné", never as a lack), the strengths
- * and the reservations side by side (the second reading's doubt first),
- * the reading against the role (the five dimensions, how the score is
- * composed behind an info icon), the points for the interview, and the
- * triage's verdict, small and muted. A profile no model read shows its
- * requirements alone.
+ * order, why this profile (the ranking's note
+ * first, why it ranks there, then the reading's summary, marked as the
+ * model's), the requirements of the brief with the evidence (the role
+ * first; what the CV does not say reads "Non renseigné", never as a
+ * lack), the strengths and the reservations side by side (the second
+ * reading's doubt first), the reading against the role (the five
+ * dimensions, how the score is composed behind an info icon), the
+ * points for the interview, the triage's verdict, small and muted, and
+ * the team's thread on the candidate (the same one as the candidate's
+ * page). A profile no model read shows its requirements alone.
  */
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import {
-  ChevronLeft,
-  ChevronRight,
-  CircleCheck,
-  ListChecks,
-  ListPlus,
-  MessageSquare,
-  TriangleAlert,
-  UserRound,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, ListChecks, ListPlus, UserRound } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { InfoTip } from "@/components/app-shell/info-tip";
 import { Pill } from "@/components/app-shell/pill";
 import { RequirementList, type RequirementRow } from "@/components/app-shell/requirement-list";
-import { ScoreRing } from "@/components/app-shell/score-ring";
+import { TeamThread } from "@/components/thread/team-thread";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -43,17 +36,19 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { decisionOf, requirementRows, tierOf } from "@/lib/briefs/assessment";
 import { kindKey } from "@/lib/briefs/criteria";
-import { candidatePath, shortlistPath } from "@/lib/briefs/paths";
+import { candidatePath } from "@/lib/briefs/paths";
+import { readCandidateYears } from "@/lib/briefs/queries";
 import { currentPosition, displayName, yearsLabel } from "@/lib/candidates/format";
 import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
 import { useQuery } from "@/lib/data/use-query";
 import type { BriefCriterion, MatchResult, RequirementMet, TriageVerdict } from "@/lib/db/types";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { useOrg } from "@/lib/org/org-context";
-import { readDrawerCandidate } from "@/lib/shortlists/queries";
+import { useTeamMembers } from "@/lib/shortlists/use-members";
 import { cn } from "@/lib/utils";
 
 import { DecisionPill } from "../decision-pill";
@@ -68,12 +63,6 @@ const TRIAGE_KEYS: Record<TriageVerdict, TranslationKey> = {
   unknown: "briefs.triage.unknown",
   no: "briefs.triage.no",
 };
-
-const MARKS = {
-  positive: "text-positive",
-  caution: "text-caution-foreground dark:text-caution",
-  neutral: "text-muted-foreground",
-} as const;
 
 /** A section of the drawer: a small heading, an optional aside on its right, the content. */
 function DrawerSection({
@@ -96,22 +85,13 @@ function DrawerSection({
   );
 }
 
-/** A short list of facts, each led by one mark in a tone, so the lists read apart without colour alone. */
-function FactList({
-  items,
-  icon: Icon,
-  tone,
-}: {
-  items: readonly string[];
-  icon: typeof CircleCheck;
-  tone: keyof typeof MARKS;
-}) {
+/** A short list of facts as plain bullets: the heading names the list, as in the shortlist's drawer. */
+function FactList({ items }: { items: readonly string[] }) {
   return (
-    <ul className="space-y-2">
+    <ul className="list-disc space-y-1.5 pl-5 text-sm text-ink">
       {items.map((item, index) => (
-        <li key={`${index}:${item}`} className="flex items-start gap-2 text-sm text-ink">
-          <Icon aria-hidden="true" className={cn("mt-0.5 size-4 shrink-0", MARKS[tone])} />
-          <span className="min-w-0">{item}</span>
+        <li key={`${index}:${item}`} className="break-words">
+          {item}
         </li>
       ))}
     </ul>
@@ -134,9 +114,9 @@ export function MatchDrawer({
   candidateOf,
   orgId,
   added,
-  shortlistId,
   canAdd,
   onAdd,
+  onShowShortlist,
 }: {
   /** The list the drawer walks: the matches, or the near profiles. */
   list: readonly MatchResult[];
@@ -149,12 +129,15 @@ export function MatchDrawer({
   candidateOf: (candidateId: string) => RowCandidate;
   orgId: string;
   added: (candidateId: string) => boolean;
-  shortlistId: string | null;
   canAdd: boolean;
   onAdd: (result: MatchResult) => Promise<void>;
+  /** Shows the brief's shortlist (its tab), for a profile already on it. */
+  onShowShortlist: () => void;
 }) {
   const { t, locale } = useI18n();
-  const { showPhotos } = useOrg();
+  const { showPhotos, can } = useOrg();
+  const { user } = useAuth();
+  const members = useTeamMembers();
   const current = index === null ? null : (list[index] ?? null);
   // The last profile shown stays rendered while the drawer slides out.
   const lastRef = useRef<MatchResult | null>(null);
@@ -164,10 +147,10 @@ export function MatchDrawer({
   const candidate = shown ? candidateOf(shown.candidateId) : undefined;
   const photoUrl = usePhotoUrl(candidate?.photo_path ?? null, showPhotos && Boolean(candidate));
   // The years are not in the rows' read: one small read per profile opened.
-  const details = useQuery(
-    `match-drawer:${orgId}:${shown?.candidateId ?? ""}`,
+  const years = useQuery(
+    `match-drawer-years:${orgId}:${shown?.candidateId ?? ""}`,
     async () =>
-      shown ? readDrawerCandidate(await requireSupabase(), orgId, shown.candidateId) : null,
+      shown ? readCandidateYears(await requireSupabase(), orgId, shown.candidateId) : null,
     open && shown !== null && Boolean(candidate),
   );
 
@@ -196,13 +179,14 @@ export function MatchDrawer({
       ? t("briefs.results.gone")
       : t("common.loading");
   const position = candidate ? currentPosition(candidate) : null;
+  // Seniority first, then where. The read answers for the profile it was
+  // made for, so walking the list never shows the previous one's years;
+  // years the CV does not state read "Non renseigné" once it answered,
+  // never while it is in flight.
+  const yearsRead = years.data && years.data.id === shown?.candidateId ? years.data : null;
   const meta = [
+    yearsRead ? yearsLabel(locale, yearsRead.years_experience) || t("common.unknown") : "",
     candidate?.location?.trim() ?? "",
-    // The read answers for the profile it was made for: walking the list never shows the previous one's years.
-    yearsLabel(
-      locale,
-      details.data && details.data.id === shown?.candidateId ? details.data.years_experience : null,
-    ),
   ]
     .filter((part) => part.length > 0)
     .join(" · ");
@@ -285,36 +269,41 @@ export function MatchDrawer({
                     ) : null}
                   </div>
                 </div>
-                <ScoreRing
-                  score={score}
-                  label={
-                    score === null
-                      ? t("briefs.results.noScore")
-                      : t("briefs.results.score", { score })
-                  }
-                />
+                {/* The score as a figure: the number is the signal, nothing grades it. */}
+                {score !== null ? (
+                  <p className="shrink-0 text-right">
+                    <span className="sr-only">{t("briefs.results.score", { score })}</span>
+                    <span aria-hidden="true" className="tabular-nums">
+                      <span className="font-display text-2xl text-ink">{score}</span>
+                      <span className="text-meta text-muted-foreground"> / 100</span>
+                    </span>
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 {candidate ? (
                   <div className="flex flex-wrap items-center gap-2">
-                    {isAdded && shortlistId ? (
-                      <Button asChild variant="outline" icon={<ListChecks />}>
-                        <Link to={shortlistPath(shortlistId)}>
-                          {t("briefs.results.seeShortlist")}
-                        </Link>
+                    {isAdded ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        icon={<ListChecks />}
+                        onClick={onShowShortlist}
+                      >
+                        {t("briefs.results.seeShortlist")}
                       </Button>
                     ) : canAdd ? (
                       <Button
                         type="button"
                         icon={<ListPlus />}
                         onClick={() => void addShown(shown)}
-                        disabled={isAdded || adding}
+                        disabled={adding}
                         aria-busy={adding || undefined}
                       >
                         {t("briefs.results.addToShortlist")}
                       </Button>
                     ) : null}
-                    <Button asChild variant="outline" icon={<UserRound />}>
+                    <Button asChild variant="link" icon={<UserRound />}>
                       <Link to={candidatePath(candidate.id)}>{t("briefs.drawer.openProfile")}</Link>
                     </Button>
                   </div>
@@ -397,12 +386,12 @@ export function MatchDrawer({
                 <div className="grid gap-8 lg:grid-cols-2">
                   {strengths.length ? (
                     <DrawerSection title={t("briefs.results.strengths")}>
-                      <FactList items={strengths} icon={CircleCheck} tone="positive" />
+                      <FactList items={strengths} />
                     </DrawerSection>
                   ) : null}
                   {concerns.length ? (
                     <DrawerSection title={t("briefs.results.concerns")}>
-                      <FactList items={concerns} icon={TriangleAlert} tone="caution" />
+                      <FactList items={concerns} />
                     </DrawerSection>
                   ) : null}
                 </div>
@@ -420,13 +409,13 @@ export function MatchDrawer({
                     </InfoTip>
                   }
                 >
-                  <DimensionMeters dimensions={assessment.dimensions} />
+                  <DimensionMeters dimensions={assessment.dimensions} compact />
                 </DrawerSection>
               ) : null}
 
               {questions.length ? (
                 <DrawerSection title={t("briefs.results.questions")}>
-                  <FactList items={questions} icon={MessageSquare} tone="neutral" />
+                  <FactList items={questions} />
                 </DrawerSection>
               ) : null}
 
@@ -436,6 +425,20 @@ export function MatchDrawer({
                     <span className="font-medium">{t(TRIAGE_KEYS[shown.triage.verdict])}</span>
                     {shown.triage.reason ? ` · ${shown.triage.reason}` : ""}
                   </p>
+                </DrawerSection>
+              ) : null}
+
+              {/* The team's thread on the person, the same one as the candidate's page. */}
+              {candidate ? (
+                <DrawerSection title={t("thread.title")}>
+                  <TeamThread
+                    target={{ candidateId: candidate.id }}
+                    canPost={can("member")}
+                    members={members}
+                    currentUserId={user?.id ?? null}
+                    compact
+                    hideHeader
+                  />
                 </DrawerSection>
               ) : null}
             </SheetBody>

@@ -14,7 +14,7 @@
  * earlier opening's.
  */
 import { useEffect, useState } from "react";
-import { Download, ExternalLink, FileSearch, FileText, RefreshCw } from "lucide-react";
+import { CircleAlert, Download, ExternalLink, FileSearch, FileText, RefreshCw } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { Button } from "@/components/ui/button";
@@ -149,9 +149,6 @@ function ViewerContent({
       <SheetHeader className="gap-0 border-b border-border py-3 pl-4 pr-14 sm:pl-6 sm:pr-16">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex min-w-0 flex-1 basis-64 items-center gap-3">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-              <FileText className="size-5" aria-hidden="true" />
-            </span>
             <div className="min-w-0">
               <SheetTitle className="truncate font-sans text-base font-semibold leading-6 tracking-normal">
                 {doc?.file_name ?? t("candidates.documents.title")}
@@ -281,15 +278,19 @@ function TextPane({
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
       <div className="mx-auto max-w-3xl space-y-4">
         {!pdfSupported ? (
-          <p className="rounded-md bg-caution/12 px-4 py-3 text-sm text-caution-foreground">
-            {t("candidates.viewer.noPdf")}
+          <p className="flex items-start gap-2 rounded-md border border-border bg-muted px-4 py-3 text-sm text-ink">
+            <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span className="min-w-0">{t("candidates.viewer.noPdf")}</span>
           </p>
         ) : null}
         {text.loading && !text.data ? (
           <SkeletonRows rows={6} avatar={false} className="divide-y-0" />
         ) : text.error ? (
           <div className="space-y-3">
-            <p className="text-sm text-negative">{t("common.error")}</p>
+            <p className="flex items-start gap-2 text-sm text-ink">
+              <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0">{t("common.error")}</span>
+            </p>
             <Button
               type="button"
               variant="outline"

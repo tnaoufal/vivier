@@ -106,17 +106,17 @@ runSearch({token, org,
   briefId})          ──────▶ requireMember(member)
                              enforceRateLimit("search")
                              load brief (service role, org filter) ─▶ briefs (criteria, role_profile)
-                             no role profile? write it (temperature 0,                    ──▶ JSON {assumptions, domain, seniority,
-                               cleaned, guarded, yearsMax only when                           yearsMin/Max, missions, equivalent
-                               the brief states one)                ─▶ briefs.role_profile     titles, adjacent profiles, context,
-                                                                                               mustHaves, …} │ skipped
-                             no criteria? derive them (a proposal;
-                               the profile's must-haves required)                         ──▶ JSON {criteria} │ skipped
-                               saved into the brief                 ─▶ briefs.criteria
-                             no role? from the profile (no call) │ derive it              ──▶ JSON {label, value} │ the title
-                               saved in front of the criteria        ─▶ briefs.criteria
-                             a role and a profile? the role's definition
-                               rewritten from the profile            ─▶ briefs.criteria
+                             needsDerivation? (no profile, or role_profile.sourceHash
+                               ≠ fnv1a32(title + "\n" + description)): ONE reading,
+                               temperature 0 (readBriefPrompt)                            ──▶ JSON {profile: {assumptions, domain,
+                               enforceBriefReading(): the profile cleaned                      seniority, yearsMin/Max, missions,
+                                 (yearsMax only when the brief states one)                     equivalentTitles, adjacentProfiles,
+                                 and guarded, with the hash of the text;                       context, mustHaves, …}, criteria:
+                                 the role first and once, its definition                       [{kind, label, value, required,
+                                 the profile's; EXTRACTION_MAX criteria, a                     weight}], warnings} │ skipped
+                                 protected one dropped and logged                              without a job to name
+                               saved in one patch                   ─▶ briefs.role_profile + briefs.criteria
+                               (a brief read before whose reading fails: the error, never an analysis on another text)
                              a model, criteria and a job to name? the whole pool:
                                insert searches row                  ─▶ method 'triage', results [], ran_by
                                rpc start_triage(org, search)        ─▶ search_triage: one row per active
@@ -143,11 +143,9 @@ runSearch({token, org,
                                rankResults()
                                insert searches row                  ─▶ query, criteria, results, method, pool_size, ran_by
                              return {method, results, criteria, poolSize,
-                               criteriaDerived, roleProfileDerived, needsCheck}
-needsCheck (the model wrote the profile, the criteria or the role): the band says so and leads to
-"Le poste"; nothing is sorted or read until "Lancer la recherche" (this search when the job is
-unchanged, a new one on what the team saved)
-then the stages (stages.ts), until done or interrupted; "Reprendre" sends what each one lacks:
+                               criteriaDerived, roleProfileDerived}
+the stages start at once (stages.ts; nothing waits for a check), until done or interrupted;
+"Reprendre" sends what each one lacks:
 0. the triage of a whole-pool search, forty profiles a call, four calls in flight:
 pendingTriageIds() (RLS) ─────────────────────────────────────────▶ search_triage (verdict null, keyset pages)
 triageCandidates({…,
@@ -190,7 +188,7 @@ promoteTriage({…,
                              triageOrder(): yes, close, unknown, then score
                              rpc merge_search_results, 200 a call   ─▶ searches.results, result_count, the counts
                              return {results, promoted, poolSize}
-1. the screening, six at a time, two calls in flight:
+1. the screening, six at a time, three calls in flight (the write-backs merge entry by entry):
 assessCandidates({token,
   org, briefId, searchId,
   candidateIds[≤6]})  ──────▶ requireMember(member)
@@ -218,7 +216,7 @@ assessCandidates({token,
                              carry to unassessed shortlist items    ─▶ shortlist_items.match (+ criteria)
                              return {results, failed}
 rows land as batches return: the matches listed, the near profiles behind their toggle, the rest counted
-2. the second opinion on the retained ones, six at a time, two calls in flight:
+2. the second opinion on the retained ones, six at a time, three calls in flight:
 challengeCandidates({…,
   candidateIds[≤6]})  ──────▶ requireMember(member), enforceRateLimit("assess")
                              load brief, search, the profiles ("fit" only)
@@ -266,30 +264,31 @@ is the understanding of the job a senior recruiter writes before reading
 a CV: domain, level and years, core missions, equivalent titles, adjacent
 profiles, the context the brief states, must-haves, nice-to-haves,
 success factors, interview points, and what the brief does not state and
-the model assumed. The Worker writes it once at the first analysis (one
-call at temperature 0, cleaned and guarded: a field naming a protected
-characteristic is dropped, a `yearsMax` the brief did not state is
-dropped) or on "Regenerate"; members edit it in the browser under RLS
-(`GRANT UPDATE (role_profile)`), guarded the same way before the write.
-Every payload reads it: the extraction makes its must-haves required
-criteria, the screening judges the seniority and the context against it,
-the tiering reads its must-haves. The **role requirement** is the
-criterion of kind `role` a brief holds once (`briefs.criteria`,
-`src/lib/briefs/criteria.ts`): the job as the team names it and its
-definition, read off the profile whenever the brief has one
-(`roleDefinitionOf()`: domain, missions, equivalent titles) and rewritten
-from it before each search, so the criterion follows the team's edits;
-a brief with a profile and no role gets it from the profile without a
-call, one with neither from one small call (`roleDefinitionPrompt`) or
-its title. The guard reads a role on the core list only, since a job's
-domain is written with words ("famille de produits", "politique
-commerciale") the wider list bans. The screening judges it before
-anything else, from what the person did before the titles, and the rules
-bind the answer on the role first (`enforceAssessment()`: `no` forces
-`no_fit` and caps the score at 25, `partial` caps at `borderline` and 65,
-`unknown` at `borderline` and 60), then on the required requirements
-(`no` forces `no_fit` and 39, `unknown` caps at `borderline` and 69,
-`partial` at `borderline`); the score is the composite of
+the model assumed. The Worker writes it with the criteria, in the one
+reading of the brief (`readBriefPrompt`, one call at temperature 0;
+`enforceBriefReading()`: cleaned and guarded, a field naming a protected
+characteristic dropped, a `yearsMax` the brief did not state dropped,
+the hash of the text it was read from kept as `sourceHash`), and again
+only when the brief's text changed (`needsDerivation()`). Nobody edits
+it: the consultant's text is the only source, and no page shows the
+profile (the column's `UPDATE` grant to members stands in the migration,
+unused). Every payload reads it: the triage, the screening (the
+seniority and the context judged against it), the tiering (its
+must-haves). The **role requirement** is the first criterion of the
+reading (`briefs.criteria`, `src/lib/briefs/criteria.ts`), exactly one:
+the job as the model names it (else the brief's title) and its
+definition, read off the profile (`roleDefinitionOf()`: domain,
+missions, equivalent titles) so the criterion, the triage and the
+payloads read one job; the model's own definition stands only when the
+profile names nothing. The guard reads a role on the core list only,
+since a job's domain is written with words ("famille de produits",
+"politique commerciale") the wider list bans. The screening judges it
+before anything else, from what the person did before the titles, and
+the rules bind the answer on the role first (`enforceAssessment()`: `no`
+forces `no_fit` and caps the score at 25, `partial` caps at `borderline`
+and 65, `unknown` at `borderline` and 60), then on the required
+requirements (`no` forces `no_fit` and 39, `unknown` caps at `borderline`
+and 69, `partial` at `borderline`); the score is the composite of
 `src/lib/briefs/scoring.ts` (role 0.40, seniority 0.15, context 0.15,
 the mean of trajectory and achievements 0.15, the requirements' weighted
 coverage 0.15), the model's own score kept apart. The second opinion
@@ -324,19 +323,49 @@ a member may bring one back to be read in full (`readAnyway()`: its
 start or resume first extends the snapshot to the active profiles the
 pool gained (`extendTriage()`, `start_triage` again), and a finished
 analysis counts the ones gained since (`countOutsideSnapshot()`, an
-anti-join). The triage refuses a batch once the role profile defines
-the job otherwise than the search's role criterion (`INPUT:job_changed`:
-a new search runs on the new job). The detail of the prompts and the
-rules is in the README ("Briefs and search").
+anti-join). The triage refuses a batch once the brief was read again
+from a changed text and its profile defines the job otherwise than the
+search's role criterion (`INPUT:job_changed`: a new search runs on the
+new job). The detail of the prompts and the rules is in the README
+("Briefs and search").
+
+### Team thread: one dialogue per object
+
+```
+Browser (member)                              Supabase
+──────────────────────                        ──────────────────────────────────────────────────
+TeamThread({briefId} | {candidateId}
+  | {shortlistItemId}), src/lib/threads
+  listThread ──────────────────────────────▶ comments where <column> = id, the last 100, newest last
+                                              (policy: members read); the authors' profiles in one lot
+  postMessage ─────────────────────────────▶ insert {org_id, <column>, author_id = me, body ≤ 8000,
+                                              mentions: the member ids read from the final text}
+                                              (policy: member and author_id = auth.uid();
+                                               check: at least one of the three columns, the page sets one)
+                                              trigger: activities comment.added
+  deleteMessage ───────────────────────────▶ (policy: the author, or an administrator)
+Realtime (comments, <column>=eq.<id>) ◀───── change: the thread re-reads, debounced
+Dashboard: listMyMentions ─────────────────▶ comments where mentions @> [me], newest first,
+                                              the objects named (briefs, candidates, items in lots)
+Briefs list, dashboard: threadSummaries ───▶ comments where brief_id in (…): count, last author, excerpt
+```
+
+Nothing of it crosses the Worker: the browser writes under RLS as the
+author, the policies and the grants are those of evolution 1 (the three
+target columns were there from the start), and a deleted candidate,
+shortlist item or brief takes its messages with it (`ON DELETE
+CASCADE`).
 
 ### Share: a dossier to a hiring manager
 
 ```
 Browser (member)               Worker                                      Supabase / Resend
 ──────────────────             ─────────────────────────────────────       ───────────────────────────────
+one dialog, one click ("Partager"): the candidates ticked (the retained ones first), the
+addresses and a message (optional; off without an email sender), then in a row:
 draftShare({token, org,
   shortlistId, candidateIds,
-  useModel})            ──────▶ requireMember(member)
+  useModel: false})     ──────▶ requireMember(member)
                                load shortlist + brief, the candidates, their latest CV
                                  and their shortlist match (org filter)
                                one sheet per candidate (draft.ts): facts, requirement table
@@ -344,19 +373,21 @@ draftShare({token, org,
                                  strengths, attention and interview questions from the
                                  recruiter's reading (the second opinion's doubt among the
                                  attention points), else strengths / attention read off the table
-                               with a model: rewrite the prose only (ai_usage: summary)
+                               (useModel true would rewrite the prose only, ai_usage: summary;
+                                 the dialog never asks for it)
                                return { items, brief snapshot }
-team edits the prose (table, score and decision are read-only),
 createShare({token, org,
-  shortlistId, title, intro,
-  items, includeCvs, expiry}) ─▶ requireMember(member), enforceRateLimit("share")
+  shortlistId, title: the brief's,
+  intro: "", items, includeCvs: true,
+  expiresInDays: 14})   ──────▶ requireMember(member), enforceRateLimit("share")
                                re-verify every candidate and CV id (org filter)
                                brief = briefSnapshot(the shortlist's brief)   never from the browser
                                token = random bytes (base64url)
                                insert shares { token_hash = sha256(token), items, brief, expires_at }
                                insert activities share.created
                                return { link: SITE_URL/share/<token> } ─ shown once; the raw token is never stored
-sends                  ──────▶ sendShare: requireMember, enforceRateLimit("email")
+                               (the browser keeps the link in sessionStorage, link-memory.ts, for the panel's copy button)
+addresses given?       ──────▶ sendShare: requireMember, enforceRateLimit("email")
                                emailLayout(), sendRecorded()           ─▶ email_sends (queued → sent | failed), Resend
                                activities share.sent
 revokes                ──────▶ revokeShare: revoked_at = now(), activities share.revoked
@@ -436,11 +467,15 @@ runs beyond the caller's reach.
    the assessment in `searches.results` (the screening, the second
    opinion, the tier) are written by the Worker alone (a member inserts a
    shortlist item's match, never updates one; the Worker fills only an
-   unassessed one); `briefs.role_profile` is written by the Worker when an
-   analysis derives it and by members when they edit it, guarded on both
-   sides (`guardRoleProfile()`); `search_triage` is read by members and
-   written by the Worker alone. Triggers stamp `decided_by`, log activities and keep the last
-   owner. Supabase's default privileges (every new table granted to `anon`
+   unassessed one); `briefs.role_profile` and `briefs.criteria` are the
+   Worker's one reading of the brief (guarded, `guardRoleProfile()`; the
+   `UPDATE` grant members hold on `role_profile` is unused: no page
+   writes it, members write the title, the text and the status);
+   `search_triage` is read by members and written by the Worker alone. A
+   `comments` row is a member's own message (`author_id = auth.uid()`)
+   on a brief, a candidate or a shortlist item, deleted by its author or
+   an administrator; the trigger logs `comment.added`. Triggers stamp
+   `decided_by`, log activities and keep the last owner. Supabase's default privileges (every new table granted to `anon`
    and `authenticated`) are revoked at the top of the migration, so the
    grants written in it are the whole truth. `anon` has no grant on any
    table or function. Storage: a folder per organisation in each bucket;
@@ -500,7 +535,7 @@ never a body, a key or a token.
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
 | `SUPABASE_SERVICE_ROLE_KEY`                           | Every row of every organisation, storage signing, writing and removal in both buckets, the SECURITY DEFINER functions reserved to it (`expired_candidates`, `sync_plan_from_billing`) and the triage's write functions (`start_triage`, `record_triage`, `merge_search_results`) | Cloudflare dashboard (Worker), Railway (processor), `scripts/backup.sh` never (it uses the database URL) | the browser, git, `/status`, logs          |
 | `PROCESSOR_SHARED_SECRET`                             | `POST /process`, `POST /maintenance`, `GET /metrics` on the processor                                | Cloudflare dashboard and Railway (the same value, 32+ characters)                           | git, the browser, health answers           |
-| `LLM_API_KEY` (with `LLM_BASE_URL`, models, `LLM_ASSESSMENT_MODEL` on the Worker) | The model vendor: structuring and classification, embeddings, criteria, role profiles, the triage, screenings, second opinions, tiers, dossier drafts | Cloudflare dashboard, Railway                                                     | git, the browser, `/status` (names only)   |
+| `LLM_API_KEY` (with `LLM_BASE_URL`, models, `LLM_ASSESSMENT_MODEL` on the Worker) | The model vendor: structuring and classification, embeddings, the one reading of a brief, the triage, screenings, second opinions, tiers (and dossier drafts, an option no screen asks for) | Cloudflare dashboard, Railway                                                     | git, the browser, `/status` (names only)   |
 | `MISTRAL_OCR_API_KEY`                                 | OCR of scanned PDFs                                                                                  | Railway                                                                                     | the Worker, git                            |
 | `RESEND_API_KEY`                                      | Sending email (invitations, shares)                                                                  | Cloudflare dashboard                                                                        | git, the processor, the browser            |
 | Supabase Auth secrets (JWT secret, OAuth client)      | Issuing and verifying sessions                                                                       | Supabase only; the Worker verifies tokens through Auth's `/user`, it never holds the JWT secret | anywhere of ours                        |

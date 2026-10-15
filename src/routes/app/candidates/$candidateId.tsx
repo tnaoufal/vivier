@@ -1,20 +1,21 @@
 /**
  * /app/candidates/:candidateId: one profile, laid out like a CV a
- * recruiter reads. The detail skeleton of the charter: a sticky page
- * header (the way back as its eyebrow, the name, the pills that set it
- * apart: archived, typed by hand, consent withdrawn; the
- * page's actions: read the CV in place, the similar profiles, edit, and
- * a menu for export, archive and erasure), then the head of the CV as a
- * card (the photo, the name editable in place, the position held today,
- * where and since when, the languages). Then the main column (summary,
- * career, education, skills, contact and links) and the aside (the
- * team's tags, the documents, consent and retention folded, the
- * comments). What the structuring read, with a confidence hint where it
- * was unsure and "not stated" where it read nothing; a form to correct
- * it in the same structure. Live through realtime on documents and
- * comments of this candidate.
+ * recruiter reads, the team's thread beside it. A sticky header (the
+ * way back as its eyebrow, the name, one line that reminds the position
+ * held today, the years and the place; one filled action, the CV read
+ * in place; a menu for the rest: edit, the similar profiles, export,
+ * archive, erase; the thread's button on a phone), then the head of the
+ * CV as a card (the photo in greyscale, the name, the position, the
+ * seniority first, the languages, the pills that set the profile
+ * apart), the sections (summary, career, education, skills, contact and
+ * links) and under them the documents, the team's tags and the consent
+ * folded. From `lg` the thread is a sticky right column; below, a
+ * drawer. Editing opens the form in a drawer with one "Enregistrer".
+ * What the structuring read, with a hint where it was unsure and "not
+ * stated" where it read nothing. Live through realtime on the documents
+ * of this candidate; the thread follows its own messages.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Archive,
@@ -33,8 +34,6 @@ import {
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
-import { Pill } from "@/components/app-shell/pill";
-import { CommentsCard } from "@/components/candidates/comments-card";
 import { ConsentCard, type ConsentPatch } from "@/components/candidates/consent-card";
 import { CvViewer } from "@/components/candidates/cv-viewer";
 import { DocumentsCard } from "@/components/candidates/documents-card";
@@ -44,6 +43,7 @@ import { ProfileHeader } from "@/components/candidates/profile-header";
 import { ProfileSections } from "@/components/candidates/profile-sections";
 import { SimilarDrawer } from "@/components/candidates/similar-drawer";
 import { TagsCard } from "@/components/candidates/tags-card";
+import { ThreadButton, ThreadPanel } from "@/components/thread/thread-panel";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -53,15 +53,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton, SkeletonRows } from "@/components/ui/skeleton";
+import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { eraseCandidate } from "@/lib/candidates/candidates.functions";
 import { primaryDocument } from "@/lib/candidates/cv-viewer";
 import { toDraft, toPatch, type CandidateDraft } from "@/lib/candidates/draft";
 import { buildExport, downloadJson, exportFileName, exportJson } from "@/lib/candidates/export";
-import { displayName } from "@/lib/candidates/format";
+import { displayName, headerLine } from "@/lib/candidates/format";
 import { exportPhoto, type ExportPhoto } from "@/lib/candidates/photos";
 import {
-  listCandidateComments,
   listCandidateDocuments,
   readCandidate,
   readRetentionDueAt,
@@ -72,6 +72,7 @@ import type { DocumentRow } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
 import { useCurrentOrg, useOrg } from "@/lib/org/org-context";
 import { errorMessage, withToken } from "@/lib/platform/call";
+import { useTeamMembers } from "@/lib/shortlists/use-members";
 import { toast } from "@/lib/toast";
 
 export const Route = createFileRoute("/app/candidates/$candidateId")({
@@ -82,8 +83,8 @@ export const Route = createFileRoute("/app/candidates/$candidateId")({
   remountDeps: ({ params }) => params,
 });
 
-/** The main column and the 22rem aside of the charter, one column under lg. */
-const GRID = "grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]";
+/** The main column and the thread's column of the charter, as the panel draws them, one column under lg. */
+const GRID = "lg:grid lg:grid-cols-[minmax(0,1fr)_22.5rem] lg:items-start lg:gap-8";
 /** A labelled header button folded to its 40px icon under `sm`. */
 const PHONE_ICON = "max-sm:size-10 max-sm:px-0";
 
@@ -98,6 +99,8 @@ function CandidatePage() {
   const { t, locale } = useI18n();
   const { org } = useCurrentOrg();
   const { can, showPhotos } = useOrg();
+  const { user } = useAuth();
+  const members = useTeamMembers();
   const navigate = useNavigate();
   const canEdit = can("member");
 
@@ -107,16 +110,15 @@ function CandidatePage() {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [eraseOpen, setEraseOpen] = useState(false);
   const [similarOpen, setSimilarOpen] = useState(false);
+  const [threadOpen, setThreadOpen] = useState(false);
   const [viewer, setViewer] = useState<ViewerState>({ open: false, document: null });
+  const target = useMemo(() => ({ candidateId }), [candidateId]);
 
   const candidate = useQuery(`candidate:${org.id}:${candidateId}`, async () =>
     readCandidate(await requireSupabase(), org.id, candidateId),
   );
   const documents = useQuery(`candidate-documents:${org.id}:${candidateId}`, async () =>
     listCandidateDocuments(await requireSupabase(), org.id, candidateId),
-  );
-  const comments = useQuery(`candidate-comments:${org.id}:${candidateId}`, async () =>
-    listCandidateComments(await requireSupabase(), org.id, candidateId),
   );
   const row = candidate.data ?? null;
   const retention = useQuery(
@@ -127,26 +129,13 @@ function CandidatePage() {
 
   const refreshCandidate = candidate.refresh;
   const refreshDocuments = documents.refresh;
-  const refreshComments = comments.refresh;
   useEffect(() => {
     const onDocuments = debounce(() => {
       void refreshDocuments();
       void refreshCandidate();
     }, 400);
-    const onComments = debounce(() => {
-      void refreshComments();
-    }, 250);
-    const stopDocuments = subscribeToTable(
-      "documents",
-      `candidate_id=eq.${candidateId}`,
-      onDocuments,
-    );
-    const stopComments = subscribeToTable("comments", `candidate_id=eq.${candidateId}`, onComments);
-    return () => {
-      stopDocuments();
-      stopComments();
-    };
-  }, [candidateId, refreshCandidate, refreshComments, refreshDocuments]);
+    return subscribeToTable("documents", `candidate_id=eq.${candidateId}`, onDocuments);
+  }, [candidateId, refreshCandidate, refreshDocuments]);
 
   /** One update under RLS on the columns the grant allows; true when it went through. */
   async function update(patch: Record<string, unknown>, done?: string): Promise<boolean> {
@@ -187,10 +176,7 @@ function CandidatePage() {
     }
     setBusy(true);
     try {
-      if (await update(result.patch, t("common.saved"))) {
-        setEditing(false);
-        setDraft(null);
-      }
+      if (await update(result.patch, t("common.saved"))) setEditing(false);
     } finally {
       setBusy(false);
     }
@@ -283,22 +269,21 @@ function CandidatePage() {
           }
         />
         <p className="sr-only">{t("common.loading")}</p>
-        <div className="sheet mb-8 flex items-start gap-5 p-6 sm:p-8" aria-busy="true">
-          <Skeleton className="size-18 shrink-0 rounded-lg" />
-          <div className="flex-1 space-y-3 pt-1">
-            <Skeleton className="h-7 w-1/3" />
-            <Skeleton className="h-4 w-1/2" />
-            <Skeleton className="h-3 w-1/4" />
-          </div>
-        </div>
         <div className={GRID} aria-busy="true">
-          <div className="sheet overflow-hidden">
-            <SkeletonRows rows={5} avatar={false} />
+          <div className="min-w-0 space-y-6">
+            <div className="sheet flex items-start gap-5 p-6">
+              <Skeleton className="size-18 shrink-0 rounded-lg" />
+              <div className="flex-1 space-y-3 pt-1">
+                <Skeleton className="h-5 w-1/3" />
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-3 w-1/4" />
+              </div>
+            </div>
+            <div className="sheet overflow-hidden">
+              <SkeletonRows rows={5} avatar={false} />
+            </div>
           </div>
-          <div className="space-y-6">
-            <Skeleton className="h-36 rounded-lg" />
-            <Skeleton className="h-20 rounded-lg" />
-          </div>
+          <Skeleton className="hidden h-80 rounded-lg lg:block" />
         </div>
       </div>
     );
@@ -338,18 +323,18 @@ function CandidatePage() {
   }
 
   const name = displayName(row, t("candidates.noName"));
+  const reminder = headerLine(locale, row);
   const documentList = documents.data ?? [];
   const primary = primaryDocument(documentList);
 
-  // Every role may read the CV and look around; the similar profiles are a reading aid, not a write.
-  // In the slim header a phone has no room for four labelled buttons next to the name: under `sm`
-  // each one is its 40px icon, its name kept for assistive technologies.
+  // One filled action, the CV read in place; then the thread's button, then the menu for the
+  // rest, in the order of a brief's page. Under `sm` the filled button is its 40px icon, its
+  // name kept for assistive technologies.
   const actions = (
     <>
       {primary ? (
         <Button
           type="button"
-          variant="outline"
           icon={<FileText />}
           onClick={() => openViewer(primary)}
           className={PHONE_ICON}
@@ -357,20 +342,7 @@ function CandidatePage() {
           <span className="max-sm:sr-only">{t("candidates.documents.view")}</span>
         </Button>
       ) : null}
-      <Button
-        type="button"
-        variant="outline"
-        icon={<Users />}
-        onClick={() => setSimilarOpen(true)}
-        className={PHONE_ICON}
-      >
-        <span className="max-sm:sr-only">{t("similar.button")}</span>
-      </Button>
-      {canEdit && !editing ? (
-        <Button type="button" icon={<Pencil />} onClick={startEditing} className={PHONE_ICON}>
-          <span className="max-sm:sr-only">{t("common.edit")}</span>
-        </Button>
-      ) : null}
+      <ThreadButton target={target} onClick={() => setThreadOpen(true)} />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -383,6 +355,16 @@ function CandidatePage() {
           />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {canEdit ? (
+            <DropdownMenuItem onSelect={startEditing}>
+              <Pencil />
+              {t("common.edit")}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem onSelect={() => setSimilarOpen(true)}>
+            <Users />
+            {t("similar.button")}
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => void exportProfile()}>
             <Download />
             {t("candidates.export")}
@@ -421,98 +403,71 @@ function CandidatePage() {
         eyebrow={eyebrow}
         title={name}
         meta={
-          // Only what sets this profile apart, as on its row in the pool: the consent card says the rest.
-          row.status === "archived" ||
-          row.source === "manual" ||
-          row.consent_status === "withdrawn" ? (
-            <>
-              {row.status === "archived" ? (
-                <Pill size="sm" dot>
-                  {t("candidates.status.archived")}
-                </Pill>
-              ) : null}
-              {row.source === "manual" ? (
-                <Pill size="sm">{t("candidates.source.manual")}</Pill>
-              ) : null}
-              {row.consent_status === "withdrawn" ? (
-                <Pill size="sm" tone="negative" dot>
-                  {t("candidates.consent.withdrawn")}
-                </Pill>
-              ) : null}
-            </>
+          reminder ? (
+            <span className="min-w-0 max-w-full truncate text-meta text-muted-foreground tabular-nums">
+              {reminder}
+            </span>
           ) : undefined
         }
         actions={actions}
       />
-      <ProfileHeader
-        candidate={row}
-        canEdit={canEdit}
-        showPhotos={showPhotos}
-        onRename={async (fullName) => {
-          await update({ full_name: fullName }, t("common.saved"));
-        }}
-      />
 
-      <div className={GRID}>
-        <div className="min-w-0">
-          {editing && draft ? (
-            <ProfileForm
-              draft={draft}
-              onChange={setDraft}
-              onSubmit={saveDraft}
-              onCancel={() => {
-                setEditing(false);
-                setDraft(null);
-              }}
-              busy={busy}
-            />
-          ) : (
-            <ProfileSections
-              candidate={row}
-              canEdit={canEdit}
-              onChips={async (column, values) => {
-                await update({ [column]: values });
-              }}
-            />
-          )}
-        </div>
-        <aside className="min-w-0 space-y-6">
-          <DocumentsCard
-            candidate={{ id: row.id, name }}
-            documents={documentList}
-            canEdit={canEdit}
-            onRead={openViewer}
-            onChanged={() => {
-              void refreshDocuments();
-              void refreshCandidate();
-            }}
-          />
-          <TagsCard
-            tags={row.tags ?? []}
-            canEdit={canEdit}
-            onChange={async (values) => {
-              await update({ tags: values });
-            }}
-          />
-          <ConsentCard
+      <ThreadPanel
+        target={target}
+        canPost={canEdit}
+        members={members}
+        currentUserId={user?.id ?? null}
+        open={threadOpen}
+        onOpenChange={setThreadOpen}
+      >
+        <div className="space-y-6">
+          <ProfileHeader candidate={row} showPhotos={showPhotos} />
+          <ProfileSections
             candidate={row}
-            retentionDueAt={retention.data ?? null}
-            retentionMonths={org.retention_months}
             canEdit={canEdit}
-            onSave={saveConsent}
-          />
-          <CommentsCard
-            orgId={org.id}
-            candidateId={row.id}
-            comments={comments.data ?? []}
-            canComment={canEdit}
-            onChanged={() => {
-              void refreshComments();
+            onSkills={async (values) => {
+              await update({ skills: values });
             }}
           />
-        </aside>
-      </div>
+          <div className="grid gap-6 md:grid-cols-2">
+            <DocumentsCard
+              candidate={{ id: row.id, name }}
+              documents={documentList}
+              canEdit={canEdit}
+              onRead={openViewer}
+              onChanged={() => {
+                void refreshDocuments();
+                void refreshCandidate();
+              }}
+            />
+            <div className="min-w-0 space-y-6">
+              <TagsCard
+                tags={row.tags ?? []}
+                canEdit={canEdit}
+                onChange={async (values) => {
+                  await update({ tags: values });
+                }}
+              />
+              <ConsentCard
+                candidate={row}
+                retentionDueAt={retention.data ?? null}
+                retentionMonths={org.retention_months}
+                canEdit={canEdit}
+                onSave={saveConsent}
+              />
+            </div>
+          </div>
+        </div>
+      </ThreadPanel>
 
+      <ProfileForm
+        open={editing}
+        onOpenChange={setEditing}
+        draft={draft}
+        onChange={setDraft}
+        onSubmit={saveDraft}
+        busy={busy}
+      />
       <CvViewer
         open={viewer.open}
         onOpenChange={(open) => setViewer((state) => ({ ...state, open }))}

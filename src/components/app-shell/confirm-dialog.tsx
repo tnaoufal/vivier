@@ -1,7 +1,8 @@
 /**
  * A yes/no question before something hard to undo: a small dialog with
  * the question as its title, one sentence of consequence, cancel on the
- * left and the one confirming button (negative when destructive).
+ * left and the one confirming button. A destructive one is the same ink
+ * fill: this dialog and its words are the safety, not a colour.
  */
 import type { ReactNode } from "react";
 

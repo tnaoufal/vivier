@@ -1,3 +1,11 @@
+/**
+ * The theme of the app: light (paper) by default, dark (its mirror, the
+ * ink) when the person chose it, saved in localStorage and applied as a
+ * class on the root element. A switch is one viewport cross-fade (a view
+ * transition) with every component transition frozen meanwhile, and no
+ * motion at all for a person who asked for less. The root route writes
+ * the matching theme-color meta.
+ */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { THEME_STORAGE_KEY, ThemeContext, type AppTheme } from "./theme-context";

@@ -1,21 +1,21 @@
 /**
- * The profiles near this one, in a drawer from the right. The database
- * ranks them by the meaning of the career when both profiles carry a
- * vector, else by the words of the headline and the skills; every row
- * shows who (the photo when the organisation shows photos), the
- * position held today, the first skills, and the proximity as a meter
- * that names the measure that spoke; how it is measured sits behind an
- * info icon. The list loads when the drawer opens, its rows rising in
- * once. A proximity is a reading aid: the person opens the profiles and
+ * The profiles near this one, in a drawer from the right, the closest
+ * seniority first: the database and similar.ts order them the same way
+ * (the distance between seniority bands, then the measure: the meaning
+ * of the career when both profiles carry a vector, else the words of
+ * the headline and the skills). Every row reads the seniority first
+ * ("12 ans", or that the profile states none), then who (the photo
+ * when the organisation shows photos), the position held today, and
+ * the proximity as a percentage beside the measure that spoke. The
+ * list loads when the drawer opens, its rows rising in once. A
+ * proximity is a reading aid: the person opens the profiles and
  * compares, nothing is decided here.
  */
 import { Link } from "@tanstack/react-router";
-import { RefreshCw, Users } from "lucide-react";
+import { CircleAlert, RefreshCw, Users } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { EmptyState } from "@/components/app-shell/empty-state";
-import { InfoTip } from "@/components/app-shell/info-tip";
-import { Meter } from "@/components/app-shell/meter";
 import { Pill } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,11 +29,11 @@ import {
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { candidatePath } from "@/lib/briefs/paths";
-import { displayName, keySkills } from "@/lib/candidates/format";
+import { displayName, yearsLabel } from "@/lib/candidates/format";
 import { listSimilar, percentOf, type SimilarProfile } from "@/lib/candidates/similar";
 import { usePhotoUrl } from "@/lib/candidates/use-photo-url";
 import { useQuery } from "@/lib/data/use-query";
-import { useT } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n";
 
 /** Skeleton rows while the list loads, about what a drawer shows at once. */
 const SKELETON_ROWS = 4;
@@ -50,11 +50,11 @@ export function SimilarDrawer({
   onOpenChange: (open: boolean) => void;
   orgId: string;
   candidateId: string;
-  /** The name of the profile the neighbours are near, under the title. */
+  /** The name of the profile the neighbours are near: the drawer's accessible description, the page already shows it. */
   name: string;
   showPhotos: boolean;
 }) {
-  const t = useT();
+  const { t } = useI18n();
   const similar = useQuery(
     `similar:${orgId}:${candidateId}`,
     async () => listSimilar(await requireSupabase(), orgId, candidateId),
@@ -69,11 +69,8 @@ export function SimilarDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" size="md" className="flex flex-col gap-6 overflow-y-hidden">
         <SheetHeader>
-          <div className="flex items-center gap-2 pr-12">
-            <SheetTitle>{t("similar.title")}</SheetTitle>
-            <InfoTip label={t("similar.title")}>{t("similar.help")}</InfoTip>
-          </div>
-          <SheetDescription className="truncate">{t("similar.subtitle", { name })}</SheetDescription>
+          <SheetTitle className="pr-12">{t("similar.title")}</SheetTitle>
+          <SheetDescription className="sr-only">{t("similar.subtitle", { name })}</SheetDescription>
         </SheetHeader>
 
         <SheetBody>
@@ -84,8 +81,16 @@ export function SimilarDrawer({
             </>
           ) : similar.error !== null ? (
             <div className="space-y-3">
-              <p className="text-sm text-negative">{t("similar.loadError")}</p>
-              <Button type="button" variant="outline" icon={<RefreshCw />} onClick={() => void similar.refresh()}>
+              <p role="alert" className="flex items-start gap-1.5 text-sm text-ink">
+                <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0">{t("similar.loadError")}</span>
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                icon={<RefreshCw />}
+                onClick={() => void similar.refresh()}
+              >
                 {t("common.retry")}
               </Button>
             </div>
@@ -93,16 +98,16 @@ export function SimilarDrawer({
             <ul className="stagger divide-y divide-border">
               {rows.map((profile) => (
                 <li key={profile.id} className="rise-in">
-                  <SimilarRow profile={profile} showPhotos={showPhotos} onOpen={() => onOpenChange(false)} />
+                  <SimilarRow
+                    profile={profile}
+                    showPhotos={showPhotos}
+                    onOpen={() => onOpenChange(false)}
+                  />
                 </li>
               ))}
             </ul>
           ) : (
-            <EmptyState
-              compact
-              icon={<Users />}
-              title={t("similar.empty.title")}
-            />
+            <EmptyState compact icon={<Users />} title={t("similar.empty.title")} />
           )}
         </SheetBody>
       </SheetContent>
@@ -110,7 +115,7 @@ export function SimilarDrawer({
   );
 }
 
-/** One neighbour: who, how close and measured how; the name leads to the profile. */
+/** One neighbour: the seniority first, then who, the position, and how close measured how; the name leads to the profile. */
 function SimilarRow({
   profile,
   showPhotos,
@@ -120,19 +125,18 @@ function SimilarRow({
   showPhotos: boolean;
   onOpen: () => void;
 }) {
-  const t = useT();
+  const { t, locale } = useI18n();
   const name = displayName(profile, t("candidates.noName"));
   const photoUrl = usePhotoUrl(profile.photo_path, showPhotos);
-  const line = [profile.headline, profile.location]
-    .filter((part) => part && part.trim())
-    .join(" · ");
-  const skills = keySkills(profile.skills);
+  const years = yearsLabel(locale, profile.years_experience) || t("similar.years.unknown");
+  const headline = profile.headline?.trim() ?? "";
   const percent = percentOf(profile.similarity);
 
   return (
     <div className="flex gap-3 py-4 first:pt-0">
       <Avatar name={name} photoUrl={photoUrl} className="mt-0.5" decorative />
       <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-ink tabular-nums">{years}</p>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Link
             to={candidatePath(profile.id)}
@@ -148,19 +152,10 @@ function SimilarRow({
             </Pill>
           ) : null}
         </div>
-        <p className="truncate text-sm text-muted-foreground">{line || t("common.unknown")}</p>
-        {skills.length ? (
-          <ul className="mt-2 flex flex-wrap gap-1.5">
-            {skills.map((skill) => (
-              <li key={skill} className="min-w-0">
-                <Pill size="sm" className="max-w-48">
-                  {skill}
-                </Pill>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <Meter className="mt-3" label={t(`similar.method.${profile.method}`)} value={percent} />
+        {headline ? <p className="truncate text-sm text-muted-foreground">{headline}</p> : null}
+        <p className="mt-1 text-meta text-muted-foreground tabular-nums">
+          {t("similar.proximity", { percent, method: t(`similar.method.${profile.method}`) })}
+        </p>
       </div>
     </div>
   );

@@ -1,15 +1,16 @@
 /**
  * The typed reads of the talent pool, through supabase-js under RLS:
- * the list page (search, status, tag, a sort, the quick filters, 50 per
- * page), one profile, its documents and comments, a document's
- * extracted text on demand, the set-aside counts of the organisation
- * and the wave the service is reading, the retention due date. Each
- * read filters by the organisation and casts rows at the boundary, as
- * CONVENTIONS.md says.
+ * the list page (search, a sort, the filters: the location, the years,
+ * a skill, a tag, the archived profiles or not; 50 per page), one
+ * profile, its documents, a document's extracted text on demand, the
+ * set-aside counts of the organisation and the wave the service is
+ * reading, the retention due date. The team's thread on a profile is
+ * read by src/lib/threads. Each read filters by the organisation and
+ * casts rows at the boundary, as CONVENTIONS.md says.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { CandidateRow, CandidateStatus, CommentRow, DocumentRow } from "@/lib/db/types";
+import type { CandidateRow, DocumentRow } from "@/lib/db/types";
 
 import { THROUGHPUT_WINDOW_MINUTES, earliestOf, waveOf, type ProcessingWave } from "./progress";
 import { QUOTA_ERROR_PATTERN } from "./quota";
@@ -61,33 +62,48 @@ export function isCandidateSort(value: unknown): value is CandidateSort {
   return typeof value === "string" && (CANDIDATE_SORTS as readonly string[]).includes(value);
 }
 
-/** The quick filters of the toolbar; each one empty when not set. */
+/** The filters behind the toolbar's "Filtrer" button; each one empty (or off) when not set. */
 export interface CandidateListFilters {
   /** A part of the location, matched without case. */
   location: string;
   /** At least this many years of experience; a profile without a stated figure is left out. */
   yearsMin: number | null;
-  /** One skill, exactly as the profile writes it (the toolbar suggests the page's). */
+  /** One skill, exactly as the profile writes it (the popover suggests the page's). */
   skill: string;
+  /** One of the team's tags, exactly as written (the popover suggests the page's). */
+  tag: string;
+  /** True to list the archived profiles along with the active ones. */
+  archived: boolean;
 }
 
-export const EMPTY_FILTERS: CandidateListFilters = { location: "", yearsMin: null, skill: "" };
+export const EMPTY_FILTERS: CandidateListFilters = {
+  location: "",
+  yearsMin: null,
+  skill: "",
+  tag: "",
+  archived: false,
+};
 
-/** How many of the quick filters are set. */
+/** How many of the filters are set: the figure on the "Filtrer" button. */
 export function activeFilterCount(filters: CandidateListFilters): number {
   let count = 0;
   if (filters.location.trim()) count += 1;
-  if (typeof filters.yearsMin === "number" && Number.isFinite(filters.yearsMin) && filters.yearsMin > 0) count += 1;
+  if (
+    typeof filters.yearsMin === "number" &&
+    Number.isFinite(filters.yearsMin) &&
+    filters.yearsMin > 0
+  )
+    count += 1;
   if (filters.skill.trim()) count += 1;
+  if (filters.tag.trim()) count += 1;
+  if (filters.archived) count += 1;
   return count;
 }
 
 export interface CandidateListQuery {
   orgId: string;
-  status: CandidateStatus;
   /** The search box's text, raw; escaped here. */
   text: string;
-  tag: string | null;
   /** Zero-based. */
   page: number;
   sort?: CandidateSort | undefined;
@@ -102,17 +118,22 @@ export interface CandidatePage {
   pageCount: number;
 }
 
-export async function listCandidates(supabase: SupabaseClient, query: CandidateListQuery): Promise<CandidatePage> {
+export async function listCandidates(
+  supabase: SupabaseClient,
+  query: CandidateListQuery,
+): Promise<CandidatePage> {
   const from = Math.max(0, query.page) * PAGE_SIZE;
   let request = supabase
     .from("candidates")
     .select(CANDIDATE_LIST_COLUMNS, { count: "exact" })
-    .eq("org_id", query.orgId)
-    .eq("status", query.status);
+    .eq("org_id", query.orgId);
+  // The active profiles alone unless the archived ones are asked for too.
+  if (!query.filters?.archived) request = request.eq("status", "active");
   const filter = searchOrFilter(query.text);
   if (filter) request = request.or(filter);
   // A stored tag or skill may hold a comma or a quote: quoted, it stays one element of the literal.
-  if (query.tag) request = request.contains("tags", [arrayElement(query.tag)]);
+  const tag = (query.filters?.tag ?? "").trim();
+  if (tag) request = request.contains("tags", [arrayElement(tag)]);
   const location = cleanSearch(query.filters?.location ?? "");
   if (location) request = request.ilike("location", `%${location}%`);
   const yearsMin = query.filters?.yearsMin;
@@ -125,7 +146,9 @@ export async function listCandidates(supabase: SupabaseClient, query: CandidateL
   // A second key on every sort, so a page never shows a row twice across two pages.
   const ordered =
     sort === "name"
-      ? request.order("full_name", { ascending: true, nullsFirst: false }).order("updated_at", { ascending: false })
+      ? request
+          .order("full_name", { ascending: true, nullsFirst: false })
+          .order("updated_at", { ascending: false })
       : sort === "experience"
         ? request
             .order("years_experience", { ascending: false, nullsFirst: false })
@@ -143,7 +166,11 @@ export async function listCandidates(supabase: SupabaseClient, query: CandidateL
 }
 
 /** One profile of the organisation, or null when it does not exist (or was erased). */
-export async function readCandidate(supabase: SupabaseClient, orgId: string, candidateId: string): Promise<CandidateRow | null> {
+export async function readCandidate(
+  supabase: SupabaseClient,
+  orgId: string,
+  candidateId: string,
+): Promise<CandidateRow | null> {
   const { data, error } = await supabase
     .from("candidates")
     .select(CANDIDATE_COLUMNS)
@@ -154,7 +181,11 @@ export async function readCandidate(supabase: SupabaseClient, orgId: string, can
   return (data as unknown as CandidateRow | null) ?? null;
 }
 
-export async function listCandidateDocuments(supabase: SupabaseClient, orgId: string, candidateId: string): Promise<DocumentRow[]> {
+export async function listCandidateDocuments(
+  supabase: SupabaseClient,
+  orgId: string,
+  candidateId: string,
+): Promise<DocumentRow[]> {
   const { data, error } = await supabase
     .from("documents")
     .select("*")
@@ -166,7 +197,11 @@ export async function listCandidateDocuments(supabase: SupabaseClient, orgId: st
 }
 
 /** The text the service extracted from one document, read when the viewer needs it (it can weigh a few hundred kilobytes); null when none was kept. */
-export async function readDocumentText(supabase: SupabaseClient, orgId: string, documentId: string): Promise<string | null> {
+export async function readDocumentText(
+  supabase: SupabaseClient,
+  orgId: string,
+  documentId: string,
+): Promise<string | null> {
   const { data, error } = await supabase
     .from("documents")
     .select("extracted_text")
@@ -176,17 +211,6 @@ export async function readDocumentText(supabase: SupabaseClient, orgId: string, 
   if (error) throw error;
   const text = (data as { extracted_text?: unknown } | null)?.extracted_text;
   return typeof text === "string" && text.trim() ? text : null;
-}
-
-export async function listCandidateComments(supabase: SupabaseClient, orgId: string, candidateId: string): Promise<CommentRow[]> {
-  const { data, error } = await supabase
-    .from("comments")
-    .select("*")
-    .eq("org_id", orgId)
-    .eq("candidate_id", candidateId)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as unknown as CommentRow[];
 }
 
 /**
@@ -208,7 +232,11 @@ const SET_ASIDE_STATUSES = ["failed", "needs_ocr", "rejected"];
 /** The statuses of a document the service has not read yet: what the wave still holds. */
 const PENDING_STATUSES = ["queued", "processing"];
 
-async function countDocuments(supabase: SupabaseClient, orgId: string, statuses: string[]): Promise<number> {
+async function countDocuments(
+  supabase: SupabaseClient,
+  orgId: string,
+  statuses: string[],
+): Promise<number> {
   const { count, error } = await supabase
     .from("documents")
     .select("id", { count: "exact", head: true })
@@ -219,7 +247,10 @@ async function countDocuments(supabase: SupabaseClient, orgId: string, statuses:
 }
 
 /** The documents the service has not read yet (queued or processing): they take the month's quota before anything re-queued or imported behind them. */
-export async function countPendingDocuments(supabase: SupabaseClient, orgId: string): Promise<number> {
+export async function countPendingDocuments(
+  supabase: SupabaseClient,
+  orgId: string,
+): Promise<number> {
   return countDocuments(supabase, orgId, PENDING_STATUSES);
 }
 
@@ -235,7 +266,10 @@ async function countQuotaFailures(supabase: SupabaseClient, orgId: string): Prom
   return count ?? 0;
 }
 
-export async function readProcessingCounts(supabase: SupabaseClient, orgId: string): Promise<ProcessingCounts> {
+export async function readProcessingCounts(
+  supabase: SupabaseClient,
+  orgId: string,
+): Promise<ProcessingCounts> {
   const [unread, rejected, quota] = await Promise.all([
     countDocuments(supabase, orgId, ["failed", "needs_ocr"]),
     countDocuments(supabase, orgId, ["rejected"]),
@@ -293,7 +327,11 @@ export async function readWaveStart(supabase: SupabaseClient, orgId: string): Pr
  * duplicate settled without a model call included), the quota refusals
  * apart: those never entered the reading and the banner counts them.
  */
-async function countLeftQueueSince(supabase: SupabaseClient, orgId: string, since: string): Promise<number> {
+async function countLeftQueueSince(
+  supabase: SupabaseClient,
+  orgId: string,
+  since: string,
+): Promise<number> {
   const { count, error } = await supabase
     .from("documents")
     .select("id", { count: "exact", head: true })
@@ -351,11 +389,19 @@ export async function readProcessingProgress(
 ): Promise<ProcessingWave> {
   const start = await readWaveStart(supabase, orgId);
   const startedAt = earliestOf(options.startedAt ?? null, start.startedAt);
-  return readWaveCounts(supabase, orgId, { pending: start.pending, startedAt }, options.now ?? new Date());
+  return readWaveCounts(
+    supabase,
+    orgId,
+    { pending: start.pending, startedAt },
+    options.now ?? new Date(),
+  );
 }
 
 /** When the hourly purge deletes the candidate, from retention_due_at(); null when unknown. */
-export async function readRetentionDueAt(supabase: SupabaseClient, candidateId: string): Promise<string | null> {
+export async function readRetentionDueAt(
+  supabase: SupabaseClient,
+  candidateId: string,
+): Promise<string | null> {
   const { data, error } = await supabase.rpc("retention_due_at", { p_candidate: candidateId });
   if (error) throw error;
   return typeof data === "string" ? data : null;
@@ -380,10 +426,16 @@ export async function listFailedDocuments(
   limit = 50,
   group?: SetAsideGroup,
 ): Promise<DocumentRow[]> {
-  let request = supabase.from("documents").select("*").eq("org_id", orgId).in("status", SET_ASIDE_STATUSES);
-  if (group === "quota") request = request.eq("status", "failed").like("error", QUOTA_ERROR_PATTERN);
+  let request = supabase
+    .from("documents")
+    .select("*")
+    .eq("org_id", orgId)
+    .in("status", SET_ASIDE_STATUSES);
+  if (group === "quota")
+    request = request.eq("status", "failed").like("error", QUOTA_ERROR_PATTERN);
   // A failure without a sentence is a real one; NOT LIKE alone would drop it (NULL is neither).
-  if (group === "other") request = request.or(`error.is.null,error.not.like.${QUOTA_ERROR_PATTERN}`);
+  if (group === "other")
+    request = request.or(`error.is.null,error.not.like.${QUOTA_ERROR_PATTERN}`);
   const { data, error } = await request.order("updated_at", { ascending: false }).limit(limit);
   if (error) throw error;
   return (data ?? []) as unknown as DocumentRow[];

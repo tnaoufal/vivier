@@ -1,8 +1,9 @@
 /**
- * The decision of the analysis on a result as a pill with its one
- * leading icon, so colour is never the only signal: matches, to check,
- * does not match, or not analysed when no model read the profile. The
- * analysis proposes; the pill never says more than that.
+ * The decision of the analysis on a result as a pill whose shape and
+ * icon say it: matches is the ink filled with a check, to check an ink
+ * outline with an alert, does not match a grey outline with a cross,
+ * and not analysed a grey disc with a dashed circle when no model read
+ * the profile. The analysis proposes; the pill never says more than that.
  */
 import { CircleAlert, CircleCheck, CircleDashed, CircleX } from "lucide-react";
 

@@ -1,12 +1,14 @@
 /**
- * /app/briefs/new: a title and the need as free text, two fields in one
- * card (the placeholders carry the examples), and the one button that
- * creates it; a viewer sees the refusal every page shows. The row is
- * created open, with no criteria yet; the brief page then proposes them
- * or lets the person write them.
+ * /app/briefs/new: one centred card with a title and the consultant's
+ * brief as free text (the placeholder is the example), and the one
+ * button that creates it and analyses it: the brief page opens with
+ * `?run=1` and starts the analysis at once. A viewer sees the refusal
+ * every page shows. The brief is the only source of the analysis: no
+ * criteria, no profile to write here.
  */
 import { useState, type FormEvent } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Sparkles } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { NotAllowed } from "@/components/team/not-allowed";
@@ -40,19 +42,17 @@ function NewBriefPage() {
     if (busy || !user || !title.trim()) return;
     setBusy(true);
     try {
-      const supabase = await requireSupabase();
-      const briefId = await createBrief(supabase, {
+      const briefId = await createBrief(await requireSupabase(), {
         orgId: org.id,
         title,
         description,
         userId: user.id,
       });
-      toast.success(t("briefs.new.created"));
-      void navigate({ to: "/app/briefs/$briefId", params: { briefId } });
+      // The brief page starts the analysis itself, once, and drops the param.
+      void navigate({ to: "/app/briefs/$briefId", params: { briefId }, search: { run: 1 } });
     } catch (error) {
       console.error(error);
       toast.error(t("common.error"));
-    } finally {
       setBusy(false);
     }
   }
@@ -76,12 +76,9 @@ function NewBriefPage() {
   }
 
   return (
-    <div>
+    <div className="mx-auto max-w-2xl">
       <PageHeader eyebrow={eyebrow} title={t("briefs.new.title")} />
-      <form
-        onSubmit={(event) => void submit(event)}
-        className="sheet max-w-2xl space-y-6 p-6 sm:p-8"
-      >
+      <form onSubmit={(event) => void submit(event)} className="sheet space-y-6 p-6">
         <div className="space-y-2">
           <Label htmlFor="new-brief-title">{t("briefs.form.title")}</Label>
           <Input
@@ -109,7 +106,13 @@ function NewBriefPage() {
           <Button asChild variant="ghost" type="button">
             <Link to="/app/briefs">{t("common.cancel")}</Link>
           </Button>
-          <Button type="submit" variant="primary" disabled={busy || !title.trim()}>
+          <Button
+            type="submit"
+            variant="primary"
+            icon={<Sparkles />}
+            disabled={busy || !title.trim()}
+            aria-busy={busy || undefined}
+          >
             {t("briefs.new.create")}
           </Button>
         </div>

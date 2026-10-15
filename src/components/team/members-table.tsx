@@ -1,15 +1,15 @@
 /**
  * The members of the organisation as rows in one card: the avatar, the
  * name and the email, when they joined, the role (a Select when the
- * viewer may change it, a pill otherwise) and the remove button (leave,
- * for oneself). Rows rise in once. Decisions and confirmations belong
- * to the page; this only renders and reports clicks.
+ * viewer may change it, muted text otherwise) and the remove button for
+ * the members the viewer manages. Leaving oneself lives in the settings'
+ * danger zone, not here. Rows rise in once. Decisions and confirmations
+ * belong to the page; this only renders and reports clicks.
  */
-import { LogOut, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { EmptyState } from "@/components/app-shell/empty-state";
-import { Pill, type PillTone } from "@/components/app-shell/pill";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -23,13 +23,6 @@ import type { OrgRole } from "@/lib/db/types";
 import { formatDate, useI18n } from "@/lib/i18n";
 import { memberName } from "@/lib/org/org-context";
 import { assignableRoles, type TeamMember } from "@/lib/team/team";
-
-const ROLE_TONES: Record<OrgRole, PillTone> = {
-  owner: "primary",
-  admin: "positive",
-  member: "neutral",
-  viewer: "neutral",
-};
 
 export function MembersTable({
   members,
@@ -59,7 +52,7 @@ export function MembersTable({
         );
         const roles = assignableRoles(actorRole, member.role);
         const busy = busyUserId === member.userId;
-        const removeLabel = self ? t("members.leave") : t("members.remove");
+        const removeLabel = t("members.remove");
         const email = member.profile?.email ?? "";
         return (
           <li key={member.userId} className="sheet-row rise-in flex-wrap">
@@ -100,11 +93,9 @@ export function MembersTable({
                   </SelectContent>
                 </Select>
               ) : (
-                <Pill tone={ROLE_TONES[member.role]} dot>
-                  {t(`role.${member.role}`)}
-                </Pill>
+                <span className="text-meta text-muted-foreground">{t(`role.${member.role}`)}</span>
               )}
-              {self || roles.length ? (
+              {!self && roles.length ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -112,10 +103,10 @@ export function MembersTable({
                       size="icon"
                       onClick={() => onRemove(member)}
                       disabled={busy}
-                      className="text-muted-foreground hover:text-negative"
+                      className="text-muted-foreground hover:text-ink"
                       aria-label={removeLabel}
                     >
-                      {self ? <LogOut /> : <Trash2 />}
+                      <Trash2 />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>{removeLabel}</TooltipContent>

@@ -1,17 +1,17 @@
 /**
  * What the card and the drawer of a shortlist item show of its match,
  * read from the match the item carries: the assessed score (the model's,
- * 0..100; the deterministic score is another scale and reads apart as a
- * muted number), one row per requirement for the shared RequirementList
- * (from the assessment when a model answered, else from the
- * deterministic verdicts), the model's sentences, and the recruiter's
- * reading when the assessment carries one (the tier of the comparative
- * pass, its strengths, its reservations with the second opinion's doubt
- * marked as such, its interview questions, the five dimensions with
- * their scores). The rows follow the criteria the match carries when it
- * has them (the search's, as they were), else the brief's as given.
- * Pure and tested; a thing the match does not say is "unknown", never a
- * lack, and a field an older assessment lacks is simply absent.
+ * 0..100), one row per requirement for the shared RequirementList (from
+ * the assessment when a model answered, else from the deterministic
+ * verdicts), the model's sentences, the one line a card shows (the rank
+ * note, else the main reservation), and the recruiter's reading when the
+ * assessment carries one (the tier of the comparative pass, its
+ * strengths, its reservations with the second opinion's doubt marked as
+ * such, its interview questions, the five dimensions with their scores).
+ * The rows follow the criteria the match carries when it has them (the
+ * search's, as they were), else the brief's as given. Pure and tested; a
+ * thing the match does not say is "unknown", never a lack, and a field
+ * an older assessment lacks is simply absent.
  */
 import type { RequirementRow } from "@/components/app-shell/requirement-list";
 import { parseCriteria } from "@/lib/briefs/criteria";
@@ -25,8 +25,6 @@ import type {
   RequirementMet,
 } from "@/lib/db/types";
 
-import { isVerdict } from "./tally";
-
 const VERDICT_TO_MET: Record<CriterionVerdict, RequirementMet> = {
   match: "yes",
   partial: "partial",
@@ -36,17 +34,30 @@ const VERDICT_TO_MET: Record<CriterionVerdict, RequirementMet> = {
 
 const MET_VALUES: readonly RequirementMet[] = ["yes", "partial", "no", "unknown"];
 
-export type MatchLike = Pick<MatchResult, "verdicts" | "assessment"> & Partial<Pick<MatchResult, "criteria">>;
+const VERDICTS: readonly CriterionVerdict[] = ["match", "partial", "missing", "not_stated"];
+
+/** A verdict the deterministic pass may store; anything else is not read as a lack. */
+export function isVerdict(value: unknown): value is CriterionVerdict {
+  return typeof value === "string" && (VERDICTS as readonly string[]).includes(value);
+}
+
+export type MatchLike = Pick<MatchResult, "verdicts" | "assessment"> &
+  Partial<Pick<MatchResult, "criteria">>;
 
 /** The criteria the rows follow: the match's own snapshot when it carries one, else the brief's as given. */
-export function criteriaOf(criteria: readonly BriefCriterion[], match: Pick<MatchLike, "criteria">): readonly BriefCriterion[] {
+export function criteriaOf(
+  criteria: readonly BriefCriterion[],
+  match: Pick<MatchLike, "criteria">,
+): readonly BriefCriterion[] {
   const own = parseCriteria(match.criteria);
   return own.length ? own : criteria;
 }
 
 /** The model's answer as the row stores it, else "unknown": a value the schema does not know is not read as a lack. */
 function asMet(value: unknown): RequirementMet {
-  return typeof value === "string" && (MET_VALUES as readonly string[]).includes(value) ? (value as RequirementMet) : "unknown";
+  return typeof value === "string" && (MET_VALUES as readonly string[]).includes(value)
+    ? (value as RequirementMet)
+    : "unknown";
 }
 
 function metOfVerdict(value: unknown): RequirementMet {
@@ -62,7 +73,9 @@ function text(value: unknown): string | null {
 }
 
 /** The assessment's fit score 0..100, rounded; null when no model assessed the item (the ring then shows a dash). */
-export function assessedScore(match: Pick<MatchResult, "assessment"> | null | undefined): number | null {
+export function assessedScore(
+  match: Pick<MatchResult, "assessment"> | null | undefined,
+): number | null {
   const score = match?.assessment?.score;
   if (typeof score !== "number" || !Number.isFinite(score)) return null;
   return Math.round(Math.max(0, Math.min(100, score)));
@@ -87,11 +100,13 @@ export function requirementRowsOf(
   // Guarded like the verdicts: a stored assessment that drifted from the schema must not take the drawer down.
   const requirements = match.assessment?.requirements;
   for (const row of Array.isArray(requirements) ? requirements : []) {
-    if (row && typeof row.criterionId === "string" && !assessed.has(row.criterionId)) assessed.set(row.criterionId, row);
+    if (row && typeof row.criterionId === "string" && !assessed.has(row.criterionId))
+      assessed.set(row.criterionId, row);
   }
   const verdicts = new Map<string, { verdict: unknown; evidence: unknown }>();
   for (const row of Array.isArray(match.verdicts) ? match.verdicts : []) {
-    if (row && typeof row.criterionId === "string" && !verdicts.has(row.criterionId)) verdicts.set(row.criterionId, row);
+    if (row && typeof row.criterionId === "string" && !verdicts.has(row.criterionId))
+      verdicts.set(row.criterionId, row);
   }
 
   const rows: RequirementRow[] = [];
@@ -101,7 +116,13 @@ export function requirementRowsOf(
     const answer = assessed.get(criterion.id);
     const verdict = verdicts.get(criterion.id);
     if (answer) {
-      rows.push({ id: criterion.id, label: criterion.label, required: criterion.required, met: asMet(answer.met), evidence: evidenceOf(answer.evidence) });
+      rows.push({
+        id: criterion.id,
+        label: criterion.label,
+        required: criterion.required,
+        met: asMet(answer.met),
+        evidence: evidenceOf(answer.evidence),
+      });
     } else {
       rows.push({
         id: criterion.id,
@@ -115,34 +136,32 @@ export function requirementRowsOf(
   for (const [id, answer] of assessed) {
     if (seen.has(id)) continue;
     seen.add(id);
-    rows.push({ id, label: unknownLabel, required: false, met: asMet(answer.met), evidence: evidenceOf(answer.evidence) });
+    rows.push({
+      id,
+      label: unknownLabel,
+      required: false,
+      met: asMet(answer.met),
+      evidence: evidenceOf(answer.evidence),
+    });
   }
   for (const [id, verdict] of verdicts) {
     if (seen.has(id)) continue;
     seen.add(id);
-    rows.push({ id, label: unknownLabel, required: false, met: metOfVerdict(verdict.verdict), evidence: evidenceOf(verdict.evidence) });
+    rows.push({
+      id,
+      label: unknownLabel,
+      required: false,
+      met: metOfVerdict(verdict.verdict),
+      evidence: evidenceOf(verdict.evidence),
+    });
   }
   return rows;
 }
 
-/**
- * The labels of the required requirements the match says are not met,
- * in the rows' order: the first thing a card names, because it is the
- * one fact that decides most. "Unknown" is never in it: a CV that says
- * nothing is not a CV that says no.
- */
-export function missingRequired(
-  criteria: readonly BriefCriterion[],
-  match: MatchLike | null | undefined,
-  unknownLabel: string,
-): string[] {
-  return requirementRowsOf(criteria, match, unknownLabel)
-    .filter((row) => row.required && row.met === "no")
-    .map((row) => row.label);
-}
-
 /** The model's sentences on the match: the assessment's summary, else the search's "why"; null when no model spoke. */
-export function modelReading(match: Pick<MatchResult, "why" | "assessment"> | null | undefined): string | null {
+export function modelReading(
+  match: Pick<MatchResult, "why" | "assessment"> | null | undefined,
+): string | null {
   if (!match) return null;
   return text(match.assessment?.summary) ?? text(match.why);
 }
@@ -152,7 +171,13 @@ export function modelReading(match: Pick<MatchResult, "why" | "assessment"> | nu
 // ---------------------------------------------------------------------
 
 /** The five dimensions in the order the drawer shows them. */
-export const DIMENSIONS: readonly AssessmentDimension[] = ["role", "seniority", "context", "trajectory", "achievements"];
+export const DIMENSIONS: readonly AssessmentDimension[] = [
+  "role",
+  "seniority",
+  "context",
+  "trajectory",
+  "achievements",
+];
 
 const TIERS: readonly AssessmentTier[] = ["A", "B", "C"];
 
@@ -186,9 +211,13 @@ export interface RecruiterReading {
 }
 
 /** The tier the comparative pass gave, or null: a value the schema does not know is no tier. */
-export function tierOf(match: Pick<MatchResult, "assessment"> | null | undefined): AssessmentTier | null {
+export function tierOf(
+  match: Pick<MatchResult, "assessment"> | null | undefined,
+): AssessmentTier | null {
   const tier: unknown = match?.assessment?.tier;
-  return typeof tier === "string" && (TIERS as readonly string[]).includes(tier) ? (tier as AssessmentTier) : null;
+  return typeof tier === "string" && (TIERS as readonly string[]).includes(tier)
+    ? (tier as AssessmentTier)
+    : null;
 }
 
 /** A stored list as clean points: trimmed, clipped, each once, blanks and non-strings dropped; empty when it is not a list. */
@@ -196,7 +225,10 @@ function pointsOf(value: unknown, max: number = READING_POINTS_MAX): string[] {
   if (!Array.isArray(value)) return [];
   const out: string[] = [];
   for (const entry of value) {
-    const point = typeof entry === "string" ? entry.replace(/\s+/g, " ").trim().slice(0, READING_POINT_MAX) : "";
+    const point =
+      typeof entry === "string"
+        ? entry.replace(/\s+/g, " ").trim().slice(0, READING_POINT_MAX)
+        : "";
     if (point && !out.includes(point)) out.push(point);
     if (out.length >= max) break;
   }
@@ -242,7 +274,9 @@ function dimensionsOf(assessment: Pick<Assessment, "dimensions">): DimensionRead
  * assessment; every list empty for an assessment made before the
  * reading, which the drawer then shows nothing of.
  */
-export function recruiterReadingOf(match: Pick<MatchResult, "assessment"> | null | undefined): RecruiterReading | null {
+export function recruiterReadingOf(
+  match: Pick<MatchResult, "assessment"> | null | undefined,
+): RecruiterReading | null {
   const assessment = match?.assessment;
   if (!assessment || typeof assessment !== "object") return null;
   const doubt = doubtOf(assessment);
@@ -272,4 +306,16 @@ export function hasReading(reading: RecruiterReading | null): reading is Recruit
       reading.dimensions.length > 0 ||
       reading.rankNote !== null)
   );
+}
+
+/**
+ * The one line a card shows under the name: the comparative pass's note
+ * on this rank among the others, else the first reservation (the
+ * counter-reading's when it is the only one); null when the assessment
+ * says neither, and the card then shows no line rather than a dash.
+ */
+export function cardLine(match: Pick<MatchResult, "assessment"> | null | undefined): string | null {
+  const reading = recruiterReadingOf(match);
+  if (!reading) return null;
+  return reading.rankNote ?? reading.concerns[0]?.text ?? null;
 }

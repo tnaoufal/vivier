@@ -1,9 +1,11 @@
 /**
  * Pure formatting for the talent pool: confidence tones, file sizes,
  * experience date ranges and durations, years of experience, the
- * position held today and the one-line summaries a list row shows. No
- * React, no data access; every rule is tested in format.test.ts. Words for a locale live here the way formatRelative()
- * keeps them in src/lib/i18n: short and the same for every caller.
+ * position held today and the one-line summaries a list row, a sheet's
+ * head and its sticky header show (the seniority always first). No
+ * React, no data access; every rule is tested in format.test.ts. Words
+ * for a locale live here the way formatRelative() keeps them in
+ * src/lib/i18n: short and the same for every caller.
  */
 import type {
   CandidateExperience,
@@ -20,8 +22,6 @@ export type ConfidenceTone = "none" | "caution" | "negative";
 export const CONFIDENCE_SURE = 0.8;
 /** Between this and CONFIDENCE_SURE the field is to be checked; below it, uncertain. */
 export const CONFIDENCE_DOUBTFUL = 0.5;
-/** Any field below this marks the whole profile "to be checked" in the list. */
-export const CONFIDENCE_REVIEW = 0.6;
 
 /** The hint a field deserves; "none" when the field was typed or never read (no key). */
 export function confidenceTone(value: number | null | undefined): ConfidenceTone {
@@ -29,14 +29,6 @@ export function confidenceTone(value: number | null | undefined): ConfidenceTone
   if (value >= CONFIDENCE_SURE) return "none";
   if (value >= CONFIDENCE_DOUBTFUL) return "caution";
   return "negative";
-}
-
-/** True when any read field sits below CONFIDENCE_REVIEW. */
-export function needsReview(confidence: ConfidenceMap | null | undefined): boolean {
-  if (!confidence) return false;
-  return Object.values(confidence).some(
-    (value) => typeof value === "number" && value < CONFIDENCE_REVIEW,
-  );
 }
 
 const UNITS: Record<Locale, readonly string[]> = {
@@ -103,10 +95,7 @@ export function yearsLabel(locale: Locale, years: number | null | undefined): st
 }
 
 /** The name to show, or the fallback ("Sans nom") when none was read. */
-export function displayName(
-  row: Pick<CandidateRow, "full_name">,
-  fallback: string,
-): string {
+export function displayName(row: Pick<CandidateRow, "full_name">, fallback: string): string {
   const name = row.full_name?.trim();
   return name ? name : fallback;
 }
@@ -123,6 +112,20 @@ export function languagesLine(languages: readonly CandidateLanguage[] | null | u
     .join(", ");
 }
 
+/** "Français C2 · Anglais B2": the languages as a sheet's head reads them, the level after the name when one was read; "" when none. */
+export function languagesSummary(
+  languages: readonly CandidateLanguage[] | null | undefined,
+): string {
+  if (!languages?.length) return "";
+  return languages
+    .filter((language) => language && typeof language.name === "string" && language.name.trim())
+    .map((language) => {
+      const level = language.level?.trim();
+      return level ? `${language.name.trim()} ${level}` : language.name.trim();
+    })
+    .join(" · ");
+}
+
 /** The first `count` skills, trimmed and without empties. */
 export function topSkills(skills: readonly string[] | null | undefined, count: number): string[] {
   if (!skills?.length) return [];
@@ -136,7 +139,10 @@ export function topSkills(skills: readonly string[] | null | undefined, count: n
 export const KEY_SKILLS = 3;
 
 /** The skills that tell a row apart: the first three as the CV orders them. */
-export function keySkills(skills: readonly string[] | null | undefined, count: number = KEY_SKILLS): string[] {
+export function keySkills(
+  skills: readonly string[] | null | undefined,
+  count: number = KEY_SKILLS,
+): string[] {
   return topSkills(skills, count);
 }
 
@@ -153,7 +159,9 @@ export interface CurrentPosition {
  * a value that is not a date is still a value the CV wrote.
  */
 export function currentPosition(
-  row: Pick<CandidateRow, "headline"> & { experiences?: readonly CandidateExperience[] | null | undefined },
+  row: Pick<CandidateRow, "headline"> & {
+    experiences?: readonly CandidateExperience[] | null | undefined;
+  },
 ): CurrentPosition | null {
   for (const experience of row.experiences ?? []) {
     if (!experience || typeof experience !== "object") continue;
@@ -167,14 +175,57 @@ export function currentPosition(
   return headline ? { title: headline, company: null } : null;
 }
 
-/** "Paris · 6 ans · Disponible en janvier": the location, the years and the availability the CV states, in that order; "" when none. */
+/** The parts a CV states, in the order given, as one line; "" when it states none of them. */
+function joinStated(parts: readonly (string | null | undefined)[]): string {
+  return parts
+    .filter((part): part is string => typeof part === "string" && part.length > 0)
+    .join(" · ");
+}
+
+/** "6 ans · Paris · Disponible en janvier": the years, the location and the availability the CV states, the seniority first; "" when none. */
 export function metaLine(
   locale: Locale,
   row: Pick<CandidateRow, "location" | "years_experience" | "availability">,
 ): string {
-  return [row.location?.trim(), yearsLabel(locale, row.years_experience), row.availability?.trim()]
-    .filter((part): part is string => typeof part === "string" && part.length > 0)
-    .join(" · ");
+  return joinStated([
+    yearsLabel(locale, row.years_experience),
+    row.location?.trim(),
+    row.availability?.trim(),
+  ]);
+}
+
+/**
+ * "12 ans · Casablanca · Python, SAP, MS Project": the second line of a
+ * list row: the seniority first, then the location, then the three
+ * skills the CV put first. A fact the CV does not state is simply
+ * absent; "" when it states none of them.
+ */
+export function listLine(
+  locale: Locale,
+  row: Pick<CandidateRow, "location" | "years_experience"> & {
+    skills?: readonly string[] | null | undefined;
+  },
+): string {
+  const skills = keySkills(row.skills);
+  return joinStated([
+    yearsLabel(locale, row.years_experience),
+    row.location?.trim(),
+    skills.length ? skills.join(", ") : null,
+  ]);
+}
+
+/** "Lead designer · 12 ans · Casablanca": the sticky header's reminder under the name: the position held today, the years, the location; "" when the CV states none. */
+export function headerLine(
+  locale: Locale,
+  row: Pick<CandidateRow, "headline" | "location" | "years_experience"> & {
+    experiences?: readonly CandidateExperience[] | null | undefined;
+  },
+): string {
+  return joinStated([
+    currentPosition(row)?.title,
+    yearsLabel(locale, row.years_experience),
+    row.location?.trim(),
+  ]);
 }
 
 /**
@@ -219,7 +270,11 @@ export function durationLabel(locale: Locale, months: number | null | undefined)
   const rest = whole % 12;
   const parts: string[] = [];
   if (years > 0) {
-    parts.push(locale === "fr" ? `${years} ${years === 1 ? "an" : "ans"}` : `${years} ${years === 1 ? "year" : "years"}`);
+    parts.push(
+      locale === "fr"
+        ? `${years} ${years === 1 ? "an" : "ans"}`
+        : `${years} ${years === 1 ? "year" : "years"}`,
+    );
   }
   if (rest > 0) {
     parts.push(locale === "fr" ? `${rest} mois` : `${rest} ${rest === 1 ? "month" : "months"}`);
@@ -261,7 +316,9 @@ export function documentTone(status: DocumentStatus): PillToneName {
 }
 
 /** The dictionary key of a document status ("candidates.documents.status.queued"...). */
-export function documentStatusKey(status: DocumentStatus): `candidates.documents.status.${DocumentStatus}` {
+export function documentStatusKey(
+  status: DocumentStatus,
+): `candidates.documents.status.${DocumentStatus}` {
   return `candidates.documents.status.${status}`;
 }
 

@@ -5,7 +5,7 @@
  */
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Activity, ChevronDown, RefreshCw, TriangleAlert } from "lucide-react";
+import { Activity, ChevronDown, CircleAlert, RefreshCw, TriangleAlert } from "lucide-react";
 
 import { ActivityList } from "@/components/activity/activity-list";
 import { FamilyFilter } from "@/components/activity/family-filter";
@@ -42,7 +42,8 @@ function ActivityPage() {
       </div>
       {/* With rows on screen, a failed refresh or "show more" keeps them and says so in one line. */}
       {feed.error && feed.rows.length > 0 ? (
-        <p className="mb-4 text-sm text-negative" role="alert">
+        <p className="mb-4 flex items-start gap-1.5 text-sm text-ink" role="alert">
+          <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           {t("common.error")}
         </p>
       ) : null}
@@ -59,20 +60,33 @@ function ActivityPage() {
                 icon={<TriangleAlert />}
                 title={t("activity.loadError")}
                 action={
-                  <Button type="button" variant="outline" icon={<RefreshCw />} onClick={() => void feed.refresh()}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    icon={<RefreshCw />}
+                    onClick={() => void feed.refresh()}
+                  >
                     {t("common.retry")}
                   </Button>
                 }
               />
             </div>
           ) : (
-            <EmptyState icon={<Activity />} title={family ? t("activity.emptyFiltered") : t("activity.empty")} />
+            <EmptyState
+              icon={<Activity />}
+              title={family ? t("activity.emptyFiltered") : t("activity.empty")}
+            />
           )
         }
       />
       {feed.hasMore ? (
         <div className="mt-6 flex justify-center">
-          <Button variant="outline" icon={<ChevronDown />} onClick={() => void feed.loadMore()} disabled={feed.loadingMore}>
+          <Button
+            variant="outline"
+            icon={<ChevronDown />}
+            onClick={() => void feed.loadMore()}
+            disabled={feed.loadingMore}
+          >
             {feed.loadingMore ? t("common.loading") : t("activity.loadMore")}
           </Button>
         </div>

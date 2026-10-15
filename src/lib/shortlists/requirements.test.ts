@@ -4,9 +4,9 @@ import type { Assessment, BriefCriterion, MatchResult } from "@/lib/db/types";
 
 import {
   assessedScore,
+  cardLine,
   criteriaOf,
   hasReading,
-  missingRequired,
   modelReading,
   recruiterReadingOf,
   requirementRowsOf,
@@ -96,8 +96,17 @@ describe("requirementRowsOf", () => {
   });
 
   it("falls back to the verdicts when a stored assessment's requirements are not a list", () => {
-    const drifted = { ...deterministic, assessment: { ...assessment, requirements: {} } } as unknown as MatchResult;
-    expect(requirementRowsOf(criteria, drifted, "Critère retiré").map((row) => [row.id, row.met, row.evidence])).toEqual([
+    const drifted = {
+      ...deterministic,
+      assessment: { ...assessment, requirements: {} },
+    } as unknown as MatchResult;
+    expect(
+      requirementRowsOf(criteria, drifted, "Critère retiré").map((row) => [
+        row.id,
+        row.met,
+        row.evidence,
+      ]),
+    ).toEqual([
       ["k1", "yes", "React depuis 2019"],
       ["k2", "partial", "B2"],
       ["k3", "unknown", null],
@@ -109,7 +118,14 @@ describe("requirementRowsOf", () => {
     const snapshot: MatchResult = {
       ...assessed,
       criteria: [
-        { id: "k2", kind: "language", label: "Anglais C1 (à l'analyse)", value: "C1", required: true, weight: 2 },
+        {
+          id: "k2",
+          kind: "language",
+          label: "Anglais C1 (à l'analyse)",
+          value: "C1",
+          required: true,
+          weight: 2,
+        },
         { id: "k9", kind: "skill", label: "Docker", value: "docker", required: false, weight: 1 },
       ],
     };
@@ -157,7 +173,9 @@ describe("modelReading", () => {
   it("prefers the assessment's summary, then the search's why, trimmed", () => {
     expect(modelReading(assessed)).toBe("Un profil solide sur React.");
     expect(modelReading(deterministic)).toBe("Deux phrases du modèle.");
-    expect(modelReading({ ...assessed, assessment: { ...assessment, summary: "  " } })).toBe("Deux phrases du modèle.");
+    expect(modelReading({ ...assessed, assessment: { ...assessment, summary: "  " } })).toBe(
+      "Deux phrases du modèle.",
+    );
   });
 
   it("is null when no model spoke", () => {
@@ -171,18 +189,30 @@ const reading: Assessment = {
   ...assessment,
   modelScore: 74,
   dimensions: {
-    role: { score: 82.4, note: "Développeuse front depuis 2019.", evidence: "Lead front, 2021-2024" },
+    role: {
+      score: 82.4,
+      note: "Développeuse front depuis 2019.",
+      evidence: "Lead front, 2021-2024",
+    },
     seniority: { score: 65, note: "Cinq ans, un poste de lead.", evidence: null },
     context: { score: 140, note: " ", evidence: "  " },
     trajectory: { score: -5, note: "Progression régulière.", evidence: null },
-    achievements: { score: 58, note: "Deux refontes livrées.", evidence: "Refonte du checkout, 2023" },
+    achievements: {
+      score: 58,
+      note: "Deux refontes livrées.",
+      evidence: "Refonte du checkout, 2023",
+    },
   },
   strengths: ["React depuis 2019", " React depuis 2019 ", "Lead d'une équipe de quatre", ""],
   concerns: ["Anglais B2 seulement", "Les trois derniers postes sont en agence"],
   questions: ["Rôle exact sur la refonte du checkout", "Niveau d'anglais à l'oral"],
   tier: "B",
   rankNote: "Deuxième sur React, derrière le profil lead.",
-  challenge: { verdict: "doubt", reason: "Les trois derniers postes sont en agence", evidence: "2019-2024 : agence" },
+  challenge: {
+    verdict: "doubt",
+    reason: "Les trois derniers postes sont en agence",
+    evidence: "2019-2024 : agence",
+  },
 };
 
 const read: MatchResult = { ...deterministic, assessment: reading };
@@ -209,13 +239,26 @@ describe("recruiterReadingOf", () => {
     expect(result?.tier).toBe("B");
     expect(result?.rankNote).toBe("Deuxième sur React, derrière le profil lead.");
     expect(result?.strengths).toEqual(["React depuis 2019", "Lead d'une équipe de quatre"]);
-    expect(result?.questions).toEqual(["Rôle exact sur la refonte du checkout", "Niveau d'anglais à l'oral"]);
+    expect(result?.questions).toEqual([
+      "Rôle exact sur la refonte du checkout",
+      "Niveau d'anglais à l'oral",
+    ]);
     expect(result?.dimensions).toEqual([
-      { dimension: "role", score: 82, note: "Développeuse front depuis 2019.", evidence: "Lead front, 2021-2024" },
+      {
+        dimension: "role",
+        score: 82,
+        note: "Développeuse front depuis 2019.",
+        evidence: "Lead front, 2021-2024",
+      },
       { dimension: "seniority", score: 65, note: "Cinq ans, un poste de lead.", evidence: null },
       { dimension: "context", score: 100, note: null, evidence: null },
       { dimension: "trajectory", score: 0, note: "Progression régulière.", evidence: null },
-      { dimension: "achievements", score: 58, note: "Deux refontes livrées.", evidence: "Refonte du checkout, 2023" },
+      {
+        dimension: "achievements",
+        score: 58,
+        note: "Deux refontes livrées.",
+        evidence: "Refonte du checkout, 2023",
+      },
     ]);
   });
 
@@ -225,29 +268,55 @@ describe("recruiterReadingOf", () => {
       { text: "Anglais B2 seulement", challenge: false },
       { text: "Les trois derniers postes sont en agence", challenge: true },
     ]);
-    const confirmed = recruiterReadingOf({ assessment: { ...reading, challenge: { verdict: "confirmed", reason: "RAS", evidence: null } } });
+    const confirmed = recruiterReadingOf({
+      assessment: {
+        ...reading,
+        challenge: { verdict: "confirmed", reason: "RAS", evidence: null },
+      },
+    });
     expect(confirmed?.concerns).toEqual([
       { text: "Anglais B2 seulement", challenge: false },
       { text: "Les trois derniers postes sont en agence", challenge: false },
     ]);
-    const silent = recruiterReadingOf({ assessment: { ...reading, concerns: [], challenge: { verdict: "doubt", reason: " ", evidence: null } } });
+    const silent = recruiterReadingOf({
+      assessment: {
+        ...reading,
+        concerns: [],
+        challenge: { verdict: "doubt", reason: " ", evidence: null },
+      },
+    });
     expect(silent?.concerns).toEqual([]);
   });
 
   it("reads an assessment made before the reading as empty lists, which the drawer shows nothing of", () => {
     const older = recruiterReadingOf(assessed);
-    expect(older).toEqual({ tier: null, rankNote: null, strengths: [], concerns: [], questions: [], dimensions: [] });
+    expect(older).toEqual({
+      tier: null,
+      rankNote: null,
+      strengths: [],
+      concerns: [],
+      questions: [],
+      dimensions: [],
+    });
     expect(hasReading(older)).toBe(false);
     expect(hasReading(null)).toBe(false);
     expect(hasReading(recruiterReadingOf(read))).toBe(true);
-    expect(hasReading(recruiterReadingOf({ assessment: { ...assessment, rankNote: "Seul retenu." } }))).toBe(true);
+    expect(
+      hasReading(recruiterReadingOf({ assessment: { ...assessment, rankNote: "Seul retenu." } })),
+    ).toBe(true);
   });
 
   it("guards a stored column that drifted from the schema", () => {
     const odd = {
       assessment: {
         ...assessment,
-        dimensions: { role: { score: "high" }, seniority: "70", context: null, trajectory: { score: 40 }, extra: { score: 10 } },
+        dimensions: {
+          role: { score: "high" },
+          seniority: "70",
+          context: null,
+          trajectory: { score: 40 },
+          extra: { score: 10 },
+        },
         strengths: "React",
         concerns: [3, null, { text: "x" }, "Une réserve"],
         questions: null,
@@ -263,7 +332,9 @@ describe("recruiterReadingOf", () => {
       questions: [],
       dimensions: [{ dimension: "trajectory", score: 40, note: null, evidence: null }],
     });
-    expect(recruiterReadingOf({ assessment: { ...assessment, dimensions: [] as never } })?.dimensions).toEqual([]);
+    expect(
+      recruiterReadingOf({ assessment: { ...assessment, dimensions: [] as never } })?.dimensions,
+    ).toEqual([]);
   });
 
   it("caps every list at eight points of three hundred characters", () => {
@@ -275,34 +346,31 @@ describe("recruiterReadingOf", () => {
     expect(result?.strengths[0]).toHaveLength(300);
     // The doubt comes last even when the reservations fill the list.
     expect(result?.concerns).toHaveLength(8);
-    expect(result?.concerns[7]).toEqual({ text: "Les trois derniers postes sont en agence", challenge: true });
+    expect(result?.concerns[7]).toEqual({
+      text: "Les trois derniers postes sont en agence",
+      challenge: true,
+    });
     expect(result?.questions).toHaveLength(8);
   });
 });
 
-describe("missingRequired", () => {
-  it("names the required requirements the match says are not met, in order", () => {
-    const strict = [...criteria.map((c) => ({ ...c, required: true }))];
-    expect(missingRequired(strict, assessed, "?")).toEqual(["Anglais C1"]);
-    expect(missingRequired(criteria, assessed, "?")).toEqual([]);
+describe("cardLine", () => {
+  it("is the rank note first, then the main reservation", () => {
+    expect(cardLine(read)).toBe("Deuxième sur React, derrière le profil lead.");
+    expect(cardLine({ assessment: { ...reading, rankNote: null } })).toBe("Anglais B2 seulement");
+    expect(cardLine({ assessment: { ...reading, rankNote: "  " } })).toBe("Anglais B2 seulement");
   });
 
-  it("never counts a silence or a partial answer as a lack", () => {
-    const strict = criteria.map((c) => ({ ...c, required: true }));
-    // k1 partial, k2 partial, k3 unknown: nothing missing.
-    const soft: MatchResult = {
-      ...deterministic,
-      verdicts: [
-        { criterionId: "k1", verdict: "partial", evidence: null },
-        { criterionId: "k2", verdict: "partial", evidence: null },
-      ],
-    };
-    expect(missingRequired(strict, soft, "?")).toEqual([]);
-    expect(missingRequired(strict, null, "?")).toEqual([]);
+  it("falls back on the counter-reading's doubt when it is the only reservation", () => {
+    expect(cardLine({ assessment: { ...reading, rankNote: null, concerns: [] } })).toBe(
+      "Les trois derniers postes sont en agence",
+    );
   });
 
-  it("leaves out a criterion the brief dropped, which is never required", () => {
-    // k9 is "missing" in the verdicts but no longer in the criteria: it is kept as a row, not as a lack.
-    expect(missingRequired(criteria, deterministic, "Retiré")).toEqual([]);
+  it("is null when the assessment says neither, or without an assessment", () => {
+    expect(cardLine(assessed)).toBeNull();
+    expect(cardLine(deterministic)).toBeNull();
+    expect(cardLine(null)).toBeNull();
+    expect(cardLine(undefined)).toBeNull();
   });
 });

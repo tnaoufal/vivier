@@ -14,7 +14,9 @@ stack and nothing else.
   the frontend's `bun.lock` is frozen (`bun install --frozen-lockfile`);
   adding a package is an owner decision, not a session's.
 - No decision is ever made by a machine. The model structures CVs,
-  extracts criteria from a brief, ranks and assesses requirement by
+  reads a brief once into a role profile and requirements (the
+  consultant's text is the only source; nobody checks or edits that
+  reading), sorts the pool by métier and assesses requirement by
   requirement (a reading, bound by rules in `src/lib/briefs/assessment.ts`);
   a person retains or dismisses, and `shortlist_items.decided_by` says who. The UI never hides
   this: a profile an analysis set aside stays viewable on demand, with its reason, from the
@@ -54,7 +56,7 @@ stack and nothing else.
 - The pages never pretend: a document that failed says why in one
   sentence, a search without a model says it ran on text only, a share
   says when it expires.
-- Every screen follows the design charter, v2 (`docs/DESIGN.md`): the
+- Every screen follows the design charter, v3 (`docs/DESIGN.md`, Blackweaver monochrome): the
   tokens of `src/styles.css` (never a hard-coded colour, radius or
   duration), the primitives of `src/components/ui` and
   `src/components/app-shell`, one icon per control, motion that explains

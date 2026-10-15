@@ -3,30 +3,31 @@
  * the list, one brief, its searches (summaries, which never carry the
  * results: the counts a list shows are columns of the row; then one
  * search with its stored results; the newest of each brief for the
- * list's cards, with where a whole-pool one's triage stands), the state
+ * list's rows, with where a whole-pool one's triage stands), the state
  * of a whole-pool search's triage (counts per verdict, the profiles
  * still to read, the profiles it set aside page by page), the active
- * candidates its snapshot lacks, the candidates a result list shows,
- * and the shortlist of a brief (created on first use, items added one
- * by one).
+ * candidates its snapshot lacks, the candidates a result list shows
+ * (and the years of the one a drawer opens), and the shortlist of a
+ * brief (created on first use, items added one by one, how many it
+ * retained for the brief's tab and the list's rows).
  * Each call filters by the organisation and casts rows at the boundary.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type {
-  BriefCriterion,
   BriefRow,
   BriefStatus,
   CandidateRow,
   MatchResult,
-  RoleProfile,
   SearchMethod,
   SearchRow,
   SearchTriageRow,
+  ShortlistItemStatus,
   TriageVerdict,
 } from "@/lib/db/types";
 
 import { parseCriteria } from "./criteria";
+import { retainedByBrief } from "./presentation";
 import { parseRoleProfile } from "./role-profile";
 import { batchesOf, runPool } from "./stages";
 import { TRIAGE_PASSING } from "./triage";
@@ -104,11 +105,8 @@ export async function createBrief(supabase: SupabaseClient, input: NewBrief): Pr
   return (data as { id: string }).id;
 }
 
-export type BriefPatch = Partial<Pick<BriefRow, "title" | "description" | "status">> & {
-  criteria?: BriefCriterion[];
-  /** The role profile as the team edited it (members may write the column); null clears it. */
-  role_profile?: RoleProfile | null;
-};
+/** What a person edits of a brief: its title, its text and its status. The criteria and the role profile are the model's reading of the text, written by the search alone. */
+export type BriefPatch = Partial<Pick<BriefRow, "title" | "description" | "status">>;
 
 export async function updateBrief(
   supabase: SupabaseClient,
@@ -568,6 +566,36 @@ export async function readCandidatesById(
   return out;
 }
 
+/** The years of experience of one candidate, with the id they answer for (a drawer walking a list never shows the previous profile's years). */
+export interface CandidateYears {
+  id: string;
+  years_experience: number | null;
+}
+
+/** The years the rows' read never carries, for the header of a drawer; null when the candidate is gone. */
+export async function readCandidateYears(
+  supabase: SupabaseClient,
+  orgId: string,
+  candidateId: string,
+): Promise<CandidateYears | null> {
+  const { data, error } = await supabase
+    .from("candidates")
+    .select("id, years_experience")
+    .eq("org_id", orgId)
+    .eq("id", candidateId)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data as unknown as CandidateYears | null;
+  if (!row) return null;
+  return {
+    id: row.id,
+    years_experience:
+      typeof row.years_experience === "number" && Number.isFinite(row.years_experience)
+        ? row.years_experience
+        : null,
+  };
+}
+
 // ---------------------------------------------------------------------
 // the shortlist of a brief
 // ---------------------------------------------------------------------
@@ -577,6 +605,8 @@ export interface ShortlistState {
   shortlistId: string | null;
   /** The candidates already on it. */
   candidateIds: string[];
+  /** How many of them the team retained. */
+  retained: number;
 }
 
 export async function readShortlistState(
@@ -592,19 +622,55 @@ export async function readShortlistState(
     .maybeSingle();
   if (error) throw error;
   const shortlistId = (data as { id: string } | null)?.id ?? null;
-  if (!shortlistId) return { shortlistId: null, candidateIds: [] };
+  if (!shortlistId) return { shortlistId: null, candidateIds: [], retained: 0 };
   const items = await supabase
     .from("shortlist_items")
-    .select("candidate_id")
+    .select("candidate_id, status")
     .eq("org_id", orgId)
     .eq("shortlist_id", shortlistId);
   if (items.error) throw items.error;
+  const rows = (items.data ?? []) as { candidate_id: string; status: ShortlistItemStatus }[];
   return {
     shortlistId,
-    candidateIds: ((items.data ?? []) as { candidate_id: string }[]).map(
-      (item) => item.candidate_id,
-    ),
+    candidateIds: rows.map((item) => item.candidate_id),
+    retained: rows.filter((item) => item.status === "retained").length,
   };
+}
+
+/** The retained items a shortlist embeds: an array for a to-many row; anything else counts as none. */
+function embeddedItems(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+/**
+ * How many candidates each brief's shortlist retained, for the list's
+ * rows: the shortlists of these briefs with their retained items alone
+ * (an inner join filtered on the item's status, so nothing else
+ * travels), one read per lot of ids, counted here. A brief without a
+ * retained candidate is absent from the map.
+ */
+export async function readRetainedCounts(
+  supabase: SupabaseClient,
+  orgId: string,
+  briefIds: readonly string[],
+): Promise<Map<string, number>> {
+  const rows: { briefId: string | null }[] = [];
+  for (const lot of batchesOf([...new Set(briefIds)], LATEST_LOT)) {
+    const { data, error } = await supabase
+      .from("shortlists")
+      .select("brief_id, shortlist_items!inner(status)")
+      .eq("org_id", orgId)
+      .in("brief_id", lot)
+      .eq("shortlist_items.status", "retained");
+    if (error) throw error;
+    for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+      const briefId = row["brief_id"];
+      const count = embeddedItems(row["shortlist_items"]);
+      for (let index = 0; index < count; index += 1)
+        rows.push({ briefId: typeof briefId === "string" ? briefId : null });
+    }
+  }
+  return retainedByBrief(rows);
 }
 
 /** The brief's shortlist, created now when it does not exist yet (a lost race is fine: the row is then read). */

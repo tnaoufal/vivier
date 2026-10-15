@@ -1,17 +1,16 @@
 /**
  * The first screen of a person with no organisation: create one (they
- * become its owner) or follow an invitation link. One centred card under
- * the brand, the name first, the working language, the one button, and
- * one line for a person who was invited instead.
+ * become its owner). One centred card under the brand, the name first,
+ * the working language, the one button; a person who was invited follows
+ * the link in their email instead.
  * `standalone` is /app/organizations/new, inside the app shell: the same
- * form as an ordinary page, under its PageHeader, without the brand or
- * the invitation line.
+ * centred card, without the brand.
  */
 import { useId, useState, type FormEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { CircleAlert } from "lucide-react";
 
 import { LocaleChips } from "@/components/app-shell/locale-chips";
-import { PageHeader } from "@/components/app-shell/page-header";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +22,10 @@ import { useOrg } from "@/lib/org/org-context";
 import { toast } from "@/lib/toast";
 
 /** "Groupe Lumière RH" -> "groupe-lumiere-rh"; a short random tail keeps it unique. */
-export function slugOf(name: string, salt: string = Math.random().toString(36).slice(2, 6)): string {
+export function slugOf(
+  name: string,
+  salt: string = Math.random().toString(36).slice(2, 6),
+): string {
   const base = name
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
@@ -73,71 +75,62 @@ export function Onboarding({ standalone = false }: { standalone?: boolean }) {
     }
   }
 
-  const fields = (
-    <>
-      <div className="space-y-2">
-        <Label htmlFor="org-name">{t("onboarding.orgName")}</Label>
-        <Input
-          id="org-name"
-          value={name}
-          onChange={(e) => {
-            setName(e.target.value);
-            if (error) setError(null);
-          }}
-          placeholder={t("onboarding.orgName.placeholder")}
-          maxLength={120}
-          autoFocus
-          required
-          disabled={busy}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? "org-name-error" : undefined}
-        />
-        {error ? (
-          <p id="org-name-error" role="alert" className="text-meta text-negative">
-            {error}
-          </p>
-        ) : null}
-      </div>
-      <div className="space-y-2">
-        <Label id={localeLabelId}>{t("onboarding.locale")}</Label>
-        <div role="group" aria-labelledby={localeLabelId}>
-          <LocaleChips value={orgLocale} onChange={setOrgLocale} disabled={busy} />
+  const form = (
+    <form onSubmit={submit} className="sheet p-6" aria-labelledby="onboarding-title">
+      <h1 id="onboarding-title" className="font-display text-2xl text-ink">
+        {t("onboarding.title")}
+      </h1>
+      <div className="mt-8 space-y-6">
+        <div className="space-y-2">
+          <Label htmlFor="org-name">{t("onboarding.orgName")}</Label>
+          <Input
+            id="org-name"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (error) setError(null);
+            }}
+            placeholder={t("onboarding.orgName.placeholder")}
+            maxLength={120}
+            autoFocus
+            required
+            disabled={busy}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? "org-name-error" : undefined}
+          />
+          {error ? (
+            <p
+              id="org-name-error"
+              role="alert"
+              className="flex items-start gap-1.5 text-meta text-ink"
+            >
+              <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              {error}
+            </p>
+          ) : null}
+        </div>
+        <div className="space-y-2">
+          <Label id={localeLabelId}>{t("onboarding.locale")}</Label>
+          <div role="group" aria-labelledby={localeLabelId}>
+            <LocaleChips value={orgLocale} onChange={setOrgLocale} disabled={busy} />
+          </div>
         </div>
       </div>
-    </>
-  );
-  const create = (
-    <Button type="submit" className="mt-8 w-full" disabled={busy || !name.trim()}>
-      {t("onboarding.create")}
-    </Button>
+      <Button type="submit" className="mt-8 w-full" disabled={busy || !name.trim()}>
+        {t("onboarding.create")}
+      </Button>
+    </form>
   );
 
   if (standalone) {
-    return (
-      <>
-        <PageHeader title={t("onboarding.title")} />
-        <form onSubmit={submit} className="sheet max-w-md p-6 sm:p-8" aria-label={t("onboarding.title")}>
-          <div className="space-y-6">{fields}</div>
-          {create}
-        </form>
-      </>
-    );
+    return <div className="rise-in mx-auto w-full max-w-md">{form}</div>;
   }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="rise-in w-full max-w-md">
         <BrandMark size="md" className="mb-8 justify-center" to="/" />
-        <form onSubmit={submit} className="sheet p-6 sm:p-8" aria-labelledby="onboarding-title">
-          <h1 id="onboarding-title" className="font-display text-2xl text-ink">
-            {t("onboarding.title")}
-          </h1>
-          <div className="mt-8 space-y-6">{fields}</div>
-          {create}
-        </form>
-        <p className="mt-6 text-center text-meta text-muted-foreground">
-          {t("onboarding.pending")}
-        </p>
+        {form}
       </div>
     </div>
   );

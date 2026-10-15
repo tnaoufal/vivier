@@ -1,14 +1,20 @@
 /**
- * A textarea that completes "@" with the team: typing "@An" lists the
- * members whose name starts that way, Enter or Tab inserts "@Ana Lopez ",
- * Escape closes the list, Ctrl+Enter submits. The mentions themselves
- * are read from the final text (mentions.ts) when the comment is sent.
+ * The thread's composer: one line that grows with the text (six at
+ * most, then it scrolls) and completes "@" with the team: typing "@An"
+ * lists the members whose name starts that way (the highlighted one
+ * read out by a status line), Enter or Tab inserts "@Ana Lopez ",
+ * Escape closes the list. Enter sends, Shift+Enter
+ * breaks a line, and a quiet icon button sends too. Built on the
+ * shortlist's mentions helper; the mentions themselves are read from
+ * the final text when the message is sent.
  */
-import { useId, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { Send } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useI18n } from "@/lib/i18n";
+import { useT } from "@/lib/i18n";
 import {
   filterMembers,
   insertMention,
@@ -16,39 +22,52 @@ import {
   type MentionMember,
   type MentionQuery,
 } from "@/lib/shortlists/mentions";
+import { MESSAGE_MAX } from "@/lib/threads/thread";
 import { cn } from "@/lib/utils";
 
-export function MentionComposer({
+/** Six lines of 24px before the field scrolls. */
+const MAX_HEIGHT_PX = 160;
+
+export function ThreadComposer({
   value,
   onChange,
+  onSend,
   members,
-  ariaLabel,
   placeholder,
+  ariaLabel,
   disabled = false,
   autoFocus = false,
-  rows = 3,
-  maxLength = 8000,
-  onSubmit,
+  className,
 }: {
   value: string;
   onChange: (value: string) => void;
+  /** Enter, or the button; only called with something to send. */
+  onSend: () => void;
   members: readonly MentionMember[];
+  placeholder: string;
   ariaLabel: string;
-  placeholder?: string;
-  disabled?: boolean;
-  autoFocus?: boolean;
-  rows?: number;
-  maxLength?: number;
-  /** Ctrl+Enter / Cmd+Enter. */
-  onSubmit?: () => void;
+  disabled?: boolean | undefined;
+  autoFocus?: boolean | undefined;
+  className?: string | undefined;
 }) {
-  const { t } = useI18n();
+  const t = useT();
   const ref = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState<MentionQuery | null>(null);
   const [active, setActive] = useState(0);
-  const suggestions = useMemo(() => (query ? filterMembers(members, query.query) : []), [members, query]);
+  const suggestions = useMemo(
+    () => (query ? filterMembers(members, query.query) : []),
+    [members, query],
+  );
   const open = query !== null && suggestions.length > 0;
-  const listId = `${useId()}-mentions`;
+  const highlighted = open ? suggestions[active] : undefined;
+  const canSend = !disabled && value.trim().length > 0;
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${Math.min(element.scrollHeight, MAX_HEIGHT_PX)}px`;
+  }, [value]);
 
   function sync(element: HTMLTextAreaElement) {
     const caret = element.selectionStart ?? element.value.length;
@@ -76,7 +95,15 @@ export function MentionComposer({
     }
   }
 
+  function send() {
+    if (!canSend) return;
+    setQuery(null);
+    onSend();
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // An input method commits its candidate with Enter: not a send.
+    if (event.nativeEvent.isComposing) return;
     if (open) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -102,21 +129,22 @@ export function MentionComposer({
         return;
       }
     }
-    if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && onSubmit) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      onSubmit();
+      send();
     }
   }
 
   return (
-    <div className="relative">
+    <div className={cn("relative flex items-end gap-2", className)}>
       <Textarea
         ref={ref}
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onKeyUp={(event) => {
-          if (!open && (event.key === "ArrowLeft" || event.key === "ArrowRight")) sync(event.currentTarget);
+          if (!open && (event.key === "ArrowLeft" || event.key === "ArrowRight"))
+            sync(event.currentTarget);
         }}
         onClick={(event) => sync(event.currentTarget)}
         onBlur={() => {
@@ -126,19 +154,29 @@ export function MentionComposer({
         placeholder={placeholder}
         aria-label={ariaLabel}
         aria-autocomplete="list"
-        aria-expanded={open}
-        aria-controls={open ? listId : undefined}
-        rows={rows}
-        maxLength={maxLength}
+        rows={1}
+        maxLength={MESSAGE_MAX}
         disabled={disabled}
         autoFocus={autoFocus}
+        className="max-h-40 min-h-10 resize-none px-3.5 py-2 md:text-sm"
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        icon={<Send />}
+        onClick={send}
+        disabled={!canSend}
+        aria-label={t("thread.send")}
+        title={t("thread.send")}
+        aria-keyshortcuts="Enter"
+        className="shrink-0 text-muted-foreground hover:text-ink"
       />
       {open ? (
         <ul
-          id={listId}
           role="listbox"
-          aria-label={t("shortlists.comments.suggestions")}
-          className="surface-float fade-in absolute left-0 top-full z-10 mt-1 max-h-56 w-64 max-w-full overflow-y-auto p-1"
+          aria-label={t("thread.suggestions")}
+          className="surface-float fade-in absolute bottom-full left-0 z-10 mb-1 max-h-56 w-64 max-w-full overflow-y-auto p-1"
         >
           {suggestions.map((member, index) => (
             <li
@@ -159,6 +197,16 @@ export function MentionComposer({
           ))}
         </ul>
       ) : null}
+      {/* A textarea cannot say which suggestion is highlighted: a status line reads it out. */}
+      <p role="status" className="sr-only">
+        {highlighted
+          ? t("thread.suggestions.highlighted", {
+              name: highlighted.name,
+              index: active + 1,
+              count: suggestions.length,
+            })
+          : null}
+      </p>
     </div>
   );
 }

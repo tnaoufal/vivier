@@ -1,9 +1,12 @@
 /**
- * The brief itself: title, the need and the status, edited in place and
- * saved as one update under RLS. The form follows the row it shows
- * until the person starts typing; a save answers with the refreshed row.
+ * The consultant's brief, edited in a drawer: the title, the text and
+ * the status, saved as one update under RLS. The form starts from the
+ * row it was opened on; a save answers whether the text changed (an
+ * analysis then reads the brief again) and hands back to the page. Laid
+ * out for a `SheetContent` column: the fields scroll, the two buttons
+ * stay at the bottom.
  */
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SheetBody, SheetFooter } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { DESCRIPTION_MAX, TITLE_MAX, updateBrief } from "@/lib/briefs/queries";
@@ -30,12 +34,13 @@ function isStatus(value: string): value is BriefStatus {
 
 export function BriefForm({
   brief,
-  canEdit,
   onSaved,
+  onCancel,
 }: {
   brief: BriefRow;
-  canEdit: boolean;
-  onSaved: () => Promise<void> | void;
+  /** Called once the row is written; `textChanged` when the title or the need changed (the analysis reads the brief again). */
+  onSaved: (saved: { textChanged: boolean }) => Promise<void> | void;
+  onCancel: () => void;
 }) {
   const t = useT();
   const [title, setTitle] = useState(brief.title);
@@ -43,30 +48,25 @@ export function BriefForm({
   const [status, setStatus] = useState<BriefStatus>(brief.status);
   const [busy, setBusy] = useState(false);
 
-  // A fresh row (saved here or by a colleague) replaces the form's values.
-  useEffect(() => {
-    setTitle(brief.title);
-    setDescription(brief.description);
-    setStatus(brief.status);
-  }, [brief.id, brief.updated_at, brief.title, brief.description, brief.status]);
-
   const dirty =
     title !== brief.title || description !== brief.description || status !== brief.status;
   const valid = title.trim().length > 0;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!canEdit || busy || !dirty || !valid) return;
+    if (busy || !dirty || !valid) return;
     setBusy(true);
     try {
-      const supabase = await requireSupabase();
-      await updateBrief(supabase, brief.org_id, brief.id, {
+      const patch = {
         title: title.trim().slice(0, TITLE_MAX),
         description: description.trim().slice(0, DESCRIPTION_MAX),
         status,
-      });
+      };
+      await updateBrief(await requireSupabase(), brief.org_id, brief.id, patch);
       toast.success(t("common.saved"));
-      await onSaved();
+      await onSaved({
+        textChanged: patch.title !== brief.title || patch.description !== brief.description,
+      });
     } catch (error) {
       console.error(error);
       toast.error(t("common.error"));
@@ -76,65 +76,70 @@ export function BriefForm({
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="sheet space-y-5 p-6">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-ink">{t("briefs.part.brief")}</h2>
-        {canEdit && dirty ? (
-          <span className="text-meta text-muted-foreground">{t("briefs.form.unsaved")}</span>
-        ) : null}
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="brief-title">{t("briefs.form.title")}</Label>
-        <Input
-          id="brief-title"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder={t("briefs.form.title.placeholder")}
-          maxLength={TITLE_MAX}
-          disabled={!canEdit || busy}
-          required
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="brief-description">{t("briefs.form.description")}</Label>
-        <Textarea
-          id="brief-description"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder={t("briefs.form.description.placeholder")}
-          maxLength={DESCRIPTION_MAX}
-          rows={7}
-          disabled={!canEdit || busy}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="brief-status">{t("briefs.form.status")}</Label>
-        <Select
-          value={status}
-          onValueChange={(value) => {
-            if (isStatus(value)) setStatus(value);
-          }}
-          disabled={!canEdit || busy}
-        >
-          <SelectTrigger id="brief-status" className="sm:w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {STATUSES.map((value) => (
-              <SelectItem key={value} value={value}>
-                {t(`briefs.status.${value}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      {canEdit ? (
-        <div className="flex justify-end">
-          <Button type="submit" variant="outline" disabled={busy || !dirty || !valid}>
-            {t("common.save")}
-          </Button>
+    <form
+      onSubmit={(event) => void submit(event)}
+      className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden"
+    >
+      <SheetBody className="space-y-5">
+        <div className="space-y-2">
+          <Label htmlFor="brief-title">{t("briefs.form.title")}</Label>
+          <Input
+            id="brief-title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={t("briefs.form.title.placeholder")}
+            maxLength={TITLE_MAX}
+            disabled={busy}
+            required
+          />
         </div>
-      ) : null}
+        <div className="space-y-2">
+          <Label htmlFor="brief-description">{t("briefs.form.description")}</Label>
+          <Textarea
+            id="brief-description"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder={t("briefs.form.description.placeholder")}
+            maxLength={DESCRIPTION_MAX}
+            rows={12}
+            disabled={busy}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="brief-status">{t("briefs.form.status")}</Label>
+          <Select
+            value={status}
+            onValueChange={(value) => {
+              if (isStatus(value)) setStatus(value);
+            }}
+            disabled={busy}
+          >
+            <SelectTrigger id="brief-status" className="sm:w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUSES.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {t(`briefs.status.${value}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </SheetBody>
+      <SheetFooter className="shrink-0">
+        <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>
+          {t("common.cancel")}
+        </Button>
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={busy || !dirty || !valid}
+          aria-busy={busy || undefined}
+        >
+          {t("common.save")}
+        </Button>
+      </SheetFooter>
     </form>
   );
 }

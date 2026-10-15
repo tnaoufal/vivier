@@ -24,7 +24,11 @@ import { cn } from "@/lib/utils";
 
 import { familyIcon } from "./family-icon";
 
-function dayTitle(label: DayLabel, locale: Locale, t: (key: "activity.group.today" | "activity.group.yesterday") => string): string {
+function dayTitle(
+  label: DayLabel,
+  locale: Locale,
+  t: (key: "activity.group.today" | "activity.group.yesterday") => string,
+): string {
   if (label.kind === "today") return t("activity.group.today");
   if (label.kind === "yesterday") return t("activity.group.yesterday");
   return formatDate(locale, `${label.iso}T12:00:00`);
@@ -119,12 +123,18 @@ function ActivityItem({ row, names }: { row: ActivityRow; names: ActivityNames }
             {formatRelative(locale, row.created_at)}
           </time>
           {row.brief_id ? (
-            <Link to={briefPath(row.brief_id)} className="rounded-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Link
+              to={briefPath(row.brief_id)}
+              className="rounded-sm font-medium text-ink underline underline-offset-4 hover:decoration-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               {t("activity.openBrief")}
             </Link>
           ) : null}
           {row.candidate_id ? (
-            <Link to={candidatePath(row.candidate_id)} className="rounded-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Link
+              to={candidatePath(row.candidate_id)}
+              className="rounded-sm font-medium text-ink underline underline-offset-4 hover:decoration-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               {t("activity.openCandidate")}
             </Link>
           ) : null}

@@ -1,20 +1,26 @@
 /**
- * /app/briefs/:briefId: the brief page. A slim sticky header carries the
- * title, the status, when it changed, the one filled action ("Lancer la
- * recherche", on both tabs, held while the criteria or the role profile
- * have unsaved edits, the tooltip saying why; once the team checked what
- * the model wrote, it is also what starts the analysis) and, for
- * administrators, a menu with the deletion. Under it, two tabs kept in
- * the URL (`?tab=matches|brief`; by default the matches once the brief
- * has an analysis, else the role): "Correspondances" with the matches
- * of the analysis on screen as its count, and "Le poste" (the brief, its
- * role profile and its criteria in one readable column). Both panels
- * stay mounted, so a criterion being typed survives a look at the
- * matches. Live through realtime on this brief.
+ * /app/briefs/:briefId: the brief page, one page and no left module. A
+ * slim sticky header carries the title, the status when it is not
+ * simply open, when it changed, the one filled action ("Lancer
+ * l'analyse", then "Relancer"; held while one runs, and outline while
+ * the band or the board carries the primary: Reprendre, Analyser,
+ * Partager) and a menu (close or reopen the brief, delete it for
+ * administrators), with the way to the team's thread on a phone. Under
+ * it, the brief folded to three lines with the way to edit it, then two
+ * tabs kept in the URL (`?tab=matches|shortlist`): "Correspondances"
+ * and "Shortlist" (the band's headline and the board's columns carry
+ * the counts; the board loads itself); from `lg` the team's thread on
+ * the brief is the right column, sticky, and a drawer on a phone. A
+ * brief just created (`?run=1`) starts its analysis once on mount when
+ * the person may run one and none exists, and the param leaves the
+ * URL. A brief edited since the analysis on screen ran says so in the
+ * band, the header's button runs it again. Live through realtime on
+ * this brief; a refresh that fails keeps the page (and an analysis
+ * under way) and says so.
  */
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Ellipsis, Sparkles, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Ellipsis, Sparkles, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { EmptyState } from "@/components/app-shell/empty-state";
@@ -23,41 +29,57 @@ import { MatchesTab } from "@/components/briefs/analysis/matches-tab";
 import { useAnalysis } from "@/components/briefs/analysis/use-analysis";
 import { BriefForm } from "@/components/briefs/brief-form";
 import { BriefStatusPill } from "@/components/briefs/brief-status-pill";
-import { CriteriaEditor } from "@/components/briefs/criteria-editor";
-import { RoleProfileCard } from "@/components/briefs/role-profile-card";
+import { BriefText } from "@/components/briefs/brief-text";
+import { ShortlistBoard } from "@/components/shortlist/board";
+import { ThreadButton, ThreadPanel } from "@/components/thread/thread-panel";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { briefCapabilities } from "@/lib/briefs/briefs.functions";
-import { deleteBrief, readBrief } from "@/lib/briefs/queries";
-import { formatCount } from "@/lib/candidates/format";
+import { briefChangedSince } from "@/lib/briefs/presentation";
+import { deleteBrief, readBrief, updateBrief } from "@/lib/briefs/queries";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
-import type { BriefRow } from "@/lib/db/types";
+import type { BriefRow, BriefStatus } from "@/lib/db/types";
 import { formatDate, useI18n } from "@/lib/i18n";
 import { useCurrentOrg, useOrg } from "@/lib/org/org-context";
 import { withToken } from "@/lib/platform/call";
+import { useTeamMembers } from "@/lib/shortlists/use-members";
 import { toast } from "@/lib/toast";
 
-/** The two views of a brief. */
-type BriefTab = "matches" | "brief";
+/** The two views of a brief: its matches, its shortlist. */
+type BriefTab = "matches" | "shortlist";
 
 function isBriefTab(value: unknown): value is BriefTab {
-  return value === "matches" || value === "brief";
+  return value === "matches" || value === "shortlist";
+}
+
+/** The search params: the tab shown, and `run=1` when the page was opened to analyse at once (a brief just created). */
+interface BriefSearch {
+  tab?: BriefTab;
+  run?: 1;
 }
 
 export const Route = createFileRoute("/app/briefs/$briefId")({
-  // Optional, so every link to a brief stays valid without naming a tab.
-  validateSearch: (search: Record<string, unknown>): { tab?: BriefTab } =>
-    isBriefTab(search["tab"]) ? { tab: search["tab"] } : {},
+  // Both optional, so every link to a brief stays valid without naming a tab.
+  validateSearch: (search: Record<string, unknown>): BriefSearch => {
+    const out: BriefSearch = {};
+    const tab = search["tab"];
+    if (isBriefTab(tab)) out.tab = tab;
+    const run = search["run"];
+    if (run === 1 || run === "1" || run === true) out.run = 1;
+    return out;
+  },
   component: BriefPage,
 });
 
@@ -84,6 +106,11 @@ function BriefPage() {
       ),
     [briefId, refreshBrief],
   );
+  // A refresh that fails with the brief on screen says so and the page stays: an analysis under way keeps running.
+  const refreshFailed = brief.error !== null && brief.data !== null;
+  useEffect(() => {
+    if (refreshFailed) toast.error(t("common.error"));
+  }, [refreshFailed, t]);
 
   // The way back is the header's eyebrow in every state: the header keeps its place while the brief loads, fails or is missing.
   const eyebrow = (
@@ -95,7 +122,7 @@ function BriefPage() {
     </Link>
   );
 
-  if (brief.error) {
+  if (brief.error && !brief.data) {
     return (
       <div>
         <PageHeader sticky eyebrow={eyebrow} title={t("briefs.title")} />
@@ -126,6 +153,10 @@ function BriefPage() {
         />
         <p className="sr-only">{t("common.loading")}</p>
         <div className="space-y-6" aria-busy="true">
+          <div className="sheet space-y-3 p-6">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
           <Skeleton className="h-10 w-72 max-w-full rounded-full" />
           <div className="sheet space-y-3 p-6">
             <Skeleton className="h-8 w-64 max-w-full" />
@@ -166,20 +197,24 @@ function BriefView({
   onSaved: () => Promise<void>;
 }) {
   const { t, locale } = useI18n();
-  const { tab: tabParam } = Route.useSearch();
+  const { tab: tabParam, run } = Route.useSearch();
   const navigate = useNavigate();
   const { can } = useOrg();
+  const { user } = useAuth();
+  const members = useTeamMembers();
   const canEdit = can("member");
   const canDelete = can("admin");
 
-  const [criteriaDirty, setCriteriaDirty] = useState(false);
-  const [roleDirty, setRoleDirty] = useState(false);
-  // A search reads the saved brief: unsaved edits in either editor hold it.
-  const unsaved = criteriaDirty || roleDirty;
+  const [threadOpen, setThreadOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [statusBusy, setStatusBusy] = useState(false);
+  // The analysis the text was edited after, in this session: the band says the brief changed until the next run.
+  const [editedAfter, setEditedAfter] = useState<string | null>(null);
+  const target = useMemo(() => ({ briefId: brief.id }), [brief.id]);
 
-  // Read once per organisation: whether a model can propose criteria and read the profiles.
+  // Read once per organisation: whether a model reads the brief and the profiles.
   const capabilities = useQuery(`brief-capabilities:${brief.org_id}`, async () =>
     briefCapabilities({ data: { ...(await withToken()), orgId: brief.org_id } }),
   );
@@ -200,24 +235,31 @@ function BriefView({
     [brief.id, navigate],
   );
   const showMatches = useCallback(() => showTab("matches"), [showTab]);
+  const showShortlist = useCallback(() => showTab("shortlist"), [showTab]);
 
   const analysis = useAnalysis({
     brief,
     canEdit,
-    criteriaDirty: unsaved,
     modelAvailable,
+    runOnMount: run === 1,
     onStarted: showMatches,
   });
 
-  // Without a tab in the URL: the matches once the brief has an analysis (or while that is read), else the role.
-  const hasAnalysis = analysis.view !== null || (analysis.searches?.length ?? 0) > 0;
-  const tab: BriefTab = tabParam ?? (hasAnalysis || analysis.searchesLoading ? "matches" : "brief");
-  const matchCount =
-    analysis.view !== null
-      ? analysis.band === "textOnly"
-        ? null
-        : analysis.matches.length
-      : (analysis.searches?.[0]?.match_count ?? null);
+  // The run param is consumed once the newest analysis is known (the hook started one, or there was one already).
+  useEffect(() => {
+    if (run !== 1 || analysis.latestLoading) return;
+    void navigate({
+      to: "/app/briefs/$briefId",
+      params: { briefId: brief.id },
+      search: tabParam ? { tab: tabParam } : {},
+      replace: true,
+    });
+  }, [analysis.latestLoading, brief.id, navigate, run, tabParam]);
+
+  const tab: BriefTab = tabParam ?? "matches";
+  // The brief's text changed since the analysis on screen ran: saved here, or read off the row (a colleague's edit too).
+  const briefStale =
+    analysis.view !== null && (editedAfter === analysis.view.id || briefChangedSince(brief));
 
   async function remove() {
     if (deleting) return;
@@ -235,22 +277,30 @@ function BriefView({
     }
   }
 
-  // The one filled button of the page, in every state: after the team's
-  // check of the model's draft it starts the analysis (anew when they changed the job).
-  const runLabel = analysis.starting ? t("briefs.search.running") : t("briefs.search.run");
-  const runButton = canEdit ? (
-    <Button
-      type="button"
-      variant="primary"
-      icon={<Sparkles />}
-      onClick={() => void analysis.run()}
-      disabled={!analysis.canRun}
-      aria-label={runLabel}
-      className={PHONE_ICON}
-    >
-      <span className="max-sm:sr-only">{runLabel}</span>
-    </Button>
-  ) : null;
+  async function setStatus(status: BriefStatus) {
+    if (statusBusy) return;
+    setStatusBusy(true);
+    try {
+      await updateBrief(await requireSupabase(), brief.org_id, brief.id, { status });
+      toast.success(t(status === "closed" ? "briefs.closed" : "briefs.reopened"));
+      await onSaved();
+    } catch (error) {
+      console.error(error);
+      toast.error(t("common.error"));
+    } finally {
+      setStatusBusy(false);
+    }
+  }
+
+  // The header's button, in every state: it reads the brief and runs the analysis, again once one exists.
+  const runLabel = analysis.running
+    ? t("briefs.search.running")
+    : analysis.view || analysis.latest
+      ? t("briefs.search.rerun")
+      : t("briefs.search.run");
+  // One filled button per view: outline while the band offers Reprendre or Analyser, or the board its Partager.
+  const runVariant =
+    tab === "shortlist" || analysis.canResume || analysis.canAnalyseNew ? "outline" : "primary";
 
   return (
     <div>
@@ -260,7 +310,8 @@ function BriefView({
         title={brief.title}
         meta={
           <>
-            <BriefStatusPill status={brief.status} size="sm" />
+            {/* Open is the rule: only another state is worth a pill. */}
+            {brief.status !== "open" ? <BriefStatusPill status={brief.status} size="sm" /> : null}
             <span className="text-meta text-muted-foreground">
               {t("briefs.list.updated", { date: formatDate(locale, brief.updated_at) })}
             </span>
@@ -268,23 +319,22 @@ function BriefView({
         }
         actions={
           <>
-            {runButton && unsaved ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {/* A disabled button takes no pointer: its wrapper carries the tooltip and the focus. */}
-                  <span
-                    tabIndex={0}
-                    className="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {runButton}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{t("briefs.search.saveFirst")}</TooltipContent>
-              </Tooltip>
-            ) : (
-              runButton
-            )}
-            {canDelete ? (
+            {canEdit ? (
+              <Button
+                type="button"
+                variant={runVariant}
+                icon={<Sparkles />}
+                onClick={() => void analysis.run()}
+                disabled={!analysis.canRun}
+                aria-busy={analysis.running || undefined}
+                aria-label={runLabel}
+                className={PHONE_ICON}
+              >
+                <span className="max-sm:sr-only">{runLabel}</span>
+              </Button>
+            ) : null}
+            <ThreadButton target={target} onClick={() => setThreadOpen(true)} />
+            {canEdit ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -296,10 +346,23 @@ function BriefView({
                   />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem destructive onSelect={() => setDeleteOpen(true)}>
-                    <Trash2 />
-                    {t("briefs.delete")}
+                  {/* Editing the brief lives beside its text, once on the screen. */}
+                  <DropdownMenuItem
+                    disabled={statusBusy}
+                    onSelect={() => void setStatus(brief.status === "closed" ? "open" : "closed")}
+                  >
+                    {brief.status === "closed" ? <ArchiveRestore /> : <Archive />}
+                    {t(brief.status === "closed" ? "briefs.reopen" : "briefs.close")}
                   </DropdownMenuItem>
+                  {canDelete ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem destructive onSelect={() => setDeleteOpen(true)}>
+                        <Trash2 />
+                        {t("briefs.delete")}
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
@@ -307,54 +370,67 @@ function BriefView({
         }
       />
 
-      <Tabs
-        value={tab}
-        onValueChange={(value) => {
-          if (isBriefTab(value)) showTab(value);
-        }}
+      <ThreadPanel
+        target={target}
+        canPost={canEdit}
+        members={members}
+        currentUserId={user?.id ?? null}
+        open={threadOpen}
+        onOpenChange={setThreadOpen}
       >
-        <TabsList aria-label={t("briefs.tabs.label")}>
-          <TabsTrigger value="matches">
-            {t("briefs.tab.matches")}
-            {matchCount !== null ? (
-              <span className="font-normal text-muted-foreground tabular-nums">
-                {/* Keeps the label and the count two words in the tab's name ("Correspondances, 12"). */}
-                <span className="sr-only">, </span>
-                {formatCount(locale, matchCount)}
-              </span>
-            ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="brief">{t("briefs.tab.brief")}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="matches" forceMount className="mt-6 data-[state=inactive]:hidden">
-          <MatchesTab
-            analysis={analysis}
-            orgId={brief.org_id}
-            canEdit={canEdit}
-            modelAvailable={modelAvailable}
-            onCheckRole={() => showTab("brief")}
+        <div className="space-y-6">
+          <BriefText brief={brief} canEdit={canEdit} onEdit={() => setEditOpen(true)} />
+
+          <Tabs
+            value={tab}
+            onValueChange={(value) => {
+              if (isBriefTab(value)) showTab(value);
+            }}
+          >
+            <TabsList aria-label={t("briefs.tabs.label")}>
+              {/* No count in a tab: the band's headline and the board's columns carry the figures. */}
+              <TabsTrigger value="matches">{t("briefs.tab.matches")}</TabsTrigger>
+              <TabsTrigger value="shortlist">{t("briefs.tab.shortlist")}</TabsTrigger>
+            </TabsList>
+            {/* The matches stay mounted behind the shortlist: an analysis under way keeps its rows. */}
+            <TabsContent value="matches" forceMount className="mt-6 data-[state=inactive]:hidden">
+              <MatchesTab
+                analysis={analysis}
+                orgId={brief.org_id}
+                canEdit={canEdit}
+                modelAvailable={modelAvailable}
+                briefStale={briefStale}
+                onShowShortlist={showShortlist}
+              />
+            </TabsContent>
+            <TabsContent value="shortlist" className="mt-6">
+              <ShortlistBoard briefId={brief.id} canEdit={canEdit} />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </ThreadPanel>
+
+      <Sheet open={editOpen} onOpenChange={setEditOpen}>
+        <SheetContent
+          side="right"
+          size="md"
+          className="flex flex-col gap-6 overflow-hidden"
+          aria-describedby={undefined}
+        >
+          <SheetHeader className="shrink-0">
+            <SheetTitle>{t("briefs.brief.edit")}</SheetTitle>
+          </SheetHeader>
+          <BriefForm
+            brief={brief}
+            onSaved={async ({ textChanged }) => {
+              setEditOpen(false);
+              if (textChanged && analysis.view) setEditedAfter(analysis.view.id);
+              await onSaved();
+            }}
+            onCancel={() => setEditOpen(false)}
           />
-        </TabsContent>
-        <TabsContent value="brief" forceMount className="mt-6 data-[state=inactive]:hidden">
-          <div className="max-w-3xl space-y-6">
-            <BriefForm brief={brief} canEdit={canEdit} onSaved={onSaved} />
-            <RoleProfileCard
-              brief={brief}
-              canEdit={canEdit}
-              modelAvailable={modelAvailable}
-              onSaved={onSaved}
-              onDirtyChange={setRoleDirty}
-            />
-            <CriteriaEditor
-              brief={brief}
-              canEdit={canEdit}
-              modelAvailable={modelAvailable}
-              onSaved={onSaved}
-              onDirtyChange={setCriteriaDirty}
-            />
-          </div>
-        </TabsContent>
-      </Tabs>
+        </SheetContent>
+      </Sheet>
 
       <ConfirmDialog
         open={deleteOpen}

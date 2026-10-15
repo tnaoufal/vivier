@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { seatsAvailable, seatsLeft, usageTone } from "./seats";
+import { seatsAvailable, seatsLeft } from "./seats";
 
 describe("seatsAvailable", () => {
   it("allows one more seat below the limit and refuses at it", () => {
@@ -23,20 +23,5 @@ describe("seatsLeft", () => {
     expect(seatsLeft(3, 3)).toBe(0);
     expect(seatsLeft(7, 3)).toBe(0);
     expect(seatsLeft(Number.NaN, 3)).toBe(0);
-  });
-});
-
-describe("usageTone", () => {
-  it("turns to caution at four fifths and to negative at the limit", () => {
-    expect(usageTone(0, 10)).toBe("primary");
-    expect(usageTone(7, 10)).toBe("primary");
-    expect(usageTone(8, 10)).toBe("caution");
-    expect(usageTone(10, 10)).toBe("negative");
-    expect(usageTone(12, 10)).toBe("negative");
-  });
-
-  it("stays calm on an unreadable pair", () => {
-    expect(usageTone(Number.NaN, 10)).toBe("primary");
-    expect(usageTone(3, 0)).toBe("primary");
   });
 });

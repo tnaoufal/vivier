@@ -1,60 +1,43 @@
 import { describe, expect, it } from "vitest";
 
-import type { ShareItem } from "@/lib/db/types";
-
 import {
-  canCreate,
-  canPrepare,
-  canSend,
+  canShare,
   dialogReducer,
   initialState,
   isEmail,
   parseRecipients,
-  previewOf,
-  stepIndex,
-  stepStatus,
+  recipientsProblem,
+  recipientsToSend,
+  shareTitleOf,
   type DialogState,
 } from "./dialog-state";
-
-const item = (candidateId: string, name = "Ana"): ShareItem => ({
-  candidateId,
-  name,
-  headline: null,
-  location: "Lyon",
-  yearsExperience: 8,
-  availability: null,
-  skills: ["Node.js", "PostgreSQL"],
-  languages: ["Anglais (C1)"],
-  summary: "",
-  strengths: ["Node"],
-  attention: [],
-  questions: ["Rôle sur les mises en production"],
-  score: 72,
-  decision: "fit",
-  requirements: [{ label: "Node.js en production", required: true, met: "yes", evidence: "API Node depuis 2018" }],
-  documentId: null,
-});
-
-const brief = { title: "Back-end senior", summary: "API Node en prod.", requirements: [{ label: "Node.js en production", required: true }] };
 
 function run(state: DialogState, ...actions: Parameters<typeof dialogReducer>[1][]): DialogState {
   return actions.reduce(dialogReducer, state);
 }
 
+const share = {
+  shareId: "s1",
+  url: "https://vivier.app/share/x",
+  expiresAt: "2026-10-27T10:00:00Z",
+};
+
 describe("initialState", () => {
-  it("starts on the content step with the brief title and CVs included", () => {
-    const state = initialState("Back-end senior");
-    expect(state.step).toBe("content");
-    expect(state.title).toBe("Back-end senior");
-    expect(state.includeCvs).toBe(true);
-    expect(state.expiresInDays).toBe(14);
-    expect(state.useModel).toBe(false);
+  it("starts with nothing ticked, nothing typed, no link", () => {
+    expect(initialState()).toEqual({
+      selected: [],
+      recipients: "",
+      message: "",
+      busy: false,
+      share: null,
+      outcome: null,
+    });
   });
 });
 
-describe("content step", () => {
+describe("the selection", () => {
   it("ticks and unticks candidates, never twice the same", () => {
-    let state = run(initialState("t"), { type: "setSelected", candidateIds: ["a", "b", "a"] });
+    let state = run(initialState(), { type: "setSelected", candidateIds: ["a", "b", "a"] });
     expect(state.selected).toEqual(["a", "b"]);
     state = run(state, { type: "toggleCandidate", candidateId: "a" });
     expect(state.selected).toEqual(["b"]);
@@ -64,120 +47,86 @@ describe("content step", () => {
 
   it("caps the selection at thirty", () => {
     const many = Array.from({ length: 35 }, (_, i) => `c${i}`);
-    const state = run(initialState("t"), { type: "setSelected", candidateIds: many });
+    const state = run(initialState(), { type: "setSelected", candidateIds: many });
     expect(state.selected).toHaveLength(30);
     expect(run(state, { type: "toggleCandidate", candidateId: "extra" }).selected).toHaveLength(30);
   });
+});
 
-  it("clips the title and needs a selection and a title to prepare", () => {
-    const state = run(initialState(""), { type: "setTitle", title: "x".repeat(250) });
-    expect(state.title).toHaveLength(200);
-    expect(canPrepare(state)).toBe(false);
-    const ticked = run(state, { type: "toggleCandidate", candidateId: "a" });
-    expect(canPrepare(ticked)).toBe(true);
-    expect(canPrepare(run(ticked, { type: "setBusy", value: true }))).toBe(false);
-    expect(canPrepare(run(ticked, { type: "setTitle", title: "   " }))).toBe(false);
+describe("canShare", () => {
+  const ticked = run(initialState(), { type: "toggleCandidate", candidateId: "a" });
+
+  it("needs someone ticked and nothing running", () => {
+    expect(canShare(initialState(), true)).toBe(false);
+    expect(canShare(ticked, true)).toBe(true);
+    expect(canShare(run(ticked, { type: "setBusy", value: true }), true)).toBe(false);
+  });
+
+  it("refuses a malformed address or too many of them when emails can go out", () => {
+    const bad = run(ticked, { type: "setRecipients", value: "ana@x.fr, nope" });
+    expect(canShare(bad, true)).toBe(false);
+    expect(recipientsProblem(bad.recipients)).toBe("invalid");
+    const many = Array.from({ length: 11 }, (_, i) => `p${i}@x.fr`).join(", ");
+    expect(recipientsProblem(many)).toBe("tooMany");
+    expect(canShare(run(ticked, { type: "setRecipients", value: many }), true)).toBe(false);
+    expect(recipientsProblem("ana@x.fr; bo@y.com")).toBeNull();
+    expect(recipientsProblem("   ")).toBeNull();
+  });
+
+  it("ignores the addresses when no email can go out", () => {
+    const bad = run(ticked, { type: "setRecipients", value: "nope" });
+    expect(canShare(bad, false)).toBe(true);
+    expect(recipientsToSend(bad, false)).toEqual([]);
+  });
+
+  it("is over once the link exists", () => {
+    expect(canShare(run(ticked, { type: "created", share }), true)).toBe(false);
   });
 });
 
-describe("review step", () => {
-  const drafted = run(
-    initialState("t"),
-    { type: "setBusy", value: true },
-    { type: "drafted", items: [item("a"), item("b", "Bo")], brief, modelUsed: true, modelFailed: false },
-  );
-
-  it("moves to the review with the items, the brief's snapshot, and clears busy", () => {
-    expect(drafted.step).toBe("review");
-    expect(drafted.items).toHaveLength(2);
-    expect(drafted.brief).toEqual(brief);
-    expect(drafted.busy).toBe(false);
-    expect(drafted.modelUsed).toBe(true);
-  });
-
-  it("edits a summary, a headline and the points of one item only, never its assessment", () => {
-    const state = run(
-      drafted,
-      { type: "setItemSummary", index: 1, summary: "Résumé" },
-      { type: "setItemHeadline", index: 1, headline: "Titre" },
-      { type: "addPoint", index: 1, field: "attention" },
-      { type: "setPoint", index: 1, field: "attention", at: 0, value: "Non précisé" },
-      { type: "removePoint", index: 1, field: "strengths", at: 0 },
-    );
-    expect(state.items[1]).toEqual({ ...item("b", "Bo"), summary: "Résumé", headline: "Titre", strengths: [], attention: ["Non précisé"] });
-    expect(state.items[1]?.requirements).toEqual(item("b").requirements);
-    expect(state.items[1]?.score).toBe(72);
-    expect(state.items[0]).toEqual(item("a"));
-  });
-
-  it("edits the interview questions as a third list, apart from the strengths and the attention points", () => {
-    const state = run(
-      drafted,
-      { type: "setPoint", index: 0, field: "questions", at: 0, value: "Son rôle exact sur les mises en production" },
-      { type: "addPoint", index: 0, field: "questions" },
-      { type: "setPoint", index: 0, field: "questions", at: 1, value: "Niveau d'anglais à l'oral" },
-      { type: "removePoint", index: 0, field: "questions", at: 0 },
-    );
-    expect(state.items[0]?.questions).toEqual(["Niveau d'anglais à l'oral"]);
-    expect(state.items[0]?.strengths).toEqual(["Node"]);
-    expect(state.items[0]?.attention).toEqual([]);
-    expect(state.items[1]).toEqual(item("b", "Bo"));
-  });
-
-  it("removes an item and refuses to create without any", () => {
-    expect(canCreate(drafted)).toBe(true);
-    const one = run(drafted, { type: "removeItem", index: 0 });
-    expect(one.items.map((i) => i.candidateId)).toEqual(["b"]);
-    const none = run(one, { type: "removeItem", index: 0 });
-    expect(canCreate(none)).toBe(false);
-  });
-
-  it("refuses to create with a nameless item and goes back to the content step", () => {
-    const blank = run(drafted, { type: "drafted", items: [item("a", "  ")], brief: null, modelUsed: false, modelFailed: false });
-    expect(canCreate(blank)).toBe(false);
-    expect(run(blank, { type: "backToContent" }).step).toBe("content");
-    expect(run(initialState("t"), { type: "backToContent" }).step).toBe("content");
+describe("recipientsToSend", () => {
+  it("answers the clean addresses, each once, lower-cased, and nothing when one is malformed", () => {
+    const state = run(initialState(), {
+      type: "setRecipients",
+      value: "Ana@x.fr, bo@y.com; ana@x.fr",
+    });
+    expect(recipientsToSend(state, true)).toEqual(["ana@x.fr", "bo@y.com"]);
+    expect(
+      recipientsToSend(run(state, { type: "setRecipients", value: "ana@x.fr nope@" }), true),
+    ).toEqual([]);
+    expect(recipientsToSend(initialState(), true)).toEqual([]);
   });
 });
 
-describe("send step", () => {
+describe("the link and the sending", () => {
   const created = run(
-    initialState("t"),
-    { type: "drafted", items: [item("a")], brief, modelUsed: false, modelFailed: false },
-    { type: "created", share: { shareId: "s1", url: "https://vivier.app/share/x", expiresAt: "2026-10-27T10:00:00Z" } },
+    initialState(),
+    { type: "toggleCandidate", candidateId: "a" },
+    { type: "setBusy", value: true },
+    { type: "created", share },
   );
 
-  it("moves to the send step with the link", () => {
-    expect(created.step).toBe("send");
+  it("keeps the link, then records what left and clears busy", () => {
     expect(created.share?.url).toBe("https://vivier.app/share/x");
-    expect(canSend(created)).toBe(false);
+    expect(created.busy).toBe(true);
+    const sent = run(created, { type: "sent", outcome: { sent: 1, failed: ["bo@y.com"] } });
+    expect(sent.outcome).toEqual({ sent: 1, failed: ["bo@y.com"] });
+    expect(sent.busy).toBe(false);
   });
 
-  it("turns the typed addresses into chips, keeps the invalid ones in the field, caps at ten", () => {
-    const state = run(
-      created,
-      { type: "setRecipientDraft", value: "Ana@x.fr, bad; ana@x.fr\nbo@y.com nope@" },
-      { type: "commitRecipients" },
+  it("clears busy on a failure and keeps what was typed", () => {
+    const typed = run(
+      initialState(),
+      { type: "setMessage", value: "Bonjour" },
+      { type: "setBusy", value: true },
     );
-    expect(state.recipients).toEqual(["ana@x.fr", "bo@y.com"]);
-    expect(state.recipientDraft).toBe("bad, nope@");
-    expect(canSend(state)).toBe(true);
-    const many = Array.from({ length: 12 }, (_, i) => `p${i}@x.fr`).join(" ");
-    const capped = run(state, { type: "setRecipientDraft", value: many }, { type: "commitRecipients" });
-    expect(capped.recipients).toHaveLength(10);
-    expect(run(capped, { type: "removeRecipient", email: "ana@x.fr" }).recipients).not.toContain("ana@x.fr");
-  });
-
-  it("records the outcome and clears busy", () => {
-    const state = run(created, { type: "setBusy", value: true }, { type: "sent", outcome: { sent: 1, failed: ["bo@y.com"] } });
-    expect(state.outcome).toEqual({ sent: 1, failed: ["bo@y.com"] });
-    expect(state.busy).toBe(false);
+    const failed = run(typed, { type: "failed" });
+    expect(failed.busy).toBe(false);
+    expect(failed.message).toBe("Bonjour");
   });
 
   it("resets everything for the next opening", () => {
-    const state = run(created, { type: "reset", title: "Nouveau" });
-    expect(state).toEqual(initialState("Nouveau"));
-    expect(state.brief).toBeNull();
+    expect(run(created, { type: "reset" })).toEqual(initialState());
   });
 });
 
@@ -188,41 +137,17 @@ describe("parseRecipients and isEmail", () => {
     expect(isEmail("ana x@x.fr")).toBe(false);
     expect(isEmail("@x.fr")).toBe(false);
     expect(parseRecipients("")).toEqual({ valid: [], invalid: [] });
-    expect(parseRecipients("A@b.co;a@b.co, c")).toEqual({ valid: ["a@b.co"], invalid: ["c"] });
+    expect(parseRecipients("A@b.co;a@b.co, c\nd@e.fr")).toEqual({
+      valid: ["a@b.co", "d@e.fr"],
+      invalid: ["c"],
+    });
   });
 });
 
-describe("stepIndex", () => {
-  it("numbers the steps", () => {
-    expect(stepIndex("content")).toBe(0);
-    expect(stepIndex("review")).toBe(1);
-    expect(stepIndex("send")).toBe(2);
-  });
-});
-
-describe("stepStatus", () => {
-  it("marks the steps before the current one done and those after to do", () => {
-    expect(stepStatus("content", "review")).toBe("done");
-    expect(stepStatus("review", "review")).toBe("current");
-    expect(stepStatus("send", "review")).toBe("todo");
-    expect(stepStatus("content", "content")).toBe("current");
-    expect(stepStatus("send", "send")).toBe("current");
-  });
-});
-
-describe("previewOf", () => {
-  it("flattens whitespace and leaves a short text whole", () => {
-    expect(previewOf("  Deux   phrases.\n\nUne troisième.  ")).toBe("Deux phrases. Une troisième.");
-    expect(previewOf("")).toBe("");
-  });
-
-  it("clips on a word with an ellipsis past the limit", () => {
-    const text = "Un profil solide sur React et Node, huit ans en agence puis en scale-up.";
-    expect(previewOf(text, 30)).toBe("Un profil solide sur React et…");
-    expect(previewOf(text, 30).length).toBeLessThanOrEqual(31);
-  });
-
-  it("clips a single long word without looking for a space", () => {
-    expect(previewOf("x".repeat(50), 10)).toBe(`${"x".repeat(10)}…`);
+describe("shareTitleOf", () => {
+  it("is the brief's title, collapsed and clipped, else the fallback", () => {
+    expect(shareTitleOf("  Back-end   senior ", "Shortlist")).toBe("Back-end senior");
+    expect(shareTitleOf("   ", "Shortlist")).toBe("Shortlist");
+    expect(shareTitleOf("x".repeat(250), "Shortlist")).toHaveLength(200);
   });
 });

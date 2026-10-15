@@ -4,12 +4,16 @@ import type { RoleProfile } from "@/lib/db/types";
 
 import { VALUE_MAX } from "./criteria";
 import {
+  briefSourceHash,
   cleanRoleProfile,
   clipList,
   DEFAULT_SENIORITY,
   emptyRoleProfile,
+  fnv1a32,
   guardRoleProfile,
   isSeniority,
+  jobTitleOf,
+  needsDerivation,
   parseRoleProfile,
   protectedRoleText,
   ROLE_MISSIONS_MAX,
@@ -21,9 +25,6 @@ import {
   ROLE_SENIORITIES,
   roleDefinitionOf,
   roleProfileAnswer,
-  roleProfileSystemPrompt,
-  roleProfileUserPrompt,
-  seniorityKey,
   statesMaximumYears,
 } from "./role-profile";
 
@@ -60,9 +61,12 @@ describe("parseRoleProfile", () => {
     expect(parseRoleProfile({ yearsMin: "five" })).toBeNull();
   });
 
-  it("reads a stored profile back as it is", () => {
+  it("reads a stored profile back as it is, the hash of its text with it", () => {
     expect(parseRoleProfile(full)).toEqual(full);
     expect(parseRoleProfile(JSON.parse(JSON.stringify(full)))).toEqual(full);
+    const read = { ...full, sourceHash: "811c9dc5" };
+    expect(parseRoleProfile(read)).toEqual(read);
+    expect("sourceHash" in (parseRoleProfile(full) ?? {})).toBe(false);
   });
 
   it("fills what a sparse column lacks: empty texts and lists, the default seniority, null years, no model", () => {
@@ -151,6 +155,10 @@ describe("cleanRoleProfile and clipList", () => {
     // The input's own title, model and date win when it has them.
     expect(cleanRoleProfile(full, defaults)).toEqual(full);
     expect(cleanRoleProfile({ model: "  " }, defaults).model).toBe("m");
+    // The hash of the text the profile was read from stays only when the input holds one.
+    expect(cleanRoleProfile({ sourceHash: " 811c9dc5 " }, defaults).sourceHash).toBe("811c9dc5");
+    expect("sourceHash" in cleanRoleProfile({ sourceHash: "  " }, defaults)).toBe(false);
+    expect("sourceHash" in cleanRoleProfile({}, defaults)).toBe(false);
   });
 
   it("drops blanks and repeats (case apart) and clips each item", () => {
@@ -251,7 +259,7 @@ describe("roleDefinitionOf", () => {
   });
 });
 
-describe("the answer schema and the prompt", () => {
+describe("the answer schema", () => {
   it("asks for three missions at least and lets the optional fields go", () => {
     expect(
       roleProfileAnswer.safeParse({ domain: "x", seniority: "senior", missions: ["a", "b"] })
@@ -276,43 +284,11 @@ describe("the answer schema and the prompt", () => {
     expect(ROLE_MISSIONS_MIN).toBe(3);
   });
 
-  it("briefs a junior recruiter: the domain from the market, the context only when stated, never a protected characteristic", () => {
-    const system = roleProfileSystemPrompt();
-    expect(system).toContain('"assumptions":["..."]');
-    expect(system).toContain("what the brief does not state and you had to assume");
-    expect(system).toContain("before any CV is read");
-    expect(system).toContain('"domain":"..."');
-    expect(system).toContain('"seniority":"junior|confirmed|senior|manager|executive"');
-    expect(system).toContain('"adjacentProfiles"');
-    expect(system).toContain('"mustHaves"');
-    expect(system).toContain('"questions"');
-    expect(system).toContain("as it is in the market");
-    expect(system).toContain(`${ROLE_MISSIONS_MIN} to ${ROLE_MISSIONS_MAX} core missions`);
-    expect(system).toContain("ONLY when the brief states them");
-    expect(system).toContain("three to five points to verify in an interview");
-    // A ceiling on years is the brief's to state, never the model's to infer: the classic indirect age criterion.
-    expect(system).toContain("yearsMax: ONLY when the brief itself states a maximum");
-    expect(system).toContain("never infer one from the level");
-    expect(system).toContain("proxy for age");
-    expect(system).not.toContain("yearsMin and yearsMax: the years");
-    expect(system).toContain('"yearsMax":null');
-    expect(system).toContain("Never a protected characteristic");
-    expect(system).toContain('not "family" or "famille"');
-    expect(system).toContain("The team edits what you write");
-    expect(roleProfileUserPrompt({ title: " T ", description: "" })).toBe(
-      "Title: T\n\nBrief:\n(no description)",
-    );
-    expect(roleProfileUserPrompt({ title: "T", description: " Le besoin. " })).toBe(
-      "Title: T\n\nBrief:\nLe besoin.",
-    );
-  });
-
-  it("names the seniorities and their keys", () => {
+  it("names the seniorities", () => {
     expect(ROLE_SENIORITIES).toEqual(["junior", "confirmed", "senior", "manager", "executive"]);
     expect(isSeniority("manager")).toBe(true);
     expect(isSeniority("boss")).toBe(false);
     expect(isSeniority(null)).toBe(false);
-    expect(seniorityKey("senior")).toBe("briefs.seniority.senior");
   });
 });
 
@@ -345,5 +321,49 @@ describe("statesMaximumYears", () => {
     ]) {
       expect(statesMaximumYears({ title: "T", description })).toBe(false);
     }
+  });
+});
+
+describe("the brief a profile is read from", () => {
+  it("names the job from the title, else the first line of the text, else nothing", () => {
+    expect(jobTitleOf({ title: " Business Developer ", description: "x" })).toBe(
+      "Business Developer",
+    );
+    expect(jobTitleOf({ title: "", description: "\n Business Developer \nConquête." })).toBe(
+      "Business Developer",
+    );
+    expect(jobTitleOf({ title: " ", description: "  " })).toBe("");
+  });
+
+  it("hashes a text with FNV-1a, 32 bits, over its UTF-8 bytes, as eight hexadecimal digits", () => {
+    expect(fnv1a32("")).toBe("811c9dc5");
+    expect(fnv1a32("a")).toBe("e40c292c");
+    expect(fnv1a32("foobar")).toBe("bf9cf968");
+    expect(fnv1a32("é")).toHaveLength(8);
+    expect(fnv1a32("é")).not.toBe(fnv1a32("e"));
+  });
+
+  it("hashes the title and the description as they are, a line break between them", () => {
+    expect(briefSourceHash({ title: "T", description: "D" })).toBe(fnv1a32("T\nD"));
+    expect(briefSourceHash({ title: "T", description: "D" })).not.toBe(
+      briefSourceHash({ title: "T ", description: "D" }),
+    );
+  });
+
+  it("reads the brief again when it has no profile, a profile from before the hash, or one of another text", () => {
+    const brief = { title: "T", description: "D" };
+    const read = { ...full, sourceHash: briefSourceHash(brief) };
+    expect(needsDerivation({ ...brief, role_profile: null })).toBe(true);
+    expect(needsDerivation({ ...brief, role_profile: full })).toBe(true);
+    expect(needsDerivation({ ...brief, role_profile: read })).toBe(false);
+    expect(needsDerivation({ ...brief, description: "D.", role_profile: read })).toBe(true);
+    expect(needsDerivation({ ...brief, title: "t", role_profile: read })).toBe(true);
+    // A profile read back from its column keeps the hash: no second reading of the same text.
+    expect(
+      needsDerivation({
+        ...brief,
+        role_profile: parseRoleProfile(JSON.parse(JSON.stringify(read))),
+      }),
+    ).toBe(false);
   });
 });

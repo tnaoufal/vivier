@@ -3,13 +3,12 @@
  * by hairlines. The summary on three lines with "see more"; the career
  * as a timeline with the period and its duration computed, the company,
  * the title and the description folded to two lines; the education in
- * compact rows; the skills as quiet chips, the first eight grouped as
- * domains, tools and methods (skills.ts decides, for the layout only)
- * with "+ N others"; the contact details and the links. "Not stated" in
+ * compact rows; the skills as quiet chips, the first eight with "+ N"
+ * for the rest; the contact details and the links. "Not stated" in
  * muted text for every empty field (never a dash that could read as
  * "none"), a confidence hint where the structuring was unsure. A member
  * edits the skills in place behind a pencil; the rest is edited through
- * the form (profile-form.tsx).
+ * the form's drawer (profile-form.tsx).
  */
 import { Fragment, useState, type ReactNode } from "react";
 import { Check, ExternalLink, Link2, Mail, Pencil, Phone } from "lucide-react";
@@ -17,7 +16,7 @@ import { Check, ExternalLink, Link2, Mail, Pencil, Phone } from "lucide-react";
 import { Timeline, TimelineItem } from "@/components/app-shell/timeline";
 import { Button } from "@/components/ui/button";
 import { formatDateRange, formatDuration } from "@/lib/candidates/format";
-import { SKILLS_SHOWN, SKILL_GROUPS, groupSkills, visibleSkills } from "@/lib/candidates/skills";
+import { SKILLS_SHOWN, visibleSkills } from "@/lib/candidates/skills";
 import type { CandidateRow, ConfidenceMap } from "@/lib/db/types";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -41,7 +40,7 @@ function Block({
   children: ReactNode;
 }) {
   return (
-    <section className="p-6 sm:p-8">
+    <section className="p-6">
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <h2 className="text-base font-semibold text-ink">
           {title}
@@ -92,7 +91,7 @@ function ContactRow({
       {clean && href ? (
         <a
           href={href}
-          className="min-w-0 truncate rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-w-0 truncate rounded-sm text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
         >
           {clean}
@@ -118,7 +117,7 @@ function hostOf(url: string): string {
   }
 }
 
-/** The skills: quiet chips grouped for reading, or the editor in place for a member. */
+/** The skills: quiet chips, the first eight then "+ N", or the editor in place for a member. */
 function SkillsBlock({
   skills,
   hint,
@@ -134,10 +133,6 @@ function SkillsBlock({
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const { shown, hidden } = visibleSkills(skills, expanded);
-  const groups = groupSkills(shown);
-  // One heading per group only when the chips fall into more than one: a single group needs no label.
-  const filled = SKILL_GROUPS.filter((group) => groups[group].length > 0);
-  const labelled = filled.length > 1;
 
   return (
     <Block
@@ -164,33 +159,26 @@ function SkillsBlock({
           canEdit
           emptyKey="common.unknown"
           placeholder={t("candidates.skills.placeholder")}
-          tone="neutral"
           onChange={onChange}
         />
       ) : !skills.length ? (
         <Unknown />
       ) : (
-        <div className="space-y-4">
-          {filled.map((group) => (
-            <div key={group}>
-              {labelled ? (
-                <h3 className="label-caps mb-2">{t(`candidates.skills.group.${group}`)}</h3>
-              ) : null}
-              <ul className="flex flex-wrap gap-1.5">
-                {groups[group].map((skill) => (
-                  <li key={skill} className="min-w-0">
-                    <Chip>{skill}</Chip>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+        <div className="space-y-3">
+          <ul className="flex flex-wrap gap-1.5">
+            {shown.map((skill) => (
+              <li key={skill} className="min-w-0">
+                <Chip>{skill}</Chip>
+              </li>
+            ))}
+          </ul>
+          {/* A 40px target drawn at the text's height: the padding and the negative margin cancel on the page. */}
           {hidden > 0 || skills.length > SKILLS_SHOWN ? (
             <button
               type="button"
               onClick={() => setExpanded((value) => !value)}
               aria-expanded={expanded}
-              className="cursor-pointer rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="-my-2.5 cursor-pointer rounded-sm py-2.5 text-sm font-medium text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {hidden === 1
                 ? t("candidates.skills.more.one")
@@ -208,12 +196,13 @@ function SkillsBlock({
 export function ProfileSections({
   candidate,
   canEdit,
-  onChips,
+  onSkills,
   now = new Date(),
 }: {
   candidate: CandidateRow;
   canEdit: boolean;
-  onChips: (column: "skills" | "tags", values: string[]) => Promise<void>;
+  /** Saves the skills a member edited in place. */
+  onSkills: (values: string[]) => Promise<void>;
   /** The clock the durations of ongoing positions are counted to; injectable for tests. */
   now?: Date;
 }) {
@@ -316,7 +305,7 @@ export function ProfileSections({
         skills={candidate.skills ?? []}
         hint={confidence.skills}
         canEdit={canEdit}
-        onChange={(values) => onChips("skills", values)}
+        onChange={onSkills}
       />
 
       <Block title={t("candidates.field.contactLinks")}>

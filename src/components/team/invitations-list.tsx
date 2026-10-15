@@ -36,12 +36,6 @@ export function InvitationsList({
         const revokeLabel = t("members.invitations.revoke");
         return (
           <li key={invitation.id} className="sheet-row rise-in">
-            <span
-              aria-hidden="true"
-              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground [&_svg]:size-4"
-            >
-              <Mail />
-            </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-ink">{invitation.email}</p>
               <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-muted-foreground">
@@ -53,7 +47,9 @@ export function InvitationsList({
                   </Pill>
                 ) : (
                   <span className="tabular-nums">
-                    {t("members.invitations.expires", { date: formatDate(locale, invitation.expires_at) })}
+                    {t("members.invitations.expires", {
+                      date: formatDate(locale, invitation.expires_at),
+                    })}
                   </span>
                 )}
               </p>
@@ -65,7 +61,7 @@ export function InvitationsList({
                   size="icon"
                   onClick={() => onRevoke(invitation)}
                   disabled={busyId === invitation.id}
-                  className="text-muted-foreground hover:text-negative"
+                  className="text-muted-foreground hover:text-ink"
                   aria-label={revokeLabel}
                 >
                   <Trash2 />
