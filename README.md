@@ -721,8 +721,11 @@ goes and leaves the stage and the progress on the row, and
    `evidenceGrounded()` looks for the quote in them, case, accents and
    spacing apart: whole when short, else a window of twelve characters
    found verbatim, else 60 % of its tokens of four letters or more found
-   as words of one text. A `yes` without a quote, or with one found
-   nowhere, becomes `partial`, the quote kept and marked unverified
+   as words of one text. A `yes` the deterministic pass confirms from the
+   profile's own fields (the years the CV states, a listed skill, a
+   degree of the family) stands, its sentence still marked when it is the
+   model's computation rather than a quote; otherwise a `yes` without a
+   quote, or with one found nowhere, becomes `partial`, the quote kept and marked unverified
    ("quote not found in the CV" in the drawer); a `no` without a grounded
    quote becomes `unknown`, unless the deterministic pass found the
    requirement missing with evidence of its own, which is then shown; a
@@ -780,11 +783,15 @@ goes and leaves the stage and the progress on the row, and
    the profile does not meet, a context too far when the brief insists on
    it; silence is never a reason, nor is a reservation the first reading
    already lists. It answers `confirmed` (with one sentence on what the
-   profile rests on) or `doubt` with a reason and a quote.
-   `applyChallenge()` can only lower: a doubt whose quote is found in the
-   profile and whose reason names nothing forbidden sends the decision to
-   `borderline` (a `no_fit` is never raised), caps the score at 69,
-   appends the reason to the concerns and stores the challenge; a doubt
+   profile rests on) or `doubt` with a reason, a quote and what it is
+   about (`metier`, `requirement`, `seniority`, `contradiction`,
+   `context`). `applyChallenge()` can only lower: a doubt whose quote is
+   found in the profile and whose reason names nothing forbidden is
+   appended to the concerns and stored; on the métier or a required
+   requirement (or unclassed) it also sends the decision to `borderline`
+   (a `no_fit` is never raised) and caps the score at 69, while a doubt
+   on the seniority, a contradiction or the context leaves the profile
+   retained for the team to weigh; a doubt
    without a quote, or with one the profile does not hold, is an opinion
    and is stored as confirmed, changing nothing. The drawer puts the
    doubt first among the reservations ("Seconde lecture : …"). A call the
@@ -899,10 +906,12 @@ no menu to reopen them. The matches tab, top to bottom:
   the import.
 - the **matches alone** (`fit`), one 64px row each, tier then score: the
   rank, the photo or the initials, the name and the position held today,
-  one line from `md` (the tiering's note, else the first sentence of the
-  reading), the tier letter (`TierPill`: A an ink disc, B an ink
-  outline, C a grey outline) or the quiet word "À confirmer" while the
-  second opinion has not seen the match, and beside the row the
+  one line from `md` (the second opinion's doubt when it kept the match,
+  else the tiering's note, else the first sentence of the reading), the
+  word "Doute" on a match the second opinion doubted without sending it
+  back, the tier letter (`TierPill`: A an ink disc, B an ink outline, C
+  a grey outline) or the quiet word "À confirmer" while the second
+  opinion has not seen the match, and beside the row the
   shortlist button (a check once added). No ring: the score lives in the
   drawer. Rows rise in as their batch lands and never again.
 - right under them, a quiet toggle, "N profils proches", unfolds the
@@ -948,13 +957,18 @@ no menu to reopen them. The matches tab, top to bottom:
 send as it is, and nothing else. A profile is a match only when the model
 read its métier as the role with a quote found in the CV and scored that
 dimension 70 or more (`ROLE_DIMENSION_FIT_MIN`), every required
-requirement is met with a quote found in the CV, the composite reaches
-75 (`FIT_MIN_SCORE`) and the second opinion raised no grounded doubt; the
-tiering orders the matches (A before B) and sends a match it puts at C
-to the near profiles. Everything the rules can only hold back is a near
-profile (an adjacent métier, a métier under 70, a composite between 45
-and 74, a must-have not stated or met in part, a doubt with evidence, a
-tier C), and a role at `no`, a must-have at `no` or a composite under 45
+requirement is met with a quote found in the CV (a requirement on years
+alone, by the years the profile states; one the model itself read as met
+in part, with a quote, at most), the composite reaches 75
+(`FIT_MIN_SCORE`) and the second opinion raised no grounded doubt on the
+métier or a required requirement (a doubt on the seniority, a
+contradiction or the context stays on the match's row, "Doute", for the
+team to weigh); the tiering orders the matches (A before B) and sends a
+match it puts at C to the near profiles. Everything the rules can only
+hold back is a near profile (an adjacent métier, a métier under 70, a
+composite between 45 and 74, a must-have not stated, two met in part or
+one the rules could not ground, a doubt with evidence on the métier or a
+required requirement, a tier C), and a role at `no`, a must-have at `no` or a composite under 45
 is set aside, counted and listed only on demand. So a pool with no
 match reads "0 correspondance" once every stage ran, with how many
 profiles were analysed and the requirement most often missing; while

@@ -152,6 +152,7 @@ export const assessmentAnswer = z.object({
 /** The second opinion on a retained profile. */
 export const challengeAnswer = z.object({
   verdict: z.string(),
+  kind: z.string().nullable().optional(),
   reason: z.string().nullable().optional(),
   evidence: z.string().nullable().optional(),
 });

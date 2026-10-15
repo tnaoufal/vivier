@@ -7,6 +7,8 @@ import {
   BORDERLINE_MIN_SCORE,
   bucketResults,
   CHALLENGE_DOUBT_SCORE_CAP,
+  CHALLENGE_KINDS,
+  DEMOTING_CHALLENGE_KINDS,
   CONCERNS_MAX,
   decisionOf,
   enforceAssessment,
@@ -501,6 +503,90 @@ describe("enforceAssessment", () => {
       evidence: "Diploma, Karlsruher Institut für Technologie (KIT)",
     });
     expect(assessment.decision).toBe("fit");
+  });
+
+  it("keeps a yes on years alone the profile's years confirm, showing those years, never the model's computation", () => {
+    const years: BriefCriterion = {
+      id: "years",
+      kind: "experience",
+      label: "8 ans d'expérience minimum",
+      value: "8",
+      required: true,
+      weight: 3,
+    };
+    const confirmed: CriterionResult[] = [{ criterionId: "years", verdict: "match", evidence: "16" }];
+    const read = (
+      criterion: BriefCriterion,
+      verdicts: CriterionResult[],
+      evidence: string | null,
+    ) =>
+      enforceAssessment(
+        [...criteria, criterion],
+        verdicts,
+        answer({
+          requirements: [
+            { criterionId: "skill", met: "yes", evidence: "Contrôleur de gestion chez X (2018-2024)" },
+            { criterionId: "lang", met: "yes", evidence: "Anglais (C1)" },
+            { criterionId: "sap", met: "yes", evidence: "SAP FI/CO" },
+            { criterionId: criterion.id, met: "yes", evidence },
+          ],
+        }),
+        "m",
+        { texts },
+      );
+    const computed = read(years, confirmed, "16 ans d'expérience (2008-)");
+    expect(computed.requirements[3]).toEqual({ criterionId: "years", met: "yes", evidence: "16" });
+    expect(computed.decision).toBe("fit");
+    expect(read(years, confirmed, null).requirements[3]).toEqual({
+      criterionId: "years",
+      met: "yes",
+      evidence: "16",
+    });
+    // Without the confirmation, the same sentence is a claim: met in part, marked.
+    const unconfirmed = read(
+      years,
+      [{ criterionId: "years", verdict: "not_stated", evidence: null }],
+      "16 ans d'expérience (2008-)",
+    );
+    expect(unconfirmed.requirements[3]?.met).toBe("partial");
+    expect(unconfirmed.requirements[3]?.evidenceUnverified).toBe(true);
+    expect(unconfirmed.decision).toBe("borderline");
+    // Years scoped to a field: the profile's total does not speak to them.
+    const scoped = read(
+      { ...years, label: "5 ans en contrôle de gestion", value: "5" },
+      [{ criterionId: "years", verdict: "match", evidence: "13" }],
+      "13 ans dont contrôle de gestion",
+    );
+    expect(scoped.requirements[3]?.met).toBe("partial");
+    expect(scoped.decision).toBe("borderline");
+  });
+
+  it("never lets a match by words stand in for a quote: a skill, a place, a title", () => {
+    const java: BriefCriterion = {
+      id: "java",
+      kind: "skill",
+      label: "Java",
+      value: "java",
+      required: true,
+      weight: 3,
+    };
+    const assessment = enforceAssessment(
+      [...criteria, java],
+      [{ criterionId: "java", verdict: "match", evidence: "JavaScript" }],
+      answer({
+        requirements: [
+          { criterionId: "skill", met: "yes", evidence: "Contrôleur de gestion chez X (2018-2024)" },
+          { criterionId: "lang", met: "yes", evidence: "Anglais (C1)" },
+          { criterionId: "sap", met: "yes", evidence: "SAP FI/CO" },
+          { criterionId: "java", met: "yes", evidence: "Spring Boot, Hibernate, microservices Java 17" },
+        ],
+      }),
+      "m",
+      { texts },
+    );
+    expect(assessment.requirements[3]?.met).toBe("partial");
+    expect(assessment.requirements[3]?.evidenceUnverified).toBe(true);
+    expect(assessment.decision).toBe("borderline");
   });
 
   it("leaves a yes alone when the deterministic pass found nothing or has no evidence", () => {
@@ -1586,6 +1672,33 @@ describe("applyChallenge", () => {
       doubt.reason,
     ]);
     expect(applyChallenge(assessed("fit", 85), doubt).concerns).toEqual([doubt.reason]);
+  });
+
+  it("keeps a profile retained on a doubt the team weighs, and sends it back on the métier or a required requirement", () => {
+    for (const kind of ["seniority", "contradiction", "context"]) {
+      const after = applyChallenge(retained, { ...doubt, kind });
+      expect(after.decision).toBe("fit");
+      expect(after.score).toBe(85);
+      expect(after.concerns).toEqual(["Pas de management", doubt.reason]);
+      expect(after.challenge).toEqual({
+        verdict: "doubt",
+        kind,
+        reason: doubt.reason,
+        evidence: doubt.evidence,
+      });
+    }
+    for (const kind of ["metier", "requirement"]) {
+      const after = applyChallenge(retained, { ...doubt, kind });
+      expect(after.decision).toBe("borderline");
+      expect(after.score).toBe(CHALLENGE_DOUBT_SCORE_CAP);
+      expect(after.challenge?.kind).toBe(kind);
+    }
+    // A kind it does not know reads as unclassed: sent back, stored without a kind.
+    const odd = applyChallenge(retained, { ...doubt, kind: "vibes" });
+    expect(odd.decision).toBe("borderline");
+    expect(odd.challenge).toEqual({ verdict: "doubt", reason: doubt.reason, evidence: doubt.evidence });
+    expect(DEMOTING_CHALLENGE_KINDS.has("metier")).toBe(true);
+    expect(CHALLENGE_KINDS).toEqual(["metier", "requirement", "seniority", "contradiction", "context"]);
   });
 
   it("never raises: a borderline stays borderline, a no_fit stays no_fit", () => {

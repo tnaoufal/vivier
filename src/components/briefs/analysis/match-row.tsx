@@ -38,6 +38,7 @@ export function MatchRow({
   line,
   muted = false,
   unconfirmed = false,
+  doubted = false,
   added,
   canAdd,
   onOpen,
@@ -54,6 +55,8 @@ export function MatchRow({
   muted?: boolean | undefined;
   /** A match the second opinion has not seen yet (a run under way or stopped): it may still leave the list. */
   unconfirmed?: boolean | undefined;
+  /** A match the second opinion doubted on the seniority, a contradiction or the context: kept for the team to weigh, marked. */
+  doubted?: boolean | undefined;
   added: boolean;
   /** True when the person may add to the shortlist. */
   canAdd: boolean;
@@ -134,11 +137,20 @@ export function MatchRow({
           <span className="shrink-0 text-meta text-muted-foreground">
             {t("briefs.match.unconfirmed")}
           </span>
-        ) : tier ? (
-          <span className="shrink-0">
-            <TierPill tier={tier} compact />
-          </span>
-        ) : null}
+        ) : (
+          <>
+            {doubted ? (
+              <span className="shrink-0 text-meta font-medium text-ink">
+                {t("briefs.match.doubt")}
+              </span>
+            ) : null}
+            {tier ? (
+              <span className="shrink-0">
+                <TierPill tier={tier} compact />
+              </span>
+            ) : null}
+          </>
+        )}
       </button>
       <div className="flex w-12 shrink-0 justify-center pr-2 sm:w-14 sm:pr-4">
         {canAdd && candidate ? (
