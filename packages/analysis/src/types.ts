@@ -143,7 +143,7 @@ export interface Assessment {
   dimensions?: Record<AssessmentDimension, DimensionScore>;
   /** Facts in the profile's favour, as a recruiter would list them. */
   strengths?: string[];
-  /** Reservations to weigh, never a protected characteristic, never a career break. */
+  /** Reservations to weigh, never a protected characteristic, never a career break, never the CV's silence, never the person above a level the brief does not cap. */
   concerns?: string[];
   /** What to check in an interview. */
   questions?: string[];
@@ -153,7 +153,7 @@ export interface Assessment {
   rankNote?: string | null;
   /** Set by the second-opinion pass on retained profiles. */
   challenge?: AssessmentChallenge;
-  /** How many of the model's sentences the filter withheld (a protected characteristic, a period without a position): the reading shown is incomplete by that much. */
+  /** How many of the model's sentences the filter withheld (a protected characteristic, a period without a position; a reservation or a doubt that rests on the CV's silence, or finds the person above a level the brief does not cap): the reading shown is incomplete by that much. */
   withheld?: number;
 }
 

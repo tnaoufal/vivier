@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Assessment, BriefCriterion, CriterionResult, MatchResult } from "./types.js";
 
 import {
+  aboveLevelSentence,
   applyChallenge,
   BORDERLINE_MIN_SCORE,
   bucketResults,
@@ -29,6 +30,7 @@ import {
   ROLE_NO_SCORE_CAP,
   ROLE_PARTIAL_SCORE_CAP,
   ROLE_UNKNOWN_SCORE_CAP,
+  silenceSentence,
   STRENGTHS_MAX,
   tierOf,
   type ModelAssessmentAnswer,
@@ -1797,5 +1799,389 @@ describe("applyChallenge", () => {
     expect(after.challenge?.reason).toHaveLength(NOTE_MAX);
     expect(after.challenge?.evidence).toHaveLength(EVIDENCE_MAX);
     expect(after.decision).toBe("borderline");
+  });
+});
+
+// ---------------------------------------------------------------------
+// what a reservation may not rest on
+// ---------------------------------------------------------------------
+
+/** Reservations of the fourth run on the brief "Project manager" (8 years at least, no maximum) that read the CV's silence as a lack. */
+const SILENCES = [
+  "Pas de certification PMP mentionnée",
+  "Aucune mention explicite des normes ISO/GMP/REACH",
+  "Normes sectorielles (ISO, GMP, REACH) non mentionnées",
+  "Certification PMP non mentionnée",
+  "Normes sectorielles (ISO, GMP, REACH) non explicitement citées",
+];
+
+/** Reservations and doubts of the same run that find the person above the level, on a brief that states no maximum. */
+const ABOVE_THE_LEVEL = [
+  "Seniorité très élevée (30 ans) vs 8 ans minimum requis",
+  "Niveau senior+ (DGA) pourrait être perçu comme surqualifié",
+  "Seniority far above the brief's minimum requirement with no maximum stated",
+  "Niveau actuel (DGA) dépasse largement le cadre du poste de Project Manager",
+];
+
+/** The run's legitimate reservations: facts the positions show, the level under the one asked among them. */
+const FACTS = [
+  "Expérience en gestion de projet légèrement en dessous des 8 ans requis (7 ans 10 mois)",
+  "Anglais technique non maîtrisé (niveau intermédiaire)",
+  "Secteur principal : pharmaceutique, pas chimie",
+  "Secteur principal en pétrochimie/raffinage, pas strictement chimie",
+  "Expérience récente en cimenterie, non en chimie",
+  "Rôles commerciaux et gestion de produit dominent l'expérience récente",
+  "Expérience en chimie absente du CV",
+];
+
+describe("silenceSentence", () => {
+  it("reads a sentence that says the CV does not mention, state, cite, list or specify something, in French and in English", () => {
+    const silences = [
+      ...SILENCES,
+      "Normes sectorielles (ISO, GMP, REACH) non explicitement mentionnées",
+      "Pas de mention explicite de conformité réglementaire (REACH, etc.)",
+      "Diplôme d'ingénieur non précisé dans le CV",
+      "Taille des équipes non indiquée",
+      "Anglais : non renseigné",
+      "NON MENTIONNÉE",
+      "Aucune certification mentionnée",
+      "Le CV ne précise pas la taille des équipes",
+      "La certification PMP n'est pas mentionnée",
+      "Aucune information sur la mobilité",
+      "PMP certification not mentioned",
+      "No mention of ISO standards",
+      "No explicit mention of GMP",
+      "Team size not stated",
+      "Budget not specified",
+      "Certifications not listed",
+      "The CV does not mention a PMP certification",
+      "The CV doesn’t specify the team size",
+      "No PMP certification mentioned",
+    ];
+    expect(silences.filter((sentence) => !silenceSentence(sentence))).toEqual([]);
+  });
+
+  it("never reads a lack the positions show, a level or another fact as a silence", () => {
+    const facts = [
+      ...FACTS,
+      ...ABOVE_THE_LEVEL,
+      "Pas de management",
+      "Pas de management d'équipe",
+      "Pas de management, mais pilotage de prestataires précisé",
+      "Certification PMP non obtenue (membre PMI uniquement)",
+      "Anglais technique non explicitement confirmé (seulement « Bon niveau »)",
+      "Pilotage de projets de bout en bout non démontré (missions axées sur la gestion de contrats)",
+      "Secteur chimie non respecté : agrochimie ≠ chimie",
+      "Aucune expérience dans le secteur chimie",
+      "Consolidation absente du parcours",
+      "Diplômé sans mention",
+      "Les dates des deux derniers postes se chevauchent.",
+      "PMP certification missing from the CV",
+    ];
+    expect(facts.filter(silenceSentence)).toEqual([]);
+  });
+});
+
+describe("aboveLevelSentence", () => {
+  it("reads a sentence that flags the person above the level asked, in French and in English", () => {
+    const above = [
+      ...ABOVE_THE_LEVEL,
+      "Profil surqualifié pour le poste",
+      "Profil sur-qualifié",
+      "Profil surdimensionné pour un poste de chef de projet",
+      "Overqualified for a project manager role",
+      "Trop senior pour le poste",
+      "Profil trop expérimenté",
+      "Too senior for the role",
+      "Expérience très supérieure aux 8 ans demandés",
+      "Expérience bien au-dessus des 8 ans requis",
+      "Niveau au-dessus du niveau requis",
+      "Niveau au-dessus du poste",
+      "Dépasse largement les exigences du poste",
+      "Experience well above the 8 years required",
+      "Seniority well beyond the role's scope",
+      "Experience far exceeds the level asked",
+      "Exceeds the role's scope",
+    ];
+    expect(above.filter((sentence) => !aboveLevelSentence(sentence))).toEqual([]);
+  });
+
+  it("never reads under the level, what the brief asks above the person, a sector, a budget or a result as above the level", () => {
+    const others = [
+      ...FACTS,
+      ...SILENCES,
+      "Expérience insuffisante (4 ans vs 8 ans minimum requis)",
+      "Niveau en dessous du poste",
+      "Expérience bien inférieure aux 8 ans requis",
+      "Seniority below the brief's minimum",
+      "Seniority far under the level asked",
+      "Experience falls short of the 8 years required",
+      "Le niveau requis est au-dessus du niveau du candidat",
+      "The level asked is above the candidate's level",
+      "Expérience bien supérieure en pharma qu'en chimie",
+      "Projet ayant dépassé le cadre budgétaire initial",
+      "Project delivered well over the budget",
+      "Préavis de 3 mois, bien au-delà du mois demandé",
+      "A dépassé ses objectifs de 30 %",
+      "Exceeded the sales targets by 20%",
+      "Experience with very high-pressure systems",
+      "Pas de management",
+    ];
+    expect(others.filter(aboveLevelSentence)).toEqual([]);
+  });
+});
+
+describe("enforceAssessment: what a reservation may rest on", () => {
+  const reading = (concerns: string[]): ModelAssessmentAnswer => ({
+    ...answer(),
+    dimensions,
+    strengths: ["Dix ans en gestion de projet industriel"],
+    concerns,
+    questions: ["Quel budget piloté ?"],
+  });
+  const run = [
+    "Pas de certification PMP mentionnée",
+    "Seniorité très élevée (30 ans) vs 8 ans minimum requis",
+    "Expérience en gestion de projet légèrement en dessous des 8 ans requis (7 ans 10 mois)",
+    "Normes sectorielles (ISO, GMP, REACH) non explicitement citées",
+    "Niveau actuel (DGA) dépasse largement le cadre du poste de Project Manager",
+    "Anglais technique non maîtrisé (niveau intermédiaire)",
+    "Aucune mention explicite des normes ISO/GMP/REACH",
+    "Expérience en chimie absente du CV",
+  ];
+
+  it("withholds a reservation that only notes the CV's silence and one above the level on a brief that states no maximum, and counts both", () => {
+    const assessment = enforceAssessment(criteria, none, reading(run), "m");
+    expect(assessment.concerns).toEqual([
+      "Expérience en gestion de projet légèrement en dessous des 8 ans requis (7 ans 10 mois)",
+      "Anglais technique non maîtrisé (niveau intermédiaire)",
+      "Expérience en chimie absente du CV",
+    ]);
+    expect(assessment.withheld).toBe(5);
+    // A withheld reservation takes no place among the four kept, and the decision and the score are the reading's as before.
+    const crowded = enforceAssessment(
+      criteria,
+      none,
+      reading([...SILENCES, ...ABOVE_THE_LEVEL, ...FACTS]),
+      "m",
+    );
+    expect(crowded.concerns).toEqual(FACTS.slice(0, CONCERNS_MAX));
+    expect(crowded.withheld).toBe(SILENCES.length + ABOVE_THE_LEVEL.length);
+    const plain = enforceAssessment(criteria, none, reading([]), "m");
+    expect(crowded.decision).toBe(plain.decision);
+    expect(crowded.score).toBe(plain.score);
+    // Left out, a maximum is not stated.
+    expect(enforceAssessment(criteria, none, reading(run), "m", { maximumStated: false })).toEqual(
+      assessment,
+    );
+  });
+
+  it("keeps a reservation above the level when the brief states a maximum; a silence stays withheld", () => {
+    const assessment = enforceAssessment(criteria, none, reading(run), "m", {
+      maximumStated: true,
+    });
+    expect(assessment.concerns).toEqual([
+      "Seniorité très élevée (30 ans) vs 8 ans minimum requis",
+      "Expérience en gestion de projet légèrement en dessous des 8 ans requis (7 ans 10 mois)",
+      "Niveau actuel (DGA) dépasse largement le cadre du poste de Project Manager",
+      "Anglais technique non maîtrisé (niveau intermédiaire)",
+    ]);
+    // Two silences are read before the four kept fill the list; what follows is left out unread, as a fifth reservation always is.
+    expect(assessment.withheld).toBe(2);
+  });
+
+  it("reads the strengths, the questions, the notes and the evidence as before", () => {
+    const assessment = enforceAssessment(
+      criteria,
+      none,
+      {
+        ...answer(),
+        dimensions: {
+          ...dimensions,
+          seniority: {
+            score: 60,
+            note: "Au-dessus du niveau requis : direction générale adjointe.",
+            evidence: "Directeur Général Adjoint (2015-2024)",
+          },
+          context: { score: 50, note: "Secteur non précisé dans le CV", evidence: null },
+        },
+        strengths: ["Expérience bien supérieure aux 8 ans requis (30 ans)"],
+        concerns: [],
+        questions: ["Certification PMP non mentionnée : l'a-t-il passée ?"],
+      },
+      "m",
+    );
+    expect(assessment.dimensions?.seniority.note).toBe(
+      "Au-dessus du niveau requis : direction générale adjointe.",
+    );
+    expect(assessment.dimensions?.context.note).toBe("Secteur non précisé dans le CV");
+    expect(assessment.strengths).toEqual(["Expérience bien supérieure aux 8 ans requis (30 ans)"]);
+    expect(assessment.questions).toEqual(["Certification PMP non mentionnée : l'a-t-il passée ?"]);
+    expect(assessment.concerns).toEqual([]);
+    expect("withheld" in assessment).toBe(false);
+  });
+});
+
+describe("applyChallenge: a silence and the level above a minimum are never a doubt", () => {
+  const retained: Assessment = {
+    ...assessed("fit", 85),
+    concerns: ["Secteur principal : pharmaceutique, pas chimie"],
+  };
+  const noDoubt = { verdict: "confirmed", reason: null, evidence: null };
+  const dga = "Directeur Général Adjoint – Directeur de Projets";
+
+  it("keeps no doubt that finds the person above the level on a brief that states no maximum, by its direction or by its reason", () => {
+    // By the direction alone: the reason itself names no level.
+    const byDirection = {
+      verdict: "doubt",
+      kind: "seniority",
+      direction: "above",
+      reason: "Le niveau atteint (DGA) n'est pas celui d'un chef de projet",
+      evidence: dga,
+    };
+    const answers = [
+      byDirection,
+      // By the reason, the direction left out (the run's two doubts).
+      {
+        verdict: "doubt",
+        kind: "seniority",
+        reason: "Seniority far above the brief's minimum requirement with no maximum stated",
+        evidence: "30 years of experience",
+      },
+      {
+        verdict: "doubt",
+        kind: "seniority",
+        reason: "Niveau actuel (DGA) dépasse largement le cadre du poste de Project Manager",
+        evidence: dga,
+      },
+      // Unclassed, it would have sent the profile back.
+      { verdict: "doubt", reason: "Profil surqualifié pour le poste", evidence: dga },
+    ];
+    for (const answer of answers) {
+      const after = applyChallenge(retained, answer);
+      expect(after.decision).toBe("fit");
+      expect(after.score).toBe(85);
+      expect(after.concerns).toEqual(["Secteur principal : pharmaceutique, pas chimie"]);
+      expect(after.challenge).toEqual(noDoubt);
+      expect(after.withheld).toBe(1);
+    }
+    // "Above" is read whatever its case and spacing.
+    expect(applyChallenge(retained, { ...byDirection, direction: " Above " }).challenge).toEqual(
+      noDoubt,
+    );
+  });
+
+  it("keeps no doubt that only notes the CV's silence, whatever the brief states, and counts it once", () => {
+    const silence = {
+      verdict: "doubt",
+      kind: "requirement",
+      reason: "Certification PMP non mentionnée",
+      evidence: "Certifications : Prince2",
+    };
+    for (const maximumStated of [false, true]) {
+      const after = applyChallenge(retained, silence, { maximumStated });
+      // A doubt on a required requirement would have sent the profile back: this one changes nothing.
+      expect(after.decision).toBe("fit");
+      expect(after.score).toBe(85);
+      expect(after.concerns).toEqual(["Secteur principal : pharmaceutique, pas chimie"]);
+      expect(after.challenge).toEqual(noDoubt);
+      expect(after.withheld).toBe(1);
+    }
+    // Once, on top of what the reading withheld, even when the reason is both a silence and above the level.
+    const both = applyChallenge(
+      { ...retained, withheld: 2 },
+      {
+        verdict: "doubt",
+        kind: "seniority",
+        direction: "above",
+        reason: "Surqualifié ; certification PMP non mentionnée",
+        evidence: dga,
+      },
+    );
+    expect(both.challenge).toEqual(noDoubt);
+    expect(both.withheld).toBe(3);
+  });
+
+  it("keeps a doubt under the level, and one above it on a brief that states a maximum, as any other", () => {
+    const under = {
+      verdict: "doubt",
+      kind: "seniority",
+      direction: "under",
+      reason: "Expérience en gestion de projet en dessous des 8 ans requis (4 ans)",
+      evidence: "Chef de projet (2020-2024)",
+    };
+    const kept = applyChallenge(retained, under);
+    expect(kept.decision).toBe("fit");
+    expect(kept.score).toBe(85);
+    expect(kept.concerns).toEqual(["Secteur principal : pharmaceutique, pas chimie", under.reason]);
+    expect(kept.challenge).toEqual({
+      verdict: "doubt",
+      kind: "seniority",
+      reason: under.reason,
+      evidence: under.evidence,
+    });
+    expect("withheld" in kept).toBe(false);
+    const above = {
+      verdict: "doubt",
+      kind: "seniority",
+      direction: "above",
+      reason: "Niveau actuel (DGA) dépasse largement le cadre du poste de Project Manager",
+      evidence: dga,
+    };
+    const capped = applyChallenge(retained, above, { maximumStated: true });
+    expect(capped.decision).toBe("fit");
+    expect(capped.score).toBe(85);
+    expect(capped.concerns).toEqual([
+      "Secteur principal : pharmaceutique, pas chimie",
+      above.reason,
+    ]);
+    expect(capped.challenge).toEqual({
+      verdict: "doubt",
+      kind: "seniority",
+      reason: above.reason,
+      evidence: above.evidence,
+    });
+    expect("withheld" in capped).toBe(false);
+    // Unclassed on such a brief, it sends the profile back as any unclassed doubt.
+    const unclassed = applyChallenge(
+      retained,
+      { verdict: "doubt", reason: "Profil surqualifié pour le poste", evidence: dga },
+      { maximumStated: true },
+    );
+    expect(unclassed.decision).toBe("borderline");
+    expect(unclassed.score).toBe(CHALLENGE_DOUBT_SCORE_CAP);
+    // A quote the profile does not hold is still no doubt, whatever the brief states.
+    const invented = applyChallenge(retained, above, {
+      maximumStated: true,
+      texts: ["Chef de projet Acme 2015-01 2024-06"],
+    });
+    expect(invented.challenge).toEqual(noDoubt);
+    expect("withheld" in invented).toBe(false);
+  });
+
+  it("reads a direction on a seniority doubt only, and keeps the run's doubts on the context and the métier", () => {
+    const context = applyChallenge(retained, {
+      verdict: "doubt",
+      kind: "context",
+      direction: "above",
+      reason: "Expérience récente en cimenterie, non en chimie",
+      evidence: "Construction d'une unité de broyage de ciment",
+    });
+    expect(context.decision).toBe("fit");
+    expect(context.challenge).toEqual({
+      verdict: "doubt",
+      kind: "context",
+      reason: "Expérience récente en cimenterie, non en chimie",
+      evidence: "Construction d'une unité de broyage de ciment",
+    });
+    const metier = applyChallenge(retained, {
+      verdict: "doubt",
+      kind: "metier",
+      reason: "Rôles commerciaux et gestion de produit dominent l'expérience récente",
+      evidence: "Product Manager ; Sales Manager EMEA",
+    });
+    expect(metier.decision).toBe("borderline");
+    expect(metier.score).toBe(CHALLENGE_DOUBT_SCORE_CAP);
+    expect(metier.challenge?.verdict).toBe("doubt");
   });
 });

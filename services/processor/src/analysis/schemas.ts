@@ -149,10 +149,11 @@ export const assessmentAnswer = z.object({
   summary: z.string(),
 });
 
-/** The second opinion on a retained profile. */
+/** The second opinion on a retained profile; the direction ("under" or "above") is read with a seniority doubt only. */
 export const challengeAnswer = z.object({
   verdict: z.string(),
   kind: z.string().nullable().optional(),
+  direction: z.string().nullable().optional(),
   reason: z.string().nullable().optional(),
   evidence: z.string().nullable().optional(),
 });
