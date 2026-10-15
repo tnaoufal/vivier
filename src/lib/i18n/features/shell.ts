@@ -1,8 +1,8 @@
 /**
- * Words of the app shell: the navigation and the person's menu, the
- * dashboard's greeting and its two buttons, the figure under a bar that
- * follows a reading, the organisation's plan and quotas, the landing
- * page.
+ * Words of the app shell: the rail's sections and the person's menu,
+ * the dashboard's greeting and its two buttons, the figure under a bar
+ * that follows a reading, the organisation's plan and quotas, the
+ * landing page.
  */
 const fr = {
   "shell.nav.label": "Sections de l'application",

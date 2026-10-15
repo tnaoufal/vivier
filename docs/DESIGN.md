@@ -61,42 +61,51 @@ hex value appears in `src/styles.css` and nowhere else.
 
 ### The scale
 
-| Grey       | Value     | Used for (light)                                                                    |
-| ---------- | --------- | ----------------------------------------------------------------------------------- |
-| paper      | `#FFFFFF` | the page, cards, menus, dialogs; the text on an ink fill                            |
-| 50         | `#FAFAFA` | the sidebar                                                                         |
-| 100        | `#F4F4F4` | `muted`, `secondary`, `accent`: hover tints, the segmented track, discs            |
-| 200        | `#E6E6E6` | `border`, `track`: 1px borders, the track under a bar or a ring                     |
-| 300        | `#D4D4D4` | `input`: field borders, the off switch                                              |
-| 400        | `#A3A3A3` | `neutral`: the quiet outline of a dismissed mark; the second line of a toast        |
-| 500        | `#6F6F6F` | `muted-foreground`, `negative`: secondary text, AA on paper, grey 50 and grey 100   |
-| 700        | `#3D3D3D` | `ink-soft`, `caution`                                                               |
-| ink (900)  | `#0A0A0A` | text, `primary`, `ring`, `positive`, `destructive`                                  |
+v4, the scale of the one-plane workspace: stronger than v3 (a reader sees
+the lines and the greys), every pair AA at least and proven by
+`src/lib/design/contrast.test.ts` on the real file.
+
+| Grey      | Light     | Dark      | Used for                                                                                   |
+| --------- | --------- | --------- | ------------------------------------------------------------------------------------------ |
+| paper     | `#FFFFFF` | `#0A0A0A` | the page, the panes, dialogs, menus; the text on an ink fill                               |
+| 50        | `#F7F7F7` | `#0F0F0F` | `thread`: the thread pane's background (dark: `card`, `popover` too)                       |
+| 100       | `#F5F5F5` | `#141414` | `hover`: a row under the pointer                                                           |
+| 150       | `#EFEFEF` | `#1C1C1C` | `muted`, `secondary`, `accent`: the selected row, the segmented track, a chip, a disc       |
+| 200       | `#DEDEDE` | `#2A2A2A` | `line`, `border`, `track`: pane edges, row dividers, the header's edge, under a bar's ink   |
+| 300       | `#C8C8C8` | `#3A3A3A` | `input`: field borders; the disc behind initials when there is no photo                    |
+| 400       | `#C8C8C8` | `#5A5A5A` | `neutral`: the quiet outline of a dismissed mark, tier C                                   |
+| 500       | `#5F5F5F` | `#A8A8A8` | `muted-foreground`, `negative`: meta lines, labels (6.4:1 on paper, 5.6:1 on the selected row) |
+| 700       | `#333333` | `#D4D4D4` | `ink-soft`, `caution`: a second-rank text that stays dark                                  |
+| ink (900) | `#0A0A0A` | `#F5F5F5` | text, `primary`, `ring`, `positive`, `destructive`, the active rail mark, the filled action |
 
 ### Colour
 
 | Token                                            | Light                                | Dark                                 | Role                                                            |
 | ------------------------------------------------ | ------------------------------------ | ------------------------------------ | --------------------------------------------------------------- |
-| `background`                                     | `#FFFFFF`                            | `#0A0A0A`                            | the page                                                        |
-| `foreground`, `ink`                              | `#0A0A0A`                            | `#FAFAFA`                            | text                                                            |
-| `ink-soft`                                       | `#3D3D3D`                            | `#D4D4D4`                            | the sidebar's links at rest                                     |
-| `card`                                           | `#FFFFFF`                            | `#0A0A0A`                            | sheets                                                          |
-| `popover`                                        | `#FFFFFF`                            | `#0F0F0F`                            | menus, popovers, dialogs, drawers                               |
-| `border`, `line`                                 | `#E6E6E6`                            | `#262626`                            | 1px borders, hairlines                                          |
-| `track`                                          | `#E6E6E6`                            | `#262626`                            | under the ink of a bar or a ring                                |
-| `input`                                          | `#D4D4D4`                            | `#333333`                            | field borders, the off switch                                   |
-| `muted`, `secondary`, `accent`                   | `#F4F4F4`                            | `#171717`                            | hover tints, the segmented track, discs, the secondary button   |
-| `muted-foreground`                               | `#6F6F6F`                            | `#A3A3A3`                            | secondary text, labels                                          |
-| `primary` / `primary-foreground`                 | `#0A0A0A` / `#FFFFFF`                | `#FAFAFA` / `#0A0A0A`                | the one main action, the active mark, a chip that is on         |
-| `ring`                                           | `#0A0A0A`                            | `#FAFAFA`                            | the focus ring                                                  |
+| `background`                                     | `#FFFFFF`                            | `#0A0A0A`                            | the page, the panes                                             |
+| `foreground`, `ink`                              | `#0A0A0A`                            | `#F5F5F5`                            | text, the filled action, the active rail mark                   |
+| `ink-soft`                                       | `#333333`                            | `#D4D4D4`                            | a second-rank text that stays dark                              |
+| `muted-foreground`                               | `#5F5F5F`                            | `#A8A8A8`                            | meta lines, labels (AA on the page, on `muted`, `hover`, `thread`) |
+| `line`, `border`                                 | `#DEDEDE`                            | `#2A2A2A`                            | pane edges, row dividers, the header's edge                     |
+| `track`                                          | `#DEDEDE`                            | `#2A2A2A`                            | under the ink of a bar or a ring                                |
+| `input`                                          | `#C8C8C8`                            | `#3A3A3A`                            | field borders                                                   |
+| `neutral`                                        | `#C8C8C8`                            | `#5A5A5A`                            | the quiet outline of a dismissed mark, tier C                   |
+| `muted`, `secondary`, `accent`                   | `#EFEFEF`                            | `#1C1C1C`                            | the selected row, the segmented track, a chip, a disc           |
+| `hover`                                          | `#F5F5F5`                            | `#141414`                            | a row under the pointer                                         |
+| `card`, `popover`                                | `#FFFFFF`                            | `#0F0F0F`                            | dialogs, drawers, menus (with a `border`)                       |
+| `thread`                                         | `#F7F7F7`                            | `#0F0F0F`                            | the thread pane's background                                    |
+| `primary` / `primary-foreground`                 | `#0A0A0A` / `#FFFFFF`                | `#F5F5F5` / `#0A0A0A`                | the one filled action                                           |
+| `ring`                                           | `#0A0A0A`                            | `#F5F5F5`                            | the focus ring                                                  |
 | `destructive` / `destructive-foreground`         | the ink / paper                      | paper / the ink                      | erase: the confirm dialog and the word carry the consequence    |
-| `positive` / `positive-foreground`               | `#0A0A0A` / `#FFFFFF`                | `#FAFAFA` / `#0A0A0A`                | met, retained, tier A                                           |
-| `caution` / `caution-foreground`                 | `#3D3D3D` / `#0A0A0A`                | `#D4D4D4` / `#FAFAFA`                | partial, to check: an outline tone (see below)                  |
-| `negative` / `negative-foreground`               | `#6F6F6F` / `#FFFFFF`                | `#A3A3A3` / `#0A0A0A`                | missing, dismissed                                              |
-| `neutral`                                        | `#A3A3A3`                            | `#6F6F6F`                            | the quiet outline of a `no` mark or a negative pill             |
-| `inverse` / `-foreground` / `-muted-foreground`  | `#0A0A0A` / `#FFFFFF` / `#A3A3A3`    | `#FAFAFA` / `#0A0A0A` / `#6F6F6F`    | a toast, a tooltip                                              |
+| `positive` / `positive-foreground`               | `#0A0A0A` / `#FFFFFF`                | `#F5F5F5` / `#0A0A0A`                | met, retained, tier A                                           |
+| `caution` / `caution-foreground`                 | `#333333` / `#0A0A0A`                | `#D4D4D4` / `#F5F5F5`                | partial, to check: an outline tone (see below)                  |
+| `negative` / `negative-foreground`               | `#5F5F5F` / `#FFFFFF`                | `#A8A8A8` / `#0A0A0A`                | missing, dismissed                                              |
+| `inverse` / `-foreground` / `-muted-foreground`  | `#0A0A0A` / `#FFFFFF` / `#A8A8A8`    | `#F5F5F5` / `#0A0A0A` / `#5F5F5F`    | a toast, a tooltip                                              |
 | `scrim`                                          | the ink at 40 percent                | black at 70 percent                  | under a dialog or a drawer (a veil darkens in both themes)      |
-| `sidebar`, `sidebar-border`, `sidebar-accent`    | `#FAFAFA`, `#E6E6E6`, `#E6E6E6`      | `#0F0F0F`, `#262626`, `#262626`      | the sidebar, its hairlines, its hover                           |
+
+The `sidebar-*` tokens left with the sidebar: the rail draws itself with
+`background`, `line`, `muted` and the ink. The `sheet` utility keeps its
+1px border and has no shadow any more.
 
 A tint is the token at an alpha (`bg-ink/10`: one step darker under the
 pointer; `bg-caution/10`: a grey wash under a sentence), so dark mode
@@ -177,22 +186,47 @@ the hook `usePrefersReducedMotion` lives in `app-shell/page-transition`).
 
 ## Layout
 
-- The shell: a 264px grey 50 sidebar (the brand in the ink, the
-  organisation switcher with the plan as a quiet line, four sections with 20px
-  icons and one ink mark, paper text over it, that slides to the current
-  section, the person at the bottom). On phones a 64px top bar and a
-  full-screen sheet menu, closed on navigation.
-- The content column: `max-w-6xl` (72rem) centred, 16px of horizontal
-  padding on phones, 32px from `sm`, 40px from `lg`, 32px of vertical
-  padding. Every page change fades the column in and rises it 6px
-  (`PageTransition`, keyed on the pathname).
+- **The plane.** Every signed-in page is a `Workspace`
+  (`src/components/app-shell/workspace.tsx`) inside the shell. From `lg`
+  (64rem) the shell is a grid of the 64px rail and the content column,
+  as tall as the viewport; the Workspace is a 56px header (the eyebrow
+  as a quiet link / the title · the meta · the one filled action, the
+  `ThreadToggle`, an `Ellipsis` menu) over panes side by side (`Pane`: a
+  list of 440px or 520px, the detail that fills the rest, the
+  `ThreadPane` of 320px on its own background), each scrolling inside
+  itself (`min-h-0 overflow-y-auto`); the rail and the header are fixed
+  by construction (no sticky) and the viewport never scrolls. From `xl`
+  (80rem) the thread pane is open by default and closed between `lg` and
+  `xl`; the header's `ThreadToggle` flips it and the choice is
+  remembered per device (`localStorage`, `vivier-thread`).
+- **Below `lg`.** No rail. A sticky 56px top bar: the menu button that
+  opens the rail's items in a `Sheet side="left"`, the brand from `sm`,
+  the title, the actions as icon buttons (`PHONE_ICON`, the label in a
+  `max-sm:sr-only` span); the meta is hidden below `sm`. The panes stack
+  full width and scroll with the page; a selected row opens the detail
+  in a `Sheet size="full"` with the way back; the thread in a `Sheet`
+  opened by the same toggle. No horizontal scroll at 360px.
+- **The rail** (`rail.tsx`): the brand square (32px of ink, the paper
+  "V", the way to /app), four 44px icon links with a `Tooltip` on the
+  right (the dashboard, the briefs, the pool, the team, or the space for
+  a person working alone), the active one ink-filled with paper icon and
+  `aria-current="page"`; at the bottom the theme switch (named for what
+  it switches to) and the person's disc, whose menu holds the spaces (a
+  check on the current one, the personal space first), a new team, the
+  settings, the language and the sign-out.
+- **Inside a pane**: no sheet. Panes are separated by 1px `line`s, rows
+  (`Row`: 56, 60 or 64px, the photo or the initials, `RowText`) by 1px
+  `line`s, blocks by a 24px gap under a `label-caps` title (`Section`,
+  `PaneTitle`). The selected row is `bg-muted` with
+  `aria-current="true"`, the row under the pointer `bg-hover`;
+  ArrowUp/ArrowDown move the selection (`useListKeys`). A `sheet`
+  survives only in dialogs, drawers, the sign-in and the public pages.
+  No `max-w-6xl` centring, no page padding, no page transition (a
+  detail pane may fade its content in, 120ms).
 - Nothing narrower than its content: every flex child that may hold a
   long string gets `min-w-0` and the string `truncate` (file names,
-  emails, URLs); tables scroll horizontally inside their card, never the
+  emails, URLs); a table scrolls horizontally inside its pane, never the
   page.
-- Two columns from `lg` only when the second one earns it (an activity
-  feed next to a card of steps, a profile next to its verdicts, the
-  team's thread next to a brief).
 
 ## Components
 

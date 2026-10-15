@@ -60,10 +60,8 @@ export function FilterChip({
       <span className="min-w-0 truncate">{children}</span>
       {typeof count === "number" ? (
         <span
-          className={cn(
-            "font-normal tabular-nums",
-            active ? "text-background" : "text-muted-foreground",
-          )}
+          // On an active chip the count inherits the paper text of the ink fill.
+          className={cn("font-normal tabular-nums", !active && "text-muted-foreground")}
         >
           {/* Keeps the label and the count two words in the accessible name ("Remote, 3"). */}
           <span className="sr-only">, </span>

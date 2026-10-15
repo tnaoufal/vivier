@@ -1,12 +1,13 @@
 /**
- * /app/briefs: the briefs of the organisation as rows, newest change
- * first, each row what tells a brief apart: the title, its status when
- * it is not simply open, what its newest analysis found ("12
- * correspondances", "Analyse inachevée", "Aucune analyse"), how many
- * candidates its shortlist retained, the last message of its thread
- * (who, when) and when it changed; the count in the
- * header, a filter (open, closed, all) only once a brief is closed, and
- * the way to a new one. A whole-pool analysis not through yet (profiles
+ * /app/briefs on the plane: one pane of rows, the briefs of the
+ * organisation, newest change first, each row what tells a brief
+ * apart: the title, its status when it is not simply open, what its
+ * newest analysis found ("12 correspondances", "Analyse inachevée",
+ * "Aucune analyse"), how many candidates its shortlist retained, the
+ * last message of its thread (who, when) and when it changed; the
+ * count in the header's meta, a filter (open, closed, all) beside it
+ * only once a brief is closed (in the pane's header on a phone, where
+ * the meta is hidden), and the one filled button, a new brief. A whole-pool analysis not through yet (profiles
  * its triage has not read, or kept profiles not read in full) says it
  * is unfinished rather than counting what it has not reached. The rows
  * rise in once; the analyses, the shortlists' counts and the threads
@@ -16,16 +17,18 @@
  * the triage's two counts of that search alone, never by reading every
  * analysis again.
  */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Briefcase, Plus, RefreshCw, TriangleAlert, X } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
-import { PageHeader } from "@/components/app-shell/page-header";
+import { Row, RowText } from "@/components/app-shell/row";
+import { PHONE_ICON, Pane, Workspace } from "@/components/app-shell/workspace";
 import { BriefStatusPill } from "@/components/briefs/brief-status-pill";
 import { Button } from "@/components/ui/button";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { Segmented } from "@/components/ui/tabs";
+import { briefPath } from "@/lib/activity/links";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import {
   analysisOfRow,
@@ -188,11 +191,34 @@ function BriefsPage() {
           ? t("briefs.count.one")
           : t("briefs.count.many", { count: formatCount(locale, rows.length) });
 
-  const newButton = canEdit ? (
-    <Button type="button" icon={<Plus />} onClick={() => void navigate({ to: "/app/briefs/new" })}>
-      {t("briefs.new")}
-    </Button>
-  ) : null;
+  /** The new brief: in the header it shrinks to its icon on a phone, in the empty state it keeps its word. */
+  const newButton = (inHeader: boolean) =>
+    canEdit ? (
+      <Button
+        type="button"
+        icon={<Plus />}
+        onClick={() => void navigate({ to: "/app/briefs/new" })}
+        aria-label={inHeader ? t("briefs.new") : undefined}
+        className={inHeader ? PHONE_ICON : undefined}
+      >
+        <span className={inHeader ? "max-sm:sr-only" : undefined}>{t("briefs.new")}</span>
+      </Button>
+    ) : null;
+
+  /** The filter, once a brief is closed: in the header's meta from `sm`, in the pane's header below. */
+  const filterControl = (
+    <Segmented
+      size="sm"
+      value={filter}
+      onChange={setFilter}
+      aria-label={t("briefs.list.filter")}
+      options={[
+        { value: "open", label: t("briefs.filter.open") },
+        { value: "closed", label: t("briefs.filter.closed") },
+        { value: "all", label: t("common.all") },
+      ]}
+    />
+  );
 
   /** What the newest analysis found: its matches once read through, "unfinished" before, how many it ranked without a model; a placeholder while the analyses load. */
   function analysisText(analysis: LatestAnalysis | undefined): ReactNode {
@@ -226,124 +252,122 @@ function BriefsPage() {
   const loading = list.loading && !list.data;
 
   return (
-    <div>
-      <PageHeader
-        title={t("briefs.title")}
-        meta={
-          countText ? (
-            <span className="text-meta font-medium text-muted-foreground tabular-nums">
-              {countText}
-            </span>
-          ) : undefined
-        }
-        // The empty state below carries the one filled button when there is no brief yet.
-        actions={rows.length > 0 || loading ? newButton : null}
-      />
-
-      {filterable ? (
-        <div className="mb-6">
-          <Segmented
-            value={filter}
-            onChange={setFilter}
-            aria-label={t("briefs.list.filter")}
-            options={[
-              { value: "open", label: t("briefs.filter.open") },
-              { value: "closed", label: t("briefs.filter.closed") },
-              { value: "all", label: t("common.all") },
-            ]}
-          />
-        </div>
-      ) : null}
-
-      {list.error ? (
-        <EmptyState
-          icon={<TriangleAlert />}
-          title={t("briefs.listError")}
-          action={
-            <Button
-              type="button"
-              variant="outline"
-              icon={<RefreshCw />}
-              onClick={() => void refresh()}
-            >
-              {t("common.retry")}
-            </Button>
-          }
-        />
-      ) : loading ? (
-        <div className="sheet overflow-hidden" aria-busy="true">
-          <SkeletonRows rows={SKELETON_ROWS} avatar={false} className="[&>li]:py-3" />
-        </div>
-      ) : shown.length === 0 ? (
-        filterable ? (
+    <Workspace
+      title={t("briefs.title")}
+      meta={
+        <>
+          {countText ? <span className="font-medium tabular-nums">{countText}</span> : null}
+          {filterable ? filterControl : null}
+        </>
+      }
+      // The empty state below carries the one filled button when there is no brief yet.
+      actions={rows.length > 0 || loading ? newButton(true) : null}
+    >
+      <Pane
+        label={t("briefs.title")}
+        width="fill"
+        header={filterable ? <div className="px-4 py-2 sm:hidden">{filterControl}</div> : undefined}
+      >
+        {list.error ? (
           <EmptyState
-            icon={<Briefcase />}
-            title={t("briefs.empty.filtered.title")}
+            quiet
+            icon={<TriangleAlert />}
+            title={t("briefs.listError")}
             action={
-              <Button type="button" variant="outline" icon={<X />} onClick={() => setFilter("all")}>
-                {t("briefs.filters.clear")}
+              <Button
+                type="button"
+                variant="outline"
+                icon={<RefreshCw />}
+                onClick={() => void refresh()}
+              >
+                {t("common.retry")}
               </Button>
             }
           />
-        ) : (
-          <EmptyState icon={<Briefcase />} title={t("briefs.empty.title")} action={newButton} />
-        )
-      ) : (
-        <ul className="sheet stagger divide-y divide-border overflow-hidden">
-          {shown.map((row) => {
-            const retainedCount = retained.data?.get(row.id) ?? 0;
-            const thread = threads.data?.get(row.id);
-            return (
-              <li key={row.id} className="rise-in min-w-0">
-                <Link
-                  to="/app/briefs/$briefId"
-                  params={{ briefId: row.id }}
-                  className="sheet-row py-3"
+        ) : loading ? (
+          <SkeletonRows rows={SKELETON_ROWS} avatar={false} />
+        ) : shown.length === 0 ? (
+          filterable ? (
+            <EmptyState
+              quiet
+              icon={<Briefcase />}
+              title={t("briefs.empty.filtered.title")}
+              action={
+                <Button
+                  type="button"
+                  variant="outline"
+                  icon={<X />}
+                  onClick={() => setFilter("all")}
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <h2 className="truncate text-sm font-medium text-ink">{row.title}</h2>
-                      {/* Open is the rule: only another state sets a row apart. */}
-                      {row.status !== "open" ? (
-                        <BriefStatusPill status={row.status} size="sm" />
-                      ) : null}
-                    </div>
-                    <p className="truncate text-sm text-muted-foreground tabular-nums">
-                      {analysisText(shownAnalyses?.get(row.id))}
-                      {retainedCount > 0 ? (
+                  {t("briefs.filters.clear")}
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              quiet
+              icon={<Briefcase />}
+              title={t("briefs.empty.title")}
+              action={newButton(false)}
+            />
+          )
+        ) : (
+          <ol className="stagger">
+            {shown.map((row) => {
+              const retainedCount = retained.data?.get(row.id) ?? 0;
+              const thread = threads.data?.get(row.id);
+              return (
+                <Fragment key={row.id}>
+                  <Row as="link" to={briefPath(row.id)} height="lg" className="rise-in">
+                    <RowText
+                      title={
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="truncate">{row.title}</span>
+                          {/* Open is the rule: only another state sets a row apart. */}
+                          {row.status !== "open" ? (
+                            <BriefStatusPill status={row.status} size="sm" />
+                          ) : null}
+                        </span>
+                      }
+                      line={
                         <>
-                          <span aria-hidden="true"> · </span>
-                          {retainedCount === 1
-                            ? t("briefs.list.retained.one")
-                            : t("briefs.list.retained.many", {
-                                count: formatCount(locale, retainedCount),
-                              })}
+                          {analysisText(shownAnalyses?.get(row.id))}
+                          {retainedCount > 0 ? (
+                            <>
+                              <span aria-hidden="true"> · </span>
+                              {retainedCount === 1
+                                ? t("briefs.list.retained.one")
+                                : t("briefs.list.retained.many", {
+                                    count: formatCount(locale, retainedCount),
+                                  })}
+                            </>
+                          ) : null}
+                          {thread ? (
+                            <>
+                              <span aria-hidden="true"> · </span>
+                              {nameOf(thread.lastAuthorId)}
+                              <span aria-hidden="true"> · </span>
+                              <time dateTime={thread.lastAt}>
+                                {formatRelative(locale, thread.lastAt)}
+                              </time>
+                            </>
+                          ) : null}
                         </>
-                      ) : null}
-                      {thread ? (
-                        <>
-                          <span aria-hidden="true"> · </span>
-                          {nameOf(thread.lastAuthorId)}
-                          <span aria-hidden="true"> · </span>
-                          <time dateTime={thread.lastAt}>
-                            {formatRelative(locale, thread.lastAt)}
-                          </time>
-                        </>
-                      ) : null}
-                    </p>
-                  </div>
-                  <time
-                    dateTime={row.updated_at}
-                    className="hidden shrink-0 text-meta text-muted-foreground tabular-nums sm:block"
-                  >
-                    {formatDate(locale, row.updated_at)}
-                  </time>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
+                      }
+                    />
+                    <time
+                      dateTime={row.updated_at}
+                      className="hidden shrink-0 text-meta text-muted-foreground tabular-nums sm:block"
+                    >
+                      {formatDate(locale, row.updated_at)}
+                    </time>
+                  </Row>
+                </Fragment>
+              );
+            })}
+          </ol>
+        )}
+      </Pane>
+    </Workspace>
   );
 }
