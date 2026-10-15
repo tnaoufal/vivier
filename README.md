@@ -17,7 +17,7 @@ kept.
   `fr`, tested).
 - **Fonts**: Geist, Geist Mono and Poppins 600, self-hosted from
   `public/fonts/` under the SIL Open Font License. No third-party stylesheet.
-- **Design**: `docs/DESIGN.md` is the charter every screen follows (v2:
+- **Design**: `docs/DESIGN.md` is the charter every screen follows (v3, Blackweaver monochrome:
   the principles, the tokens of `src/styles.css`, the primitives of
   `src/components/ui` and `src/components/app-shell`, what moves and why,
   the icons, the content rules, the page templates).

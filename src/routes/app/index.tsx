@@ -1,63 +1,58 @@
 /**
- * The dashboard: the date and a greeting, four counts read under RLS
- * (candidates, CVs being read with their progress, open briefs, retained
- * this month), then two columns from lg: the open briefs with where
- * each stands (the matches of the last analysis, what the model
- * proposes, what the team retained) and the recent activity as a
- * timeline. Figures, no sentences. A "to begin" card shows only while
- * the pool is empty and then holds the page's one filled button (import);
- * otherwise that button is a new brief. Everything refreshes when the
- * activity log, the documents or the searches change.
+ * The dashboard: a greeting and the date, then what asks for the person.
+ * The open briefs as rows (the newest analysis, what the team retained,
+ * the team's last word), the most recently active first; the messages
+ * that mention the person; one line for the pool with its import. One
+ * filled button: a new brief (the import, while the pool is empty).
+ * Figures, no sentences. Everything re-reads when the briefs, the
+ * searches, the shortlists, the threads or the documents change.
  */
-import { useEffect, useMemo, type ReactNode } from "react";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { useEffect, type MouseEvent } from "react";
+import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import {
-  Activity,
   Briefcase,
-  Check,
-  FileText,
-  ListChecks,
+  MessageSquare,
   Plus,
   RefreshCw,
-  Share2,
-  Sparkles,
   TriangleAlert,
   Upload,
   Users,
 } from "lucide-react";
 
-import { ActivityList } from "@/components/activity/activity-list";
 import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
-import { Pill } from "@/components/app-shell/pill";
+import { ProgressBar } from "@/components/app-shell/progress-bar";
 import { Section } from "@/components/app-shell/section";
-import { StatGrid, StatTile } from "@/components/app-shell/stat-tile";
+import { MyMentions } from "@/components/thread/my-mentions";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { memberNames, readActivities, readActivityTargets } from "@/lib/activity/activity";
-import type { ActivityNames } from "@/lib/activity/describe";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import {
   BRIEFS_PATH,
+  CANDIDATES_IMPORT_HREF,
   CANDIDATES_PATH,
   NEW_BRIEF_PATH,
-  SHORTLISTS_PATH,
   briefPath,
 } from "@/lib/activity/links";
-import { readBriefsOverview, type BriefOverview } from "@/lib/activity/overview";
-import { readDashboardStats } from "@/lib/activity/stats";
+import {
+  readBriefsOverview,
+  readPoolGlance,
+  type AnalysisGlance,
+  type BriefOverview,
+  type PoolGlance,
+} from "@/lib/activity/overview";
 import { useAuth } from "@/lib/auth/auth-context";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import { formatCount } from "@/lib/candidates/format";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
-import { formatRelative, useI18n, type Locale } from "@/lib/i18n";
+import { formatRelative, useI18n, type Locale, type TranslationKey } from "@/lib/i18n";
 import { memberName, useCurrentOrg, useOrg } from "@/lib/org/org-context";
 
 export const Route = createFileRoute("/app/")({
   component: DashboardPage,
 });
 
-const RECENT = 8;
+const MENTIONS = 8;
 
 /** "mardi 14 octobre 2026", with a capital, in the person's language. */
 function longDate(locale: Locale, now: Date = new Date()): string {
@@ -70,134 +65,161 @@ function longDate(locale: Locale, now: Date = new Date()): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/**
- * The three steps that fill a talent pool, shown while it is empty: a
- * number and the action itself, in order. The first is the page's one
- * filled button (the header carries none meanwhile).
- */
-function StartCard() {
-  const { t } = useI18n();
-  const steps: { key: string; action: ReactNode }[] = [
-    {
-      key: "upload",
-      action: (
-        <Button asChild icon={<Upload />}>
-          <Link to={CANDIDATES_PATH}>{t("shell.dashboard.uploadCta")}</Link>
-        </Button>
-      ),
-    },
-    {
-      key: "brief",
-      action: (
-        <Button asChild variant="outline" icon={<Briefcase />}>
-          <Link to={NEW_BRIEF_PATH}>{t("shell.dashboard.briefCta")}</Link>
-        </Button>
-      ),
-    },
-    {
-      key: "share",
-      action: (
-        <Button asChild variant="outline" icon={<Share2 />}>
-          <Link to={SHORTLISTS_PATH}>{t("shell.dashboard.step.share.cta")}</Link>
-        </Button>
-      ),
-    },
-  ];
-  return (
-    <section className="sheet fade-in p-6 sm:p-8" aria-labelledby="dashboard-start-title">
-      <h2 id="dashboard-start-title" className="text-base font-semibold text-ink">
-        {t("shell.dashboard.start.title")}
-      </h2>
-      <ol className="stagger mt-6 flex flex-wrap gap-x-8 gap-y-4">
-        {steps.map((step, index) => (
-          <li key={step.key} className="rise-in flex items-center gap-3">
-            <span
-              aria-hidden="true"
-              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 font-display text-sm text-primary tabular-nums"
-            >
-              {index + 1}
-            </span>
-            {step.action}
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
+/** The words of an analysis glance: a figure first, or the state in two words. */
+function analysisText(
+  glance: AnalysisGlance,
+  locale: Locale,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string,
+): string {
+  if (glance.kind === "none") return t("dashboard.briefs.noAnalysis");
+  if (glance.kind === "unfinished") return t("dashboard.briefs.unfinished");
+  const count = formatCount(locale, glance.count);
+  if (glance.kind === "ranked") {
+    return glance.count === 1
+      ? t("dashboard.briefs.ranked.one")
+      : t("dashboard.briefs.ranked.many", { count });
+  }
+  if (glance.count === 0) return t("dashboard.briefs.matches.none");
+  if (glance.count === 1) return t("dashboard.briefs.matches.one");
+  return t("dashboard.briefs.matches.many", { count });
 }
 
 /**
- * One open brief: its title, the last analysis (how many profiles match,
- * when) and the shortlist's counts (what the model proposes, marked as
- * the model's, and what the team retained). Every brief here is open, so
- * no status pill repeats it.
+ * One open brief: its title, where the analysis stands, what the team
+ * retained (only when someone was), and the thread's last message with
+ * who wrote it and when. The row is the link to the brief.
  */
-function BriefCard({ item }: { item: BriefOverview }) {
+function BriefRow({ item }: { item: BriefOverview }) {
   const { t, locale } = useI18n();
-  const { brief, lastSearch, shortlist } = item;
-  const matches = lastSearch
-    ? lastSearch.matches === 0
-      ? t("dashboard.briefs.matches.none")
-      : lastSearch.matches === 1
-        ? t("dashboard.briefs.matches.one")
-        : t("dashboard.briefs.matches.many", { count: formatCount(locale, lastSearch.matches) })
+  const { members } = useOrg();
+  const { brief, analysis, retained, thread } = item;
+  const author = thread
+    ? memberName(members.get(thread.lastAuthorId), t("thread.formerMember"))
     : null;
-  const present =
-    shortlist === null || shortlist.present === 0
-      ? t("dashboard.briefs.present.none")
-      : shortlist.present === 1
-        ? t("dashboard.briefs.present.one")
-        : t("dashboard.briefs.present.many", { count: shortlist.present });
-  const retained =
-    shortlist === null || shortlist.retained === 0
-      ? t("dashboard.briefs.retained.none")
-      : shortlist.retained === 1
-        ? t("dashboard.briefs.retained.one")
-        : t("dashboard.briefs.retained.many", { count: shortlist.retained });
   return (
-    <Link to={briefPath(brief.id)} className="sheet sheet-link flex min-w-0 flex-col gap-3 p-6">
-      <h3 className="line-clamp-2 min-w-0 text-base font-semibold leading-6 text-ink break-words">
-        {brief.title}
-      </h3>
-      {lastSearch && matches ? (
-        <p className="text-meta text-muted-foreground">
-          <span className="font-medium text-ink tabular-nums">{matches}</span>
-          <span aria-hidden="true"> · </span>
-          <time dateTime={lastSearch.at}>{formatRelative(locale, lastSearch.at)}</time>
+    <Link to={briefPath(brief.id)} className="sheet-row">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-ink">{brief.title}</p>
+        <p className="text-meta text-muted-foreground tabular-nums">
+          {analysisText(analysis, locale, t)}
+          {retained > 0 ? (
+            <>
+              <span aria-hidden="true"> · </span>
+              {retained === 1
+                ? t("dashboard.briefs.retained.one")
+                : t("dashboard.briefs.retained.many", { count: formatCount(locale, retained) })}
+            </>
+          ) : null}
         </p>
-      ) : (
-        <p className="text-meta text-muted-foreground">{t("dashboard.briefs.noAnalysis")}</p>
-      )}
-      {shortlist ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-meta text-muted-foreground">
-            {t("dashboard.briefs.shortlist")}
-          </span>
-          {/* The proposal is the model's: the pill's own words say so, not a hover title. */}
-          <Pill tone={shortlist.present > 0 ? "primary" : "neutral"} icon={<Sparkles />}>
-            {present}
-          </Pill>
-          <Pill tone={shortlist.retained > 0 ? "positive" : "neutral"} icon={<Check />}>
-            {retained}
-          </Pill>
-        </div>
-      ) : (
-        <p className="text-meta text-muted-foreground">{t("dashboard.briefs.noShortlist")}</p>
-      )}
+        {thread && author ? (
+          <p className="mt-1 flex items-center gap-1.5 text-meta text-muted-foreground">
+            <MessageSquare className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 truncate">
+              <span className="font-medium text-ink">{author}</span>
+              <span aria-hidden="true"> · </span>
+              {thread.lastExcerpt}
+            </span>
+            <time dateTime={thread.lastAt} className="shrink-0 tabular-nums">
+              {formatRelative(locale, thread.lastAt)}
+            </time>
+          </p>
+        ) : null}
+      </div>
     </Link>
   );
 }
 
-function BriefCardsSkeleton() {
+/**
+ * The pool in one line: the profiles, the CVs being read with their
+ * progress, and the import. The import is the page's filled button only
+ * while the pool is empty (there is nothing else to do first); the link
+ * opens the pool's page on its import dialog, a free path pushed through
+ * the history so the page parses its search itself.
+ */
+function PoolLine({
+  pool,
+  poolEmpty,
+  canImport,
+}: {
+  pool: PoolGlance | null;
+  poolEmpty: boolean;
+  canImport: boolean;
+}) {
+  const { t, locale } = useI18n();
+  const router = useRouter();
+  const candidates = pool?.candidates ?? null;
+  const processing = pool?.processing ?? null;
+  const total = pool?.processingTotal ?? null;
+  const profiles =
+    candidates === null
+      ? null
+      : candidates === 0
+        ? t("dashboard.pool.profiles.none")
+        : candidates === 1
+          ? t("dashboard.pool.profiles.one")
+          : t("dashboard.pool.profiles.many", { count: formatCount(locale, candidates) });
+
+  function open(event: MouseEvent<HTMLAnchorElement>) {
+    // A modified click keeps the browser's own behaviour (a new tab); a plain one stays in the app.
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    router.history.push(CANDIDATES_IMPORT_HREF);
+  }
+
   return (
-    <ul className="space-y-4" aria-busy="true" aria-hidden="true">
-      {[0, 1, 2].map((index) => (
-        <li key={index} className="sheet space-y-3 p-6">
-          <Skeleton className="h-5 w-2/3" />
-          <Skeleton className="h-3.5 w-1/2" />
-          <Skeleton className="h-6 w-40 rounded-full" />
-        </li>
-      ))}
-    </ul>
+    <section
+      className="sheet flex flex-wrap items-center gap-x-4 gap-y-3 p-4 sm:px-6"
+      aria-label={t("nav.candidates")}
+    >
+      <span
+        aria-hidden="true"
+        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-ink [&_svg]:size-4"
+      >
+        <Users />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-ink tabular-nums">
+          {profiles === null ? (
+            <span title={t("dashboard.statsUnread")}>
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">{t("dashboard.statsUnread")}</span>
+            </span>
+          ) : (
+            <Link
+              to={CANDIDATES_PATH}
+              className="rounded-sm font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {profiles}
+            </Link>
+          )}
+          {processing ? (
+            <>
+              <span aria-hidden="true"> · </span>
+              {processing === 1
+                ? t("dashboard.pool.processing.one")
+                : t("dashboard.pool.processing.many", { count: formatCount(locale, processing) })}
+            </>
+          ) : null}
+        </p>
+        {processing && total ? (
+          <ProgressBar
+            className="mt-2 max-w-sm"
+            value={Math.max(0, total - processing)}
+            max={total}
+            active
+            label={t("shell.stat.progress", { done: Math.max(0, total - processing), total })}
+          />
+        ) : null}
+      </div>
+      {canImport ? (
+        <Button asChild variant={poolEmpty ? "primary" : "outline"} icon={<Upload />}>
+          <a href={CANDIDATES_IMPORT_HREF} onClick={open}>
+            {t("shell.dashboard.uploadCta")}
+          </a>
+        </Button>
+      ) : null}
+    </section>
   );
 }
 
@@ -211,123 +233,63 @@ function DashboardPage() {
     user?.email?.split("@")[0] ?? "",
   );
 
-  const { data, loading, error, refresh } = useQuery(`dashboard:${org.id}`, async () => {
+  const { data, loading, refresh } = useQuery(`dashboard:${org.id}`, async () => {
     const supabase = await requireSupabase();
-    const [stats, rows, briefs] = await Promise.all([
-      readDashboardStats(supabase, org.id),
-      readActivities(supabase, org.id, { family: null, from: 0, to: RECENT - 1 }),
-      // The briefs column is secondary: a failed read leaves it null and the rest of the page stands.
+    const [pool, briefs] = await Promise.all([
+      readPoolGlance(supabase, org.id),
+      // The briefs are the page's heart, but a failed read leaves them null and the rest stands.
       readBriefsOverview(supabase, org.id).catch((caught: unknown) => {
         console.error(caught);
         return null;
       }),
     ]);
-    const targets = await readActivityTargets(supabase, rows);
-    return { stats, rows, targets, briefs };
+    return { pool, briefs };
   });
 
   useEffect(() => {
     const soon = debounce(() => void refresh());
     const filter = `org_id=eq.${org.id}`;
-    const stops = [
-      subscribeToTable("activities", filter, soon),
-      subscribeToTable("documents", filter, soon),
-      subscribeToTable("searches", filter, soon),
-    ];
+    const stops = ["briefs", "searches", "shortlist_items", "comments", "documents"].map((table) =>
+      subscribeToTable(table, filter, soon),
+    );
     return () => {
       for (const stop of stops) stop();
     };
   }, [org.id, refresh]);
 
-  const names = useMemo<ActivityNames>(
-    () => ({
-      members: memberNames(members),
-      briefs: data?.targets.briefs ?? new Map<string, string>(),
-      candidates: data?.targets.candidates ?? new Map<string, string>(),
-    }),
-    [data, members],
-  );
-
-  const stats = data?.stats ?? null;
-  const processing = stats?.processing ?? null;
-  const poolEmpty = stats !== null && stats.candidates === 0 && (processing ?? 0) === 0;
+  const pool = data?.pool ?? null;
+  const poolEmpty = pool !== null && pool.candidates === 0 && (pool.processing ?? 0) === 0;
   const briefs = data?.briefs ?? null;
+  const member = can("member");
+  // One filled button per view: the import while the pool is empty, the new brief in the briefs'
+  // empty state when there is none, the header's otherwise.
+  const briefsEmpty = briefs !== null && briefs.length === 0;
+  const newBrief = (variant: "primary" | "outline") => (
+    <Button asChild variant={variant} icon={<Plus />}>
+      <Link to={NEW_BRIEF_PATH}>{t("shell.dashboard.briefCta")}</Link>
+    </Button>
+  );
 
   return (
     <>
       <PageHeader
-        eyebrow={<time dateTime={new Date().toISOString().slice(0, 10)}>{longDate(locale)}</time>}
         title={t("shell.dashboard.title", { name })}
+        meta={
+          <time
+            dateTime={new Date().toISOString().slice(0, 10)}
+            className="text-meta text-muted-foreground"
+          >
+            {longDate(locale)}
+          </time>
+        }
         actions={
-          // While the pool is empty the "to begin" card holds the one filled button.
-          can("member") && !poolEmpty ? (
-            <Button asChild icon={<Plus />}>
-              <Link to={NEW_BRIEF_PATH}>{t("shell.dashboard.briefCta")}</Link>
-            </Button>
-          ) : null
+          member && !(briefsEmpty && !poolEmpty)
+            ? newBrief(poolEmpty ? "outline" : "primary")
+            : null
         }
       />
 
-      {error ? (
-        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2" role="alert">
-          <p className="text-sm text-negative">{t("dashboard.statsUnread")}</p>
-          <Button
-            type="button"
-            variant="outline"
-            icon={<RefreshCw />}
-            onClick={() => void refresh()}
-          >
-            {t("common.retry")}
-          </Button>
-        </div>
-      ) : null}
-
-      <StatGrid>
-        <StatTile
-          label={t("shell.dashboard.candidates")}
-          value={stats?.candidates ?? null}
-          icon={<Users />}
-          to={CANDIDATES_PATH}
-          loading={loading}
-        />
-        <StatTile
-          label={t("shell.dashboard.processing")}
-          value={processing}
-          icon={<FileText />}
-          to={CANDIDATES_PATH}
-          loading={loading}
-          progress={
-            stats && processing !== null && stats.processingTotal !== null && processing > 0
-              ? {
-                  done: Math.max(0, stats.processingTotal - processing),
-                  total: stats.processingTotal,
-                }
-              : undefined
-          }
-        />
-        <StatTile
-          label={t("shell.dashboard.openBriefs")}
-          value={stats?.openBriefs ?? null}
-          icon={<Briefcase />}
-          to={BRIEFS_PATH}
-          loading={loading}
-        />
-        <StatTile
-          label={t("shell.dashboard.retained")}
-          value={stats?.retainedThisMonth ?? null}
-          icon={<ListChecks />}
-          to={SHORTLISTS_PATH}
-          loading={loading}
-        />
-      </StatGrid>
-
-      {poolEmpty ? (
-        <div className="mt-8">
-          <StartCard />
-        </div>
-      ) : null}
-
-      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
         <Section
           title={t("dashboard.briefs.title")}
           count={briefs ? briefs.length : undefined}
@@ -338,7 +300,9 @@ function DashboardPage() {
           }
         >
           {loading && !data ? (
-            <BriefCardsSkeleton />
+            <div className="sheet overflow-hidden">
+              <SkeletonRows rows={3} avatar={false} />
+            </div>
           ) : briefs === null ? (
             <EmptyState
               compact
@@ -360,62 +324,23 @@ function DashboardPage() {
               compact
               icon={<Briefcase />}
               title={t("dashboard.briefs.empty")}
-              action={
-                // While the pool is empty the "to begin" card already holds this step.
-                can("member") && !poolEmpty ? (
-                  <Button asChild variant="outline" icon={<Plus />}>
-                    <Link to={NEW_BRIEF_PATH}>{t("shell.dashboard.briefCta")}</Link>
-                  </Button>
-                ) : undefined
-              }
+              action={member && !poolEmpty ? newBrief("primary") : undefined}
             />
           ) : (
-            <ul className="stagger space-y-4">
+            <ul className="sheet stagger divide-y divide-border overflow-hidden">
               {briefs.map((item) => (
-                <li key={item.brief.id} className="rise-in min-w-0">
-                  <BriefCard item={item} />
+                <li key={item.brief.id} className="rise-in">
+                  <BriefRow item={item} />
                 </li>
               ))}
             </ul>
           )}
         </Section>
 
-        <Section
-          title={t("shell.dashboard.recentActivity")}
-          action={
-            <Button asChild variant="ghost">
-              <Link to="/app/activity">{t("dashboard.viewAll")}</Link>
-            </Button>
-          }
-        >
-          <ActivityList
-            rows={data?.rows ?? []}
-            names={names}
-            loading={loading}
-            emptyState={
-              // A failed first read is never shown as "no activity".
-              error && !data ? (
-                <EmptyState
-                  compact
-                  icon={<TriangleAlert />}
-                  title={t("activity.loadError")}
-                  action={
-                    <Button
-                      type="button"
-                      variant="outline"
-                      icon={<RefreshCw />}
-                      onClick={() => void refresh()}
-                    >
-                      {t("common.retry")}
-                    </Button>
-                  }
-                />
-              ) : (
-                <EmptyState compact icon={<Activity />} title={t("activity.empty")} />
-              )
-            }
-          />
-        </Section>
+        <div className="space-y-8">
+          <MyMentions limit={MENTIONS} />
+          <PoolLine pool={pool} poolEmpty={poolEmpty} canImport={member} />
+        </div>
       </div>
     </>
   );

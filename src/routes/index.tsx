@@ -1,9 +1,8 @@
 /**
  * The landing page: the brand, one promise and one button in the hero,
- * three feature cards (a title, one short line), the three steps by
- * their titles, and a footer with the one honesty line and the GDPR
- * facts. Each block rises in once; signed-in visitors go straight to
- * the app.
+ * three feature lines (a title, one short line), and a footer with the
+ * one honesty line and the GDPR facts. Each block rises in once;
+ * signed-in visitors go straight to the app.
  */
 import { useEffect, type ReactNode } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -25,14 +24,8 @@ const FEATURES: { key: "read" | "team" | "send"; icon: ReactNode }[] = [
   { key: "send", icon: <Mail /> },
 ];
 
-const STEPS: readonly ("step1" | "step2" | "step3")[] = ["step1", "step2", "step3"];
-
 function featureKey(key: "read" | "team" | "send", part: "title" | "text"): TranslationKey {
   return `landing.feature.${key}.${part}`;
-}
-
-function stepKey(step: "step1" | "step2" | "step3"): TranslationKey {
-  return `landing.how.${step}.title`;
 }
 
 function LandingPage() {
@@ -59,56 +52,36 @@ function LandingPage() {
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 sm:px-8 lg:px-10">
         <section className="stagger py-16 text-center sm:py-24">
-          <p className="rise-in inline-flex items-center rounded-full border border-primary/25 bg-primary/8 px-3 py-1 text-meta font-medium text-primary">
-            {t("landing.eyebrow")}
-          </p>
-          <h1 className="rise-in mx-auto mt-6 max-w-3xl font-display text-4xl leading-10 text-ink break-words sm:text-6xl sm:leading-16">
-            <span className="brand-text">{t("landing.hero")}</span>
+          <h1 className="rise-in mx-auto max-w-3xl font-display text-4xl leading-10 text-ink break-words sm:text-6xl sm:leading-16">
+            {t("landing.hero")}
           </h1>
-          <p className="rise-in mx-auto mt-6 max-w-2xl text-lg leading-7 text-muted-foreground">{t("landing.lead")}</p>
-          <div className="rise-in mt-10 flex flex-wrap justify-center gap-3">
+          <div className="rise-in mt-10 flex justify-center">
             <Button asChild size="lg" icon={<ArrowRight />}>
-              <Link to="/sign-in">{t("landing.cta")}</Link>
+              <Link to="/sign-in">{t("auth.signIn")}</Link>
             </Button>
           </div>
         </section>
 
-        <section className="stagger grid gap-6 md:grid-cols-3">
+        <ul className="stagger mx-auto max-w-3xl divide-y divide-border border-y border-border">
           {FEATURES.map((feature) => (
-            <article key={feature.key} className="sheet rise-in p-6">
-              <div className="mb-5 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary [&_svg]:size-5">
-                <span aria-hidden="true" className="inline-flex">
-                  {feature.icon}
-                </span>
+            <li key={feature.key} className="rise-in flex items-start gap-4 py-5">
+              <span
+                aria-hidden="true"
+                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-ink [&_svg]:size-5"
+              >
+                {feature.icon}
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold leading-6 text-ink">
+                  {t(featureKey(feature.key, "title"))}
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t(featureKey(feature.key, "text"))}
+                </p>
               </div>
-              <h2 className="text-base font-semibold leading-6 text-ink">{t(featureKey(feature.key, "title"))}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">{t(featureKey(feature.key, "text"))}</p>
-            </article>
+            </li>
           ))}
-        </section>
-
-        <section className="mt-24 sm:mt-32" aria-labelledby="landing-how-title">
-          <h2 id="landing-how-title" className="text-center font-display text-2xl text-ink sm:text-3xl">
-            {t("landing.how.title")}
-          </h2>
-          <ol className="stagger relative mt-12 grid gap-10 md:grid-cols-3 md:gap-8">
-            {/* The line the three steps sit on, from md. */}
-            <span aria-hidden="true" className="absolute left-[calc(16.6667%+1.25rem)] right-[calc(16.6667%+1.25rem)] top-5 hidden h-px bg-border md:block" />
-            {STEPS.map((step, index) => (
-              <li key={step} className="rise-in relative flex flex-col items-start gap-4 md:items-center md:text-center">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-background font-display text-base text-primary tabular-nums shadow-hairline">
-                  {index + 1}
-                </span>
-                <h3 className="min-w-0 text-base font-semibold leading-6 text-ink">{t(stepKey(step))}</h3>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-12 flex justify-center">
-            <Button asChild variant="outline" size="lg">
-              <Link to="/sign-in">{t("landing.cta")}</Link>
-            </Button>
-          </div>
-        </section>
+        </ul>
       </main>
 
       <footer className="border-t border-border">
@@ -118,13 +91,22 @@ function LandingPage() {
             <p>{t("landing.footer.gdpr")}</p>
           </div>
           <nav className="flex flex-wrap gap-x-5 gap-y-1" aria-label={t("landing.footer.links")}>
-            <Link to="/privacy" className="rounded-sm hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Link
+              to="/privacy"
+              className="rounded-sm hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               {t("nav.privacy")}
             </Link>
-            <Link to="/terms" className="rounded-sm hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Link
+              to="/terms"
+              className="rounded-sm hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               {t("nav.terms")}
             </Link>
-            <Link to="/status" className="rounded-sm hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Link
+              to="/status"
+              className="rounded-sm hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               {t("nav.status")}
             </Link>
           </nav>

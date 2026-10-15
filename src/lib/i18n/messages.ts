@@ -72,11 +72,9 @@ export const fr = {
   "nav.dashboard": "Tableau de bord",
   "nav.candidates": "Vivier",
   "nav.briefs": "Briefs",
-  "nav.shortlists": "Shortlists",
   "nav.activity": "Activité",
   "nav.settings": "Réglages",
   "nav.members": "Équipe",
-  "nav.account": "Mon compte",
   "nav.status": "État du service",
   "nav.privacy": "Confidentialité",
   "nav.terms": "Conditions",
@@ -110,7 +108,8 @@ export const fr = {
   "auth.newPassword.set": "Mot de passe mis à jour.",
   "auth.notConfigured": "La connexion n'est pas configurée sur ce déploiement.",
   "auth.sessionEnded": "Votre session a expiré. Reconnectez-vous.",
-  "auth.terms": "En continuant, vous acceptez les conditions d'utilisation et la politique de confidentialité.",
+  "auth.terms":
+    "En continuant, vous acceptez les conditions d'utilisation et la politique de confidentialité.",
   "auth.title": "Bienvenue",
   "auth.continue": "Continuer",
   "auth.changeEmail": "Modifier l'adresse",
@@ -147,12 +146,7 @@ export const fr = {
   "invite.emailMismatch": "Cette invitation est adressée à une autre adresse email.",
   "invite.error": "L'invitation n'a pas pu être acceptée.",
 
-  // landing page (the hero and the feature cards live in features/shell.ts)
-  "landing.eyebrow": "Pour les équipes RH",
-  "landing.how.title": "Comment ça marche",
-  "landing.how.step1.title": "Importez vos CV",
-  "landing.how.step2.title": "Décrivez le poste",
-  "landing.how.step3.title": "Décidez et envoyez",
+  // landing page (the hero and the feature lines live in features/shell.ts)
   "landing.footer.links": "Liens",
 } as const;
 
@@ -224,11 +218,9 @@ export const en = {
   "nav.dashboard": "Dashboard",
   "nav.candidates": "Talent pool",
   "nav.briefs": "Briefs",
-  "nav.shortlists": "Shortlists",
   "nav.activity": "Activity",
   "nav.settings": "Settings",
   "nav.members": "Team",
-  "nav.account": "My account",
   "nav.status": "Service status",
   "nav.privacy": "Privacy",
   "nav.terms": "Terms",
@@ -295,10 +287,5 @@ export const en = {
   "invite.emailMismatch": "This invitation is addressed to another email address.",
   "invite.error": "The invitation could not be accepted.",
 
-  "landing.eyebrow": "For HR teams",
-  "landing.how.title": "How it works",
-  "landing.how.step1.title": "Upload your CVs",
-  "landing.how.step2.title": "Describe the role",
-  "landing.how.step3.title": "Decide and send",
   "landing.footer.links": "Links",
 } as const satisfies Record<MessageKey, string>;

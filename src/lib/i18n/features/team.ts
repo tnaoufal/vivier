@@ -1,33 +1,32 @@
 /**
- * Words of the team area: the dashboard's briefs and tiles, the activity
- * feed and its sentences, members and invitations, organisation
- * settings (photos included), the person's account, the public status
- * page and the legal pages' chrome. Role names, auth and invitation
+ * Words of the team area: the dashboard's briefs and pool, the activity
+ * feed and its sentences, members and invitations, the settings
+ * (organisation, account, photos included), the public status page
+ * and the legal pages' chrome. Role names, auth and invitation
  * acceptance live in messages.ts (role.*, auth.*, invite.*) and are
  * reused, not repeated.
  */
 const fr = {
-  // dashboard
-  "dashboard.viewAll": "Toute l'activité",
+  // dashboard: the open briefs, the pool line, a counter that could not be read
   "dashboard.statsUnread": "Les compteurs n'ont pas pu être lus.",
-
-  // dashboard: the open briefs, the tiles' hints, the empty feed
-  "dashboard.briefs.title": "Briefs en cours",
+  "dashboard.briefs.title": "Mes briefs en cours",
   "dashboard.briefs.all": "Tous les briefs",
   "dashboard.briefs.empty": "Aucun brief ouvert",
   "dashboard.briefs.error": "Briefs non chargés",
-  "dashboard.briefs.noAnalysis": "Pas encore d'analyse",
+  "dashboard.briefs.noAnalysis": "Aucune analyse",
+  "dashboard.briefs.unfinished": "Analyse inachevée",
   "dashboard.briefs.matches.none": "0 correspondance",
   "dashboard.briefs.matches.one": "1 correspondance",
   "dashboard.briefs.matches.many": "{count} correspondances",
-  "dashboard.briefs.present.none": "0 proposé (modèle)",
-  "dashboard.briefs.present.one": "1 proposé (modèle)",
-  "dashboard.briefs.present.many": "{count} proposés (modèle)",
-  "dashboard.briefs.retained.none": "0 retenu",
+  "dashboard.briefs.ranked.one": "1 profil classé · texte seul",
+  "dashboard.briefs.ranked.many": "{count} profils classés · texte seul",
   "dashboard.briefs.retained.one": "1 retenu",
   "dashboard.briefs.retained.many": "{count} retenus",
-  "dashboard.briefs.shortlist": "Shortlist",
-  "dashboard.briefs.noShortlist": "Shortlist vide",
+  "dashboard.pool.profiles.none": "0 profil",
+  "dashboard.pool.profiles.one": "1 profil",
+  "dashboard.pool.profiles.many": "{count} profils",
+  "dashboard.pool.processing.one": "1 CV en traitement",
+  "dashboard.pool.processing.many": "{count} CV en traitement",
 
   // activity feed
   "activity.empty": "Aucune activité",
@@ -56,10 +55,12 @@ const fr = {
 
   // one sentence per kind; {actor} is a person's name, "Système" or "Un ancien membre"
   "activity.kind.shortlist.added": "{actor} a ajouté {candidate} à la shortlist du brief {brief}.",
-  "activity.kind.shortlist.removed": "{actor} a retiré {candidate} de la shortlist du brief {brief}.",
+  "activity.kind.shortlist.removed":
+    "{actor} a retiré {candidate} de la shortlist du brief {brief}.",
   "activity.kind.shortlist.retained": "{actor} a retenu {candidate} pour le brief {brief}.",
   "activity.kind.shortlist.dismissed": "{actor} a écarté {candidate} pour le brief {brief}.",
-  "activity.kind.shortlist.toReview": "{actor} a remis {candidate} à l'étude pour le brief {brief}.",
+  "activity.kind.shortlist.toReview":
+    "{actor} a remis {candidate} à l'étude pour le brief {brief}.",
   "activity.kind.shortlist.assigned": "{actor} a confié {candidate} à {assignee}.",
   "activity.kind.shortlist.unassigned": "{actor} a retiré l'attribution de {candidate}.",
   "activity.kind.comment.candidate": "{actor} a commenté {candidate}.",
@@ -79,8 +80,10 @@ const fr = {
   "activity.kind.candidate.active": "{actor} a réactivé {candidate}.",
   "activity.kind.candidate.archived": "{actor} a archivé {candidate}.",
   "activity.kind.candidate.consentGiven": "{actor} a enregistré le consentement de {candidate}.",
-  "activity.kind.candidate.consentWithdrawn": "{actor} a enregistré le retrait du consentement de {candidate}.",
-  "activity.kind.candidate.consentUnknown": "{actor} a remis le consentement de {candidate} à « non renseigné ».",
+  "activity.kind.candidate.consentWithdrawn":
+    "{actor} a enregistré le retrait du consentement de {candidate}.",
+  "activity.kind.candidate.consentUnknown":
+    "{actor} a remis le consentement de {candidate} à « non renseigné ».",
   "activity.kind.candidate.deleted": "{actor} a supprimé le candidat {candidate}.",
   "activity.kind.share.created": "{actor} a partagé la shortlist du brief {brief}.",
   "activity.kind.share.revoked": "{actor} a révoqué un partage de shortlist.",
@@ -113,12 +116,11 @@ const fr = {
   "members.invitations.revoke.title": "Révoquer l'invitation de {email} ?",
   "members.invitations.revoke.text": "Le lien envoyé ne fonctionnera plus.",
   "members.invitations.revoked": "Invitation révoquée.",
-  "members.invite.jump": "Inviter un collègue",
   "members.plan.seats.full": "Tous les sièges sont pris.",
   "members.plan.cvs.left.none": "Quota du mois atteint",
-  "members.plan.manage": "Voir la formule",
 
-  // invite form
+  // invite dialog
+  "team.invite": "Inviter",
   "team.invite.title": "Inviter un collègue",
   "team.askAdmin": "Demandez à un administrateur.",
   "team.invite.text": "Valable 7 jours, pour cette adresse seulement.",
@@ -139,6 +141,7 @@ const fr = {
 
   // settings
   "settings.org": "Organisation",
+  "settings.account": "Mon compte",
   "settings.photos": "Photos des candidats",
   "settings.photos.help":
     "Identifie la personne à l'écran, jamais transmise au modèle. Masquées : des initiales.",
@@ -152,20 +155,15 @@ const fr = {
   "settings.plan.unread": "Les compteurs n'ont pas pu être lus.",
   "settings.plan.cvs": "CV traités ce mois",
   "settings.plan.seats": "Sièges",
-  "settings.danger": "Zone dangereuse",
+  "settings.danger": "Zone de danger",
   "settings.danger.text":
     "Candidats, fichiers, briefs, shortlists et historique seront supprimés. C'est définitif.",
-  "settings.danger.ownerOnly": "Réservé au propriétaire.",
   "settings.delete": "Supprimer l'organisation",
   "settings.delete.title": "Supprimer {org} ?",
   "settings.delete.text": "Tapez le nom pour confirmer.",
   "settings.deleted": "Organisation supprimée.",
 
   // account
-  "account.profile": "Profil",
-  "account.preferences": "Préférences",
-  "account.theme": "Apparence",
-  "account.email": "Adresse de connexion",
   "account.displayName": "Nom affiché",
   "account.locale": "Langue préférée",
   "account.password.change": "Changer le mot de passe",
@@ -208,25 +206,25 @@ const fr = {
 } as const;
 
 const en = {
-  "dashboard.viewAll": "All activity",
   "dashboard.statsUnread": "The counters could not be read.",
-
-  "dashboard.briefs.title": "Open briefs",
+  "dashboard.briefs.title": "My open briefs",
   "dashboard.briefs.all": "All briefs",
   "dashboard.briefs.empty": "No open brief",
   "dashboard.briefs.error": "Briefs not loaded",
-  "dashboard.briefs.noAnalysis": "No analysis yet",
+  "dashboard.briefs.noAnalysis": "No analysis",
+  "dashboard.briefs.unfinished": "Analysis unfinished",
   "dashboard.briefs.matches.none": "0 matches",
   "dashboard.briefs.matches.one": "1 match",
   "dashboard.briefs.matches.many": "{count} matches",
-  "dashboard.briefs.present.none": "0 proposed (model)",
-  "dashboard.briefs.present.one": "1 proposed (model)",
-  "dashboard.briefs.present.many": "{count} proposed (model)",
-  "dashboard.briefs.retained.none": "0 retained",
+  "dashboard.briefs.ranked.one": "1 profile ranked · text only",
+  "dashboard.briefs.ranked.many": "{count} profiles ranked · text only",
   "dashboard.briefs.retained.one": "1 retained",
   "dashboard.briefs.retained.many": "{count} retained",
-  "dashboard.briefs.shortlist": "Shortlist",
-  "dashboard.briefs.noShortlist": "Empty shortlist",
+  "dashboard.pool.profiles.none": "0 profiles",
+  "dashboard.pool.profiles.one": "1 profile",
+  "dashboard.pool.profiles.many": "{count} profiles",
+  "dashboard.pool.processing.one": "1 CV processing",
+  "dashboard.pool.processing.many": "{count} CVs processing",
 
   "activity.empty": "No activity yet",
   "activity.emptyFiltered": "Nothing in this category",
@@ -253,10 +251,12 @@ const en = {
   "activity.filter.label": "Category",
 
   "activity.kind.shortlist.added": "{actor} added {candidate} to the shortlist of brief {brief}.",
-  "activity.kind.shortlist.removed": "{actor} removed {candidate} from the shortlist of brief {brief}.",
+  "activity.kind.shortlist.removed":
+    "{actor} removed {candidate} from the shortlist of brief {brief}.",
   "activity.kind.shortlist.retained": "{actor} retained {candidate} for brief {brief}.",
   "activity.kind.shortlist.dismissed": "{actor} dismissed {candidate} for brief {brief}.",
-  "activity.kind.shortlist.toReview": "{actor} put {candidate} back under review for brief {brief}.",
+  "activity.kind.shortlist.toReview":
+    "{actor} put {candidate} back under review for brief {brief}.",
   "activity.kind.shortlist.assigned": "{actor} assigned {candidate} to {assignee}.",
   "activity.kind.shortlist.unassigned": "{actor} cleared the assignment of {candidate}.",
   "activity.kind.comment.candidate": "{actor} commented on {candidate}.",
@@ -276,8 +276,10 @@ const en = {
   "activity.kind.candidate.active": "{actor} reactivated {candidate}.",
   "activity.kind.candidate.archived": "{actor} archived {candidate}.",
   "activity.kind.candidate.consentGiven": "{actor} recorded the consent of {candidate}.",
-  "activity.kind.candidate.consentWithdrawn": "{actor} recorded the withdrawn consent of {candidate}.",
-  "activity.kind.candidate.consentUnknown": "{actor} set the consent of {candidate} back to unknown.",
+  "activity.kind.candidate.consentWithdrawn":
+    "{actor} recorded the withdrawn consent of {candidate}.",
+  "activity.kind.candidate.consentUnknown":
+    "{actor} set the consent of {candidate} back to unknown.",
   "activity.kind.candidate.deleted": "{actor} deleted candidate {candidate}.",
   "activity.kind.share.created": "{actor} shared the shortlist of brief {brief}.",
   "activity.kind.share.revoked": "{actor} revoked a shortlist share.",
@@ -309,11 +311,10 @@ const en = {
   "members.invitations.revoke.title": "Revoke the invitation of {email}?",
   "members.invitations.revoke.text": "The link that was sent stops working.",
   "members.invitations.revoked": "Invitation revoked.",
-  "members.invite.jump": "Invite a colleague",
   "members.plan.seats.full": "Every seat is taken.",
   "members.plan.cvs.left.none": "Monthly quota reached",
-  "members.plan.manage": "See the plan",
 
+  "team.invite": "Invite",
   "team.invite.title": "Invite a colleague",
   "team.askAdmin": "Ask an administrator.",
   "team.invite.text": "Valid for 7 days, for this address only.",
@@ -332,6 +333,7 @@ const en = {
   "team.invitePage.goToApp": "Go to the app",
 
   "settings.org": "Organisation",
+  "settings.account": "My account",
   "settings.photos": "Candidates' photos",
   "settings.photos.help":
     "Identifies the person on screen, never sent to the model. Hidden: initials.",
@@ -348,16 +350,11 @@ const en = {
   "settings.danger": "Danger zone",
   "settings.danger.text":
     "Candidates, files, briefs, shortlists and history will be deleted. This cannot be undone.",
-  "settings.danger.ownerOnly": "Owner only.",
   "settings.delete": "Delete the organisation",
   "settings.delete.title": "Delete {org}?",
   "settings.delete.text": "Type the name to confirm.",
   "settings.deleted": "Organisation deleted.",
 
-  "account.profile": "Profile",
-  "account.preferences": "Preferences",
-  "account.theme": "Appearance",
-  "account.email": "Sign-in address",
   "account.displayName": "Display name",
   "account.locale": "Preferred language",
   "account.password.change": "Change the password",

@@ -8,7 +8,7 @@
  */
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { ArrowRight, Check, Eye, EyeOff, Mail } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, Eye, EyeOff, Mail } from "lucide-react";
 
 import { BrandIcon } from "@/components/brand-mark";
 import { PublicFrame } from "@/components/public-frame";
@@ -35,19 +35,21 @@ export const Route = createFileRoute("/sign-in")({
   component: SignInPage,
 });
 
+/** The Google "G" in one path, in the current colour: the ink on paper, paper on the ink. */
 function GoogleIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="size-4">
-      <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-1.6 3.8-5.5 3.8-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.2.8 3.9 1.5l2.7-2.6C16.9 3 14.7 2 12 2 6.5 2 2 6.5 2 12s4.5 10 10 10c5.8 0 9.6-4.1 9.6-9.8 0-.7-.1-1.2-.2-1.7H12z" />
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="size-4" fill="currentColor">
+      <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z" />
     </svg>
   );
 }
 
-/** A sentence under a field, announced when it appears. */
+/** A sentence under a field, announced when it appears: an alert icon and the words, in the ink. */
 function FieldError({ id, text }: { id: string; text: string | null }) {
   if (!text) return null;
   return (
-    <p id={id} role="alert" className="fade-in text-meta text-negative">
+    <p id={id} role="alert" className="fade-in flex items-start gap-1.5 text-meta text-ink">
+      <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       {text}
     </p>
   );
@@ -55,7 +57,14 @@ function FieldError({ id, text }: { id: string; text: string | null }) {
 
 function SignInPage() {
   const { t } = useI18n();
-  const { user, loading, signInWithPassword, signUpWithPassword, signInWithGoogle, sendPasswordReset } = useAuth();
+  const {
+    user,
+    loading,
+    signInWithPassword,
+    signUpWithPassword,
+    signInWithGoogle,
+    sendPasswordReset,
+  } = useAuth();
   const router = useRouter();
   const { next } = Route.useSearch();
   const emailErrorId = useId();
@@ -193,7 +202,12 @@ function SignInPage() {
   } else if (step === "sent") {
     body = (
       <div className="mt-8">
-        <Button type="button" variant="outline" className="w-full" onClick={() => switchIntent("signIn")}>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => switchIntent("signIn")}
+        >
           {t("auth.reset.back")}
         </Button>
       </div>
@@ -209,7 +223,7 @@ function SignInPage() {
         <p className="text-center text-sm text-muted-foreground">
           <button
             type="button"
-            className="cursor-pointer rounded-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="cursor-pointer rounded-sm font-medium text-ink underline underline-offset-4 hover:decoration-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => go("password")}
             disabled={busy}
           >
@@ -228,7 +242,7 @@ function SignInPage() {
             {intent === "signIn" ? (
               <button
                 type="button"
-                className="cursor-pointer rounded-sm text-meta font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="cursor-pointer rounded-sm text-meta font-medium text-ink underline underline-offset-4 hover:decoration-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => go("reset")}
                 disabled={busy}
               >
@@ -271,13 +285,22 @@ function SignInPage() {
         <Button type="submit" className="w-full" disabled={busy || !password}>
           {intent === "signUp" ? t("auth.signUp") : t("auth.signIn")}
         </Button>
-        {intent === "signUp" ? <p className="text-meta text-muted-foreground">{t("auth.terms")}</p> : null}
+        {intent === "signUp" ? (
+          <p className="text-meta text-muted-foreground">{t("auth.terms")}</p>
+        ) : null}
       </form>
     );
   } else {
     body = (
       <form onSubmit={continueWithEmail} className="mt-8 space-y-5" noValidate>
-        <Button type="button" variant="outline" className="w-full" icon={<GoogleIcon />} onClick={() => void google()} disabled={busy}>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          icon={<GoogleIcon />}
+          onClick={() => void google()}
+          disabled={busy}
+        >
           {t("auth.continueWithGoogle")}
         </Button>
         <div className="flex items-center gap-3 text-meta text-muted-foreground">
@@ -305,7 +328,12 @@ function SignInPage() {
           />
           <FieldError id={emailErrorId} text={error} />
         </div>
-        <Button type="submit" className="w-full" icon={<ArrowRight />} disabled={busy || !email.trim()}>
+        <Button
+          type="submit"
+          className="w-full"
+          icon={<ArrowRight />}
+          disabled={busy || !email.trim()}
+        >
           {t("auth.continue")}
         </Button>
       </form>
@@ -315,8 +343,12 @@ function SignInPage() {
   return (
     <PublicFrame width="sm" center>
       <div className="sheet rise-in p-6 sm:p-8">
-        <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-          {step === "sent" ? <Check className="size-6" aria-hidden="true" /> : <BrandIcon className="size-7" />}
+        <div className="flex size-12 items-center justify-center rounded-full bg-muted text-ink">
+          {step === "sent" ? (
+            <Check className="size-6" aria-hidden="true" />
+          ) : (
+            <BrandIcon className="size-7" />
+          )}
         </div>
         <h1
           ref={headingRef}
@@ -337,7 +369,7 @@ function SignInPage() {
             {intent === "signIn" ? t("auth.noAccount") : t("auth.hasAccount")}{" "}
             <button
               type="button"
-              className="cursor-pointer rounded-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="cursor-pointer rounded-sm font-medium text-ink underline underline-offset-4 hover:decoration-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => switchIntent(intent === "signIn" ? "signUp" : "signIn")}
               disabled={busy}
             >

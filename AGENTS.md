@@ -54,7 +54,7 @@ stack and nothing else.
 - The pages never pretend: a document that failed says why in one
   sentence, a search without a model says it ran on text only, a share
   says when it expires.
-- Every screen follows the design charter, v2 (`docs/DESIGN.md`): the
+- Every screen follows the design charter, v3 (`docs/DESIGN.md`, Blackweaver monochrome): the
   tokens of `src/styles.css` (never a hard-coded colour, radius or
   duration), the primitives of `src/components/ui` and
   `src/components/app-shell`, one icon per control, motion that explains

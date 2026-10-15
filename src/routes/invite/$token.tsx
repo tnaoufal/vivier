@@ -9,7 +9,7 @@
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ShieldAlert, UserPlus } from "lucide-react";
+import { CircleAlert, ShieldAlert, UserPlus } from "lucide-react";
 
 import { InfoTip } from "@/components/app-shell/info-tip";
 import { Pill } from "@/components/app-shell/pill";
@@ -31,7 +31,10 @@ export const Route = createFileRoute("/invite/$token")({
   component: InvitePage,
 });
 
-type State = { status: "loading" } | { status: "error" } | { status: "ready"; preview: InvitationPreview };
+type State =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; preview: InvitationPreview };
 
 /** The dictionary keys of a role's name and its one-line help. */
 function roleKeys(role: OrgRole): { name: TranslationKey; help: TranslationKey } {
@@ -124,10 +127,14 @@ function InvitePage() {
     const orgName = preview.orgName;
     const invitedEmail = preview.email;
     const role = roleKeys(preview.role);
-    const wrongAccount = Boolean(user?.email && user.email.toLowerCase() !== invitedEmail.toLowerCase());
+    const wrongAccount = Boolean(
+      user?.email && user.email.toLowerCase() !== invitedEmail.toLowerCase(),
+    );
     content = (
       <>
-        <h1 className="font-display text-2xl text-ink break-words">{t("invite.title", { org: orgName })}</h1>
+        <h1 className="font-display text-2xl text-ink break-words">
+          {t("invite.title", { org: orgName })}
+        </h1>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Pill tone="primary" dot>
             {t(role.name)}
@@ -136,13 +143,19 @@ function InvitePage() {
           <InfoTip label={t(role.name)}>{t(role.help)}</InfoTip>
         </div>
         {error ? (
-          <p role="alert" className="fade-in mt-6 rounded-md border border-negative/30 bg-negative/8 px-3 py-2 text-sm text-negative">
+          <p
+            role="alert"
+            className="fade-in mt-6 flex items-start gap-2 rounded-md border border-border bg-muted px-3 py-2 text-sm text-ink"
+          >
+            <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             {error}
           </p>
         ) : null}
         {!user ? (
           <>
-            <p className="mt-8 text-sm text-ink break-words">{t("invite.signInFirst", { email: invitedEmail })}</p>
+            <p className="mt-8 text-sm text-ink break-words">
+              {t("invite.signInFirst", { email: invitedEmail })}
+            </p>
             <Button asChild className="mt-5 w-full">
               <Link to="/sign-in" search={{ next: `/invite/${token}` }}>
                 {t("auth.signIn")}
@@ -151,17 +164,32 @@ function InvitePage() {
           </>
         ) : wrongAccount ? (
           <>
-            <p className="mt-8 rounded-md border border-caution/40 bg-caution/10 px-3 py-2 text-sm text-ink break-words">
-              {t("team.invitePage.wrongAccount", { email: invitedEmail })}
+            <p className="mt-8 flex items-start gap-2 rounded-md border border-border bg-muted px-3 py-2 text-sm text-ink break-words">
+              <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0">
+                {t("team.invitePage.wrongAccount", { email: invitedEmail })}
+              </span>
             </p>
-            <Button variant="outline" className="mt-5 w-full" onClick={() => void switchAccount()} disabled={busy}>
+            <Button
+              variant="outline"
+              className="mt-5 w-full"
+              onClick={() => void switchAccount()}
+              disabled={busy}
+            >
               {t("common.signOut")}
             </Button>
           </>
         ) : (
           <>
-            <p className="mt-8 text-meta text-muted-foreground break-words">{t("team.invitePage.signedInAs", { email: user.email ?? "" })}</p>
-            <Button className="mt-3 w-full" icon={<UserPlus />} onClick={() => void accept(orgName)} disabled={busy}>
+            <p className="mt-8 text-meta text-muted-foreground break-words">
+              {t("team.invitePage.signedInAs", { email: user.email ?? "" })}
+            </p>
+            <Button
+              className="mt-3 w-full"
+              icon={<UserPlus />}
+              onClick={() => void accept(orgName)}
+              disabled={busy}
+            >
               {t("invite.accept")}
             </Button>
           </>
@@ -173,7 +201,7 @@ function InvitePage() {
   return (
     <PublicFrame width="sm" center>
       <div className="sheet rise-in p-6 sm:p-8">
-        <div className="mb-5 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <div className="mb-5 flex size-12 items-center justify-center rounded-full bg-muted text-ink">
           <BrandIcon className="size-7" />
         </div>
         {content}

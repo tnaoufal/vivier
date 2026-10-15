@@ -53,7 +53,9 @@ export function InvitationsList({
                   </Pill>
                 ) : (
                   <span className="tabular-nums">
-                    {t("members.invitations.expires", { date: formatDate(locale, invitation.expires_at) })}
+                    {t("members.invitations.expires", {
+                      date: formatDate(locale, invitation.expires_at),
+                    })}
                   </span>
                 )}
               </p>
@@ -65,7 +67,7 @@ export function InvitationsList({
                   size="icon"
                   onClick={() => onRevoke(invitation)}
                   disabled={busyId === invitation.id}
-                  className="text-muted-foreground hover:text-negative"
+                  className="text-muted-foreground hover:text-ink"
                   aria-label={revokeLabel}
                 >
                   <Trash2 />

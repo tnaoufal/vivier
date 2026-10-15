@@ -1,29 +1,34 @@
 /**
  * The frame of every signed-in page: a 264px grey 50 sidebar with the
- * brand, the organisation switcher (name and plan), the five sections
+ * brand, the organisation switcher (name and plan), the four sections
  * with an ink mark (paper text) that slides to the current one, and, at
- * the bottom, the person (avatar, name, role) with their menu. On phones a top bar with
- * the brand opens the same sidebar as a full-screen sheet, closed on
- * navigation. Content renders in the outlet, centred, at most 72rem
- * wide, and each page change fades and rises in (`PageTransition`).
+ * the bottom, the person (avatar, name, role) whose menu holds the
+ * settings, the theme, the language, the organisations and the sign-out.
+ * On phones a top bar with the brand opens the same sidebar as a
+ * full-screen sheet, closed on navigation. Content renders in the
+ * outlet, centred, at most 72rem wide, and each page change fades and
+ * rises in (`PageTransition`).
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  Activity,
   Briefcase,
+  Building2,
   ChevronsUpDown,
+  Languages,
   LayoutDashboard,
-  ListChecks,
   LogOut,
   Menu,
+  Moon,
   Plus,
   Settings,
-  UserRound,
+  Sun,
   Users,
+  UsersRound,
 } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
+import { useTheme } from "@/components/theme-context";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -32,6 +37,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
@@ -43,7 +51,6 @@ import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { PageTransition } from "./page-transition";
 import { Pill } from "./pill";
-import { LocaleToggle, ThemeToggle } from "./toggles";
 
 interface NavItem {
   to: string;
@@ -54,10 +61,9 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: "/app", key: "nav.dashboard", icon: <LayoutDashboard />, exact: true },
-  { to: "/app/candidates", key: "nav.candidates", icon: <Users /> },
   { to: "/app/briefs", key: "nav.briefs", icon: <Briefcase /> },
-  { to: "/app/shortlists", key: "nav.shortlists", icon: <ListChecks /> },
-  { to: "/app/activity", key: "nav.activity", icon: <Activity /> },
+  { to: "/app/candidates", key: "nav.candidates", icon: <Users /> },
+  { to: "/app/members", key: "nav.members", icon: <UsersRound /> },
 ];
 
 function isActive(item: NavItem, pathname: string): boolean {
@@ -67,7 +73,7 @@ function isActive(item: NavItem, pathname: string): boolean {
 }
 
 /**
- * The five sections. The active mark is one ink pill behind the links
+ * The four sections. The active mark is one ink pill behind the links
  * that slides to the current one: its top offset is measured from the
  * active link and moved with a transition, so it travels instead of
  * jumping. The current link reads in paper over it.
@@ -130,9 +136,36 @@ function NavLinks({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
   );
 }
 
-function OrgSwitcher() {
+/** The organisations the person belongs to, the current one checked, and the way to a new one. */
+function OrgChoices() {
   const { t } = useI18n();
   const { memberships, org, switchOrg } = useOrg();
+  return (
+    <>
+      {memberships.map((m) => (
+        <DropdownMenuCheckboxItem
+          key={m.org.id}
+          checked={m.org.id === org?.id}
+          onSelect={() => switchOrg(m.org.id)}
+        >
+          <span className="min-w-0 flex-1 truncate">{m.org.name}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">{t(`role.${m.role}`)}</span>
+        </DropdownMenuCheckboxItem>
+      ))}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem asChild>
+        <Link to="/app/organizations/new">
+          <Plus aria-hidden="true" />
+          {t("nav.newOrg")}
+        </Link>
+      </DropdownMenuItem>
+    </>
+  );
+}
+
+function OrgSwitcher() {
+  const { t } = useI18n();
+  const { org } = useOrg();
   if (!org) return null;
   return (
     <DropdownMenu>
@@ -159,35 +192,26 @@ function OrgSwitcher() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
         <DropdownMenuLabel>{t("nav.switchOrg")}</DropdownMenuLabel>
-        {memberships.map((m) => (
-          <DropdownMenuCheckboxItem
-            key={m.org.id}
-            checked={m.org.id === org.id}
-            onSelect={() => switchOrg(m.org.id)}
-          >
-            <span className="min-w-0 flex-1 truncate">{m.org.name}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">{t(`role.${m.role}`)}</span>
-          </DropdownMenuCheckboxItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link to="/app/organizations/new">
-            <Plus aria-hidden="true" />
-            {t("nav.newOrg")}
-          </Link>
-        </DropdownMenuItem>
+        <OrgChoices />
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
+/**
+ * The person's menu: the settings, the theme and the language (each
+ * item named for what it switches to), the organisations in a submenu,
+ * and the sign-out.
+ */
 function UserMenu() {
-  const { t } = useI18n();
+  const { t, locale, setLocale } = useI18n();
+  const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
-  const { members, can } = useOrg();
+  const { members } = useOrg();
   const profile = user ? members.get(user.id) : undefined;
   const name = memberName(profile, user?.email ?? "");
   const roleLabel = profile ? t(`role.${profile.role}`) : "";
+  const nextLocale = locale === "fr" ? "en" : "fr";
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -208,27 +232,30 @@ function UserMenu() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-60">
         <DropdownMenuItem asChild>
-          <Link to="/app/account">
-            <UserRound aria-hidden="true" />
-            {t("nav.account")}
+          <Link to="/app/settings">
+            <Settings aria-hidden="true" />
+            {t("nav.settings")}
           </Link>
         </DropdownMenuItem>
-        {can("admin") ? (
-          <>
-            <DropdownMenuItem asChild>
-              <Link to="/app/members">
-                <Users aria-hidden="true" />
-                {t("nav.members")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link to="/app/settings">
-                <Settings aria-hidden="true" />
-                {t("nav.settings")}
-              </Link>
-            </DropdownMenuItem>
-          </>
-        ) : null}
+        <DropdownMenuItem onSelect={toggleTheme}>
+          {theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+          {t("common.theme")} ·{" "}
+          {theme === "dark" ? t("common.theme.light") : t("common.theme.dark")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setLocale(nextLocale)} lang={nextLocale}>
+          <Languages aria-hidden="true" />
+          {t("common.language")} · {t(`common.locale.${nextLocale}`)}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <Building2 aria-hidden="true" />
+            {t("nav.switchOrg")}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-64">
+            <OrgChoices />
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => void signOut()}>
           <LogOut aria-hidden="true" />
@@ -249,12 +276,8 @@ function Sidebar({
 }) {
   return (
     <div className="flex h-full min-h-full flex-col gap-6 p-4">
-      <div className={cn("flex items-center justify-between", inSheet ? "pl-1 pr-14" : "px-1")}>
+      <div className={cn("flex h-10 items-center", inSheet ? "pl-1 pr-14" : "px-1")}>
         <BrandMark size="sm" to="/app" />
-        <div className="flex items-center gap-0.5">
-          <LocaleToggle />
-          <ThemeToggle />
-        </div>
       </div>
       <OrgSwitcher />
       <NavLinks onNavigate={onNavigate} />
