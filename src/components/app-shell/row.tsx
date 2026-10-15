@@ -1,13 +1,14 @@
 /**
  * The standard row of every list pane. The `li` is the row (56, 60 or
  * 64px; a line between two rows; the muted tint when selected, the
- * hover tint under the pointer; faded as a whole when `muted`); the
- * interactive part inside it (a button for a selection, a link built
- * with a path helper for a page, a plain div for a static row) takes
- * `leading` (the rank, the avatar) and the children (`RowText`: the
- * name and one line); `trailing` sits beside it, outside the control,
- * so a row may hold its own buttons without a control inside a control,
- * as match-list.tsx did:
+ * hover tint under the pointer; when `muted`, the photo or the initials
+ * faded and the name in the muted grey, never a word faded by alpha, so
+ * every text keeps AA); the interactive part inside it (a button for a
+ * selection, a link built with a path helper for a page, a plain div
+ * for a static row) takes `leading` (the rank, the avatar) and the
+ * children (`RowText`: the name and one line); `trailing` sits beside
+ * it, outside the control, so a row may hold its own buttons without a
+ * control inside a control, as match-list.tsx did:
  *
  *   <ol className="stagger" tabIndex={0} onKeyDown={useListKeys(rows.length, index, select)}>
  *     {rows.map((row, i) => (
@@ -58,7 +59,7 @@ export function Row({
   to?: string | undefined;
   onClick?: (() => void) | undefined;
   selected?: boolean | undefined;
-  /** A row that matters less (dismissed, near): faded as a whole. */
+  /** A row that matters less (dismissed): its avatar faded, its name in the muted grey, the line and the controls at full strength. */
   muted?: boolean | undefined;
   height?: RowHeight | undefined;
   /** Before the text: a rank, an avatar. */
@@ -87,7 +88,8 @@ export function Row({
         HEIGHTS[height],
         selected && "bg-muted",
         interactive && !selected && "hover:bg-hover",
-        muted && "opacity-60",
+        // The shape fades, not the words: the initials keep 5.3:1 on their faded disc, the name 5.5:1 selected.
+        muted && "[&_[data-slot=avatar]]:opacity-70 [&_[data-slot=row-title]]:text-muted-foreground",
         className,
       )}
     >
@@ -129,7 +131,10 @@ export function RowText({
 }) {
   return (
     <span className={cn("block min-w-0 flex-1", className)}>
-      <span className="block truncate text-sm leading-[1.125rem] font-semibold text-ink">
+      <span
+        data-slot="row-title"
+        className="block truncate text-sm leading-[1.125rem] font-semibold text-ink"
+      >
         {title}
       </span>
       {line ? (
