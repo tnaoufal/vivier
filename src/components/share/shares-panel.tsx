@@ -9,7 +9,7 @@
  * activities of the organisation (realtime).
  */
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Ellipsis, Trash2 } from "lucide-react";
+import { CircleAlert, Copy, Ellipsis, RefreshCw, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/app-shell/confirm-dialog";
 import { Pill } from "@/components/app-shell/pill";
@@ -113,14 +113,27 @@ export function SharesPanel({ shortlistId }: { shortlistId: string }) {
     userId ? memberName(members.get(userId), t("shares.panel.formerMember")) : t("common.someone");
 
   const shares = query.data?.shares ?? [];
-  // A shortlist never shared shows nothing here; a read that failed says so in one line.
+  // A shortlist never shared shows nothing here; a read that failed says so in one line, with a retry.
   if (!query.error && shares.length === 0) return null;
   const store = sessionLinkStore();
 
   return (
     <Section title={t("shares.panel.title")} count={shares.length || undefined}>
       {query.error ? (
-        <p className="text-sm text-muted-foreground">{t("shares.panel.error")}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="flex items-start gap-1.5 text-sm text-ink">
+            <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span className="min-w-0">{t("shares.panel.error")}</span>
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            icon={<RefreshCw />}
+            onClick={() => void query.refresh()}
+          >
+            {t("common.retry")}
+          </Button>
+        </div>
       ) : (
         <ul className="sheet stagger divide-y divide-border overflow-hidden">
           {shares.map((share) => {

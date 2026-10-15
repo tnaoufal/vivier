@@ -3,11 +3,10 @@
  * drawer's reading tab: the five dimensions as ink meters, each with
  * the model's one-line note under its bar; the comparative pass's line
  * on the rank; then the strengths, the reservations (the second
- * opinion's doubt marked as the counter-reading, apart from the first
- * pass's) and the points for the interview, each only when the
- * assessment carries it. Everything here is what the model read and
- * proposes; nothing in it decides, and an assessment made before the
- * reading shows nothing.
+ * reading's doubt marked as such, apart from the first pass's) and the
+ * points for the interview, each only when the assessment carries it.
+ * Everything here is what the model read and proposes; nothing in it
+ * decides, and an assessment made before the reading shows nothing.
  */
 import { Meter } from "@/components/app-shell/meter";
 import { Pill } from "@/components/app-shell/pill";
@@ -40,9 +39,9 @@ function Points({ title, points }: { title: string; points: readonly string[] })
 }
 
 /**
- * The reservations, the counter-reading's one with a pill before it so the
- * two passes read apart; the pill is a word without a dot, the bullet
- * being the line's one mark.
+ * The reservations, the second reading's one with a pill before it so
+ * the two passes read apart; the pill is a word without a dot, the
+ * bullet being the line's one mark.
  */
 function Concerns({
   title,

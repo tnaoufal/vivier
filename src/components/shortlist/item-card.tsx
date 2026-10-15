@@ -106,6 +106,10 @@ export function ItemCard({
   const assignedKnown =
     item.assigned_to === null || members.some((member) => member.id === item.assigned_to);
   const label = threadLabel(threadCount);
+  // "Assigné à {name}" is the mark's accessible name, not only its hover.
+  const assignedTo = item.assigned_to
+    ? t("shortlists.item.assignedTo", { name: nameOf(item.assigned_to) })
+    : null;
 
   async function confirmRemove() {
     if (await actions.remove()) setRemoving(false);
@@ -174,12 +178,14 @@ export function ItemCard({
             })
           : null}
 
-        {item.assigned_to ? (
+        {assignedTo ? (
           <span
+            role="img"
+            aria-label={assignedTo}
+            title={assignedTo}
             className="ml-auto inline-flex"
-            title={t("shortlists.item.assignedTo", { name: nameOf(item.assigned_to) })}
           >
-            <Avatar name={nameOf(item.assigned_to)} size="sm" />
+            <Avatar name={nameOf(item.assigned_to)} size="sm" decorative />
           </span>
         ) : null}
 

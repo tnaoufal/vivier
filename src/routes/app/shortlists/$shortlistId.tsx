@@ -11,6 +11,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ListChecks, RefreshCw, TriangleAlert } from "lucide-react";
 
 import { EmptyState } from "@/components/app-shell/empty-state";
+import { PageHeader } from "@/components/app-shell/page-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { requireSupabase } from "@/lib/auth/supabase-client";
@@ -44,22 +45,41 @@ function ShortlistRedirect() {
     });
   }, [briefId, navigate]);
 
+  // The page's heading when the shortlist cannot be reached, the briefs above it as on a brief's page.
+  const header = (
+    <PageHeader
+      eyebrow={
+        <Link
+          to="/app/briefs"
+          className="rounded-sm hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {t("nav.briefs")}
+        </Link>
+      }
+      title={t("shortlists.title")}
+    />
+  );
+
   if (brief.error) {
     return (
-      <EmptyState
-        icon={<TriangleAlert />}
-        title={t("shortlists.boardError")}
-        action={
-          <Button
-            type="button"
-            variant="outline"
-            icon={<RefreshCw />}
-            onClick={() => void brief.refresh()}
-          >
-            {t("common.retry")}
-          </Button>
-        }
-      />
+      <div>
+        {header}
+        <EmptyState
+          compact
+          icon={<TriangleAlert />}
+          title={t("shortlists.boardError")}
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              icon={<RefreshCw />}
+              onClick={() => void brief.refresh()}
+            >
+              {t("common.retry")}
+            </Button>
+          }
+        />
+      </div>
     );
   }
 
@@ -74,14 +94,18 @@ function ShortlistRedirect() {
   }
 
   return (
-    <EmptyState
-      icon={<ListChecks />}
-      title={t("shortlists.notFound.title")}
-      action={
-        <Button asChild variant="outline">
-          <Link to="/app/briefs">{t("shortlists.notFound.action")}</Link>
-        </Button>
-      }
-    />
+    <div>
+      {header}
+      <EmptyState
+        compact
+        icon={<ListChecks />}
+        title={t("shortlists.notFound.title")}
+        action={
+          <Button asChild variant="outline">
+            <Link to="/app/briefs">{t("shortlists.notFound.action")}</Link>
+          </Button>
+        }
+      />
+    </div>
   );
 }

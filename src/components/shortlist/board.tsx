@@ -5,8 +5,9 @@
  * item, live on the shortlist's items and the organisation's comments.
  * Three columns from lg (to examine, retained, dismissed), each with
  * its count in its title; one column at a time on a phone, chosen with
- * a segmented control. Above the columns, one outline "Partager" once
- * someone is retained; the brief page's header holds the page's primary.
+ * a segmented control. Above the columns, one filled "Partager" once
+ * someone is retained: the tab's frequent action, so the brief page's
+ * header turns its run button outline on this tab.
  * A card opens the drawer (the reading, or the item's thread); the
  * shares made from this shortlist sit under the board.
  */
@@ -145,12 +146,12 @@ export function ShortlistBoard({ briefId, canEdit }: { briefId: string; canEdit:
 
   return (
     <div>
-      {/* The one action above the board: the brief page's header already holds the primary. */}
+      {/* The one action above the board, filled: the brief page's header gives up its primary on this tab. */}
       {canEdit && shortlistId && groups.retained.length > 0 ? (
         <div className="mb-4 flex justify-end">
           <Button
             type="button"
-            variant="outline"
+            variant="primary"
             icon={<Share2 />}
             onClick={() => setShareOpen(true)}
           >

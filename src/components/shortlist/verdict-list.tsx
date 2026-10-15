@@ -26,7 +26,7 @@ function Heading({ title, byModel = false }: { title: string; byModel?: boolean 
   const { t } = useI18n();
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <h3 className="text-base font-semibold text-ink">{title}</h3>
+      <h3 className="label-caps">{title}</h3>
       {byModel ? (
         <Pill size="sm" tone="caution" icon={<Sparkles />}>
           {t("shortlists.drawer.assessment")}
@@ -57,9 +57,7 @@ export function VerdictList({
       <section className="space-y-3">
         <Heading title={t("shortlists.drawer.why")} byModel />
         <p className="whitespace-pre-line text-body text-ink break-words">
-          {reading ?? (
-            <span className="text-muted-foreground">{t("shortlists.drawer.match.noWhy")}</span>
-          )}
+          {reading ?? <span className="text-muted-foreground">{t("common.unknown")}</span>}
         </p>
       </section>
 

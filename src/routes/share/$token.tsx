@@ -3,20 +3,23 @@
  * without a sign-in. A cover (the organisation, the title, the date,
  * the counts, when the link stops working, the brief's text), then one
  * sheet per candidate: the initials, the name, the position, the years,
- * the reading, the requirements with their marks, the strengths, the
- * points of attention, the points to verify in an interview, the CV
- * when the share carries it. No photo, no colour, no ring: the figures
- * are text. A white sheet with dark ink on any theme (`share-sheet` in
+ * the reading (marked once as the model's when an assessment wrote it),
+ * the requirements with their marks, the strengths, the points of
+ * attention, the points to verify in an interview, the CV when the
+ * share carries it. No photo, no colour, no ring: the figures are
+ * text. A white sheet with dark ink on any theme (`share-sheet` in
  * styles.css), printable on A4 with the cover and each sheet on their
  * own page, the controls hidden in print: the PDF a reader keeps is the
  * browser's print of this page. The sentences speak the sharing
  * organisation's language. A link that no longer opens says why in one
  * sentence.
  */
+import type { ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { FileText, Printer } from "lucide-react";
+import { FileText, Printer, Sparkles } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
+import { Pill } from "@/components/app-shell/pill";
 import { RequirementList } from "@/components/app-shell/requirement-list";
 import { BrandIcon } from "@/components/brand-mark";
 import {
@@ -70,7 +73,7 @@ function SharePage() {
   return <Dossier share={share} token={token} />;
 }
 
-/** A link that opens nothing: one centred sentence, in the reader's language (no organisation to speak for). */
+/** A link that opens nothing: one centred sentence, the page's heading, in the reader's language (no organisation to speak for). */
 function Closed({ state, locale }: { state: "missing" | "revoked" | "expired"; locale: Locale }) {
   const key: TranslationKey =
     state === "revoked"
@@ -85,7 +88,7 @@ function Closed({ state, locale }: { state: "missing" | "revoked" | "expired"; l
           <BrandIcon className="text-ink" />
           <span className="font-display text-lg">{BRAND.name}</span>
         </p>
-        <p className="text-body text-muted-foreground">{translate(locale, key)}</p>
+        <h1 className="font-display text-xl text-ink">{translate(locale, key)}</h1>
       </div>
     </div>
   );
@@ -109,11 +112,12 @@ function Paragraphs({ text, className }: { text: string; className: string }) {
   );
 }
 
-/** A section title inside a sheet: the label scale, with a hairline under it. */
-function Caption({ children }: { children: string }) {
+/** A section title inside a sheet: the label scale, with a hairline under it; `aside` sits beside it (the model's mark). */
+function Caption({ children, aside }: { children: string; aside?: ReactNode | undefined }) {
   return (
-    <div className="mb-3 border-b border-border pb-2">
+    <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-border pb-2">
       <h3 className="label-caps text-ink">{children}</h3>
+      {aside}
     </div>
   );
 }
@@ -232,6 +236,8 @@ function Sheet({
   t: Translate;
 }) {
   const rows = requirementRowsOf(item);
+  // The synthesis, the strengths, the attention points and the questions are the assessment's: said once per sheet.
+  const byModel = item.decision !== null || item.score !== null;
   return (
     <article className="sheet space-y-8 p-6 sm:p-8 print:border-0 print:p-0 print:shadow-none">
       <header className="flex flex-wrap items-start justify-between gap-6">
@@ -254,7 +260,17 @@ function Sheet({
       </header>
 
       <section>
-        <Caption>{t("shares.page.synthesis")}</Caption>
+        <Caption
+          aside={
+            byModel ? (
+              <Pill size="sm" tone="caution" icon={<Sparkles />}>
+                {t("shares.page.byModel")}
+              </Pill>
+            ) : undefined
+          }
+        >
+          {t("shares.page.synthesis")}
+        </Caption>
         {item.summary ? (
           <Paragraphs text={item.summary} className="space-y-3 text-body text-foreground" />
         ) : (

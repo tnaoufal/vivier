@@ -21,6 +21,7 @@ const fr = {
   "shortlists.section.empty.dismissed": "Aucun écarté",
 
   // a link that still names a shortlist
+  "shortlists.title": "Shortlist",
   "shortlists.notFound.title": "Cette shortlist n'existe pas",
   "shortlists.notFound.action": "Voir les briefs",
 
@@ -54,7 +55,6 @@ const fr = {
   "shortlists.drawer.tab.reading": "Lecture",
   "shortlists.drawer.why": "Pourquoi",
   "shortlists.drawer.assessment": "Lecture du modèle",
-  "shortlists.drawer.match.noWhy": "Aucun commentaire du modèle.",
   "shortlists.drawer.match": "Exigences du brief",
   "shortlists.drawer.match.none": "Ajouté sans analyse",
   "shortlists.drawer.match.empty": "Aucun critère n'a été évalué.",
@@ -75,7 +75,7 @@ const fr = {
   "shortlists.reading.rank": "Parmi les retenus",
   "shortlists.reading.strengths": "Points forts",
   "shortlists.reading.concerns": "Réserves",
-  "shortlists.reading.challenge": "Contre-expertise",
+  "shortlists.reading.challenge": "Seconde lecture",
   "shortlists.reading.questions": "Pour l'entretien",
 } as const;
 
@@ -92,6 +92,7 @@ const en = {
   "shortlists.section.empty.retained": "None retained",
   "shortlists.section.empty.dismissed": "None dismissed",
 
+  "shortlists.title": "Shortlist",
   "shortlists.notFound.title": "This shortlist does not exist",
   "shortlists.notFound.action": "See the briefs",
 
@@ -123,7 +124,6 @@ const en = {
   "shortlists.drawer.tab.reading": "Reading",
   "shortlists.drawer.why": "Why",
   "shortlists.drawer.assessment": "The model's reading",
-  "shortlists.drawer.match.noWhy": "No comment from the model.",
   "shortlists.drawer.match": "The brief's requirements",
   "shortlists.drawer.match.none": "Added without an analysis",
   "shortlists.drawer.match.empty": "No criterion was evaluated.",
@@ -143,7 +143,7 @@ const en = {
   "shortlists.reading.rank": "Among the retained",
   "shortlists.reading.strengths": "Strengths",
   "shortlists.reading.concerns": "Reservations",
-  "shortlists.reading.challenge": "Second opinion",
+  "shortlists.reading.challenge": "Second reading",
   "shortlists.reading.questions": "For the interview",
 } as const satisfies Record<keyof typeof fr, string>;
 
