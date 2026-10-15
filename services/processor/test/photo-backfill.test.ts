@@ -426,7 +426,7 @@ describe("photoBackfillPass", () => {
     expect(db.listings).toHaveLength(4);
     expect(db.downloads).toHaveLength(downloads);
     expect([...db.listed.values()].every((count) => count === 1)).toBe(true);
-    expect(PHOTO_BACKFILL_PASSES).toBe(10);
+    expect(PHOTO_BACKFILL_PASSES).toBe(25);
   });
 
   it("stops rather than spin when the database refuses every mark, and settles the rows next run", async () => {
