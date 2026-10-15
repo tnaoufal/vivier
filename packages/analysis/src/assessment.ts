@@ -76,7 +76,7 @@ export const ROLE_DIMENSION_FIT_MIN = 70;
 export const REQUIRED_NO_SCORE_CAP = 39;
 /** A required requirement at "unknown" caps the score here (and the decision at borderline). */
 export const REQUIRED_UNKNOWN_SCORE_CAP = 69;
-/** Required requirements met in part that make a fit a borderline: one keeps the fit (its mark says "partiel"), this many or more ask for a human look. */
+/** Required requirements the model itself read as met in part (a grounded quote) that make a fit a borderline: one keeps the fit (its mark says "partiel"), this many or more ask for a human look; a "yes" the rules downgraded always does. */
 export const REQUIRED_PARTIALS_MAX = 2;
 /** The role at "no" (another métier) caps the score here and forces no_fit, whatever the other requirements. */
 export const ROLE_NO_SCORE_CAP = 25;
@@ -500,9 +500,11 @@ function dimensionsOf(
  * criterion (no métier judged), is the team's to look at, not to
  * present. Then the required requirements: one at "no" forces no_fit
  * and caps the score at 39; one at "unknown" caps the decision at
- * borderline and the score at 69; one at "partial" keeps a fit (its
- * mark says met in part), REQUIRED_PARTIALS_MAX of them cap the decision
- * at borderline; a no_fit the model answered
+ * borderline and the score at 69; one the model itself read as "partial"
+ * on a grounded quote keeps a fit (its mark says met in part),
+ * REQUIRED_PARTIALS_MAX of them cap the decision at borderline, and so
+ * does a "yes" the rules downgraded (no quote, a quote not in the
+ * profile, a deterministic pass that disputes it); a no_fit the model answered
  * with the role met (or absent) and no required requirement at "no" is
  * borderline, since a profile is never set aside with nothing to show
  * for it (what bothered the model is in its concerns, with evidence);
@@ -542,9 +544,17 @@ export function enforceAssessment(
     );
   const requiredNo = required("no");
   const requiredUnknown = required("unknown");
-  const requiredPartials = criteria.filter(
-    (criterion, index) => criterion.required && requirements[index]?.met === "partial",
-  ).length;
+  // A required requirement met in part: by the model's own reading, with a quote found in
+  // the profile (soft: a related diploma, a close sector), or a "yes" the rules could not
+  // ground or the deterministic pass disputed (hard: a claim, which is the team's to check).
+  let softPartials = 0;
+  let hardPartials = 0;
+  criteria.forEach((criterion, index) => {
+    const row = requirements[index];
+    if (!criterion.required || row?.met !== "partial") return;
+    if (answered.get(criterion.id)?.met === "partial" && !row.evidenceUnverified) softPartials += 1;
+    else hardPartials += 1;
+  });
   const role = roleCriterion(criteria);
   const roleMet: RequirementMet | null = role
     ? (requirements[criteria.indexOf(role)]?.met ?? "unknown")
@@ -593,7 +603,7 @@ export function enforceAssessment(
   } else if (requiredUnknown) {
     score = Math.min(score, REQUIRED_UNKNOWN_SCORE_CAP);
     if (decision === "fit") decision = "borderline";
-  } else if (requiredPartials >= REQUIRED_PARTIALS_MAX && decision === "fit") {
+  } else if ((hardPartials > 0 || softPartials >= REQUIRED_PARTIALS_MAX) && decision === "fit") {
     decision = "borderline";
   }
   // A no_fit the rules cannot pin on the role or on a required requirement is the team's call: borderline, and the thresholds below still set aside a composite too low (the card then names the score).
