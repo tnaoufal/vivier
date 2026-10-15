@@ -137,7 +137,7 @@ export function ItemDrawer({
                     {headline || t("common.unknown")}
                   </SheetDescription>
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-meta text-muted-foreground">
-                    {years ? <span>{years}</span> : null}
+                    <span>{years || t("common.unknown")}</span>
                     {tier ? <TierPill tier={tier} /> : null}
                     {/* The score is a figure, not a ring: the number is the signal. */}
                     {score === null ? (

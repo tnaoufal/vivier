@@ -342,7 +342,7 @@ function SignInPage() {
 
   return (
     <PublicFrame width="sm" center>
-      <div className="sheet rise-in p-6 sm:p-8">
+      <div className="sheet rise-in p-6">
         <div className="flex size-12 items-center justify-center rounded-full bg-muted text-ink">
           {step === "sent" ? (
             <Check className="size-6" aria-hidden="true" />

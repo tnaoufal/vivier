@@ -178,7 +178,9 @@ export function AnalysisBand({
         ? null
         : left < 60_000
           ? t("briefs.analysis.eta.soon")
-          : t("briefs.analysis.eta.minutes", { count: Math.ceil(left / 60_000) });
+          : Math.ceil(left / 60_000) === 1
+            ? t("briefs.analysis.eta.minutes.one")
+            : t("briefs.analysis.eta.minutes", { count: Math.ceil(left / 60_000) });
     const stepName = t(`briefs.analysis.step.${BAND_STEPS[stepOf(step)] ?? "triage"}`);
     // Under the heading: the step and how far it is; nothing while the search itself is prepared (the heading says it).
     const status = !progress
@@ -273,10 +275,12 @@ export function AnalysisBand({
         <div className="min-w-0">
           <h2 id={headingId} className="font-display text-2xl text-ink tabular-nums sm:text-3xl">
             {partial && pool !== null
-              ? t("briefs.analysis.ranked.partial", {
-                  read: count(view.results.length),
-                  total: count(pool),
-                })
+              ? view.results.length === 1
+                ? t("briefs.analysis.ranked.partial.one", { total: count(pool) })
+                : t("briefs.analysis.ranked.partial", {
+                    read: count(view.results.length),
+                    total: count(pool),
+                  })
               : plural(view.results.length, {
                   none: "briefs.analysis.ranked.none",
                   one: "briefs.analysis.ranked.one",
@@ -336,11 +340,15 @@ export function AnalysisBand({
           // What was read in full, not what the retrieval returned.
           node:
             view.poolSize === null
-              ? t("briefs.analysis.legacy.unknownPool", { read: count(funnel.assessed) })
-              : t("briefs.analysis.legacy", {
-                  read: count(funnel.assessed),
-                  total: count(view.poolSize),
-                }),
+              ? funnel.assessed === 1
+                ? t("briefs.analysis.legacy.unknownPool.one")
+                : t("briefs.analysis.legacy.unknownPool", { read: count(funnel.assessed) })
+              : funnel.assessed === 1
+                ? t("briefs.analysis.legacy.one", { total: count(view.poolSize) })
+                : t("briefs.analysis.legacy", {
+                    read: count(funnel.assessed),
+                    total: count(view.poolSize),
+                  }),
         },
       ]
     : figuresLine(funnel, wholePool).map((figure) => ({

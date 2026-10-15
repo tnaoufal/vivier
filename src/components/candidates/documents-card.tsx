@@ -93,9 +93,6 @@ export function DocumentsCard({
               key={document.id}
               className="rise-in flex items-start gap-3 py-4 first:pt-0 last:pb-0"
             >
-              <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-ink">
-                <FileText className="size-4" aria-hidden="true" />
-              </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">

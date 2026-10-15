@@ -275,7 +275,7 @@ function SettingsPage() {
       <div className="space-y-8">
         <form onSubmit={save} className="space-y-8">
           {admin ? (
-            <section className="sheet p-6 sm:p-8" aria-labelledby="settings-org-title">
+            <section className="sheet p-6" aria-labelledby="settings-org-title">
               <h2 id="settings-org-title" className="text-base font-semibold text-ink">
                 {t("settings.org")}
               </h2>
@@ -338,7 +338,7 @@ function SettingsPage() {
             </section>
           ) : null}
 
-          <section className="sheet p-6 sm:p-8" aria-labelledby="settings-account-title">
+          <section className="sheet p-6" aria-labelledby="settings-account-title">
             <div className="flex items-center gap-4">
               {/* The name is in the field below: the avatar is not read a second time. */}
               <Avatar name={shownName} size="lg" decorative />
@@ -405,7 +405,7 @@ function SettingsPage() {
           </section>
         </form>
 
-        <section className="sheet p-6 sm:p-8" aria-labelledby="settings-danger-title">
+        <section className="sheet p-6" aria-labelledby="settings-danger-title">
           <h2 id="settings-danger-title" className="text-base font-semibold text-ink">
             {t("settings.danger")}
           </h2>

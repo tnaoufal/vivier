@@ -247,9 +247,9 @@ function Sheet({
           <div className="min-w-0 flex-1">
             <p className="label-caps">{t("shares.page.sheet", { index: index + 1, count })}</p>
             <h2 className="mt-1 font-display text-2xl text-ink break-words">{item.name}</h2>
-            {item.headline ? (
-              <p className="mt-1 text-body text-muted-foreground">{item.headline}</p>
-            ) : null}
+            <p className="mt-1 text-body text-muted-foreground">
+              {item.headline || t("common.unknown")}
+            </p>
             <p className="mt-1 text-sm text-muted-foreground">{factsLine(t, item)}</p>
           </div>
         </div>

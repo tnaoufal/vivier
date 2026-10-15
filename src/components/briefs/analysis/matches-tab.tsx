@@ -74,7 +74,10 @@ export function MatchesTab({
 
   const tally = (result: MatchResult): string | null => {
     const { met, total } = requirementTally(result);
-    return total > 0 ? t("briefs.match.tally", { met, total }) : null;
+    if (total === 0) return null;
+    return total === 1
+      ? t("briefs.match.tally.one", { met })
+      : t("briefs.match.tally", { met, total });
   };
   const opening = analysis.opening || (view === null && analysis.latestLoading);
   // While a new search is prepared the previous analysis's rows step aside: the band says what runs.

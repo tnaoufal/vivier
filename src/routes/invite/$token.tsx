@@ -200,7 +200,7 @@ function InvitePage() {
 
   return (
     <PublicFrame width="sm" center>
-      <div className="sheet rise-in p-6 sm:p-8">
+      <div className="sheet rise-in p-6">
         <div className="mb-5 flex size-12 items-center justify-center rounded-full bg-muted text-ink">
           <BrandIcon className="size-7" />
         </div>

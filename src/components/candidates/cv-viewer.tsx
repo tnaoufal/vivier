@@ -149,9 +149,6 @@ function ViewerContent({
       <SheetHeader className="gap-0 border-b border-border py-3 pl-4 pr-14 sm:pl-6 sm:pr-16">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex min-w-0 flex-1 basis-64 items-center gap-3">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-ink">
-              <FileText className="size-5" aria-hidden="true" />
-            </span>
             <div className="min-w-0">
               <SheetTitle className="truncate font-sans text-base font-semibold leading-6 tracking-normal">
                 {doc?.file_name ?? t("candidates.documents.title")}

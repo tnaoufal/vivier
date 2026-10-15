@@ -76,7 +76,7 @@ export function Onboarding({ standalone = false }: { standalone?: boolean }) {
   }
 
   const form = (
-    <form onSubmit={submit} className="sheet p-6 sm:p-8" aria-labelledby="onboarding-title">
+    <form onSubmit={submit} className="sheet p-6" aria-labelledby="onboarding-title">
       <h1 id="onboarding-title" className="font-display text-2xl text-ink">
         {t("onboarding.title")}
       </h1>

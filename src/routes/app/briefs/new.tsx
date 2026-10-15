@@ -78,7 +78,7 @@ function NewBriefPage() {
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader eyebrow={eyebrow} title={t("briefs.new.title")} />
-      <form onSubmit={(event) => void submit(event)} className="sheet space-y-6 p-6 sm:p-8">
+      <form onSubmit={(event) => void submit(event)} className="sheet space-y-6 p-6">
         <div className="space-y-2">
           <Label htmlFor="new-brief-title">{t("briefs.form.title")}</Label>
           <Input
