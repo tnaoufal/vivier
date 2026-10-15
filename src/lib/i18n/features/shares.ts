@@ -49,6 +49,7 @@ const fr = {
   "shares.score.label": "Score d'adéquation : {score} sur 100",
   "shares.score.none": "Non évalué par le modèle",
   "shares.requirements.met": "{met} / {total} exigences satisfaites",
+  "shares.requirements.met.one": "{met} / 1 exigence satisfaite",
   "shares.requirements.none": "Aucune analyse",
 
   // the panel
@@ -143,6 +144,7 @@ const en = {
   "shares.score.label": "Fit score: {score} out of 100",
   "shares.score.none": "Not assessed by the model",
   "shares.requirements.met": "{met} / {total} requirements met",
+  "shares.requirements.met.one": "{met} / 1 requirement met",
   "shares.requirements.none": "No analysis",
 
   "shares.panel.title": "Shares",

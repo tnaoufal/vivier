@@ -239,7 +239,7 @@ function Sheet({
   // The synthesis, the strengths, the attention points and the questions are the assessment's: said once per sheet.
   const byModel = item.decision !== null || item.score !== null;
   return (
-    <article className="sheet space-y-8 p-6 sm:p-8 print:border-0 print:p-0 print:shadow-none">
+    <article className="sheet space-y-8 p-6 print:border-0 print:p-0 print:shadow-none">
       <header className="flex flex-wrap items-start justify-between gap-6">
         <div className="flex min-w-0 flex-1 items-start gap-4">
           {/* The initials alone: the dossier reproduces no photo. */}

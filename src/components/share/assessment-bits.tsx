@@ -90,10 +90,9 @@ export function requirementRowsOf(item: Pick<ShareItem, "requirements">): Requir
 /** "6 / 8 requirements met", or "no analysis" when the sheet holds no table. */
 export function metSentence(t: Translate, item: Pick<ShareItem, "requirements">): string {
   if (!item.requirements.length) return t("shares.requirements.none");
-  return t("shares.requirements.met", {
-    met: metCount(item.requirements),
-    total: item.requirements.length,
-  });
+  const total = item.requirements.length;
+  if (total === 1) return t("shares.requirements.met.one", { met: metCount(item.requirements) });
+  return t("shares.requirements.met", { met: metCount(item.requirements), total });
 }
 
 /**
