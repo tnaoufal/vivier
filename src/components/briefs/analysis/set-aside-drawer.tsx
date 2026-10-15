@@ -5,8 +5,9 @@
  * after the full reading (no_fit), closest first, then the ones the
  * triage read as another métier, by candidate. Each row names the
  * person (the photo when the organisation shows photos, else the
- * initials), the position held today and the reason (the triage's, else
- * the first must-have at "no", else the reading's main reservation), and
+ * initials, in greyscale), the position held today and the reason (the
+ * triage's, else the first must-have at "no", else the reading's main
+ * reservation), and
  * leads to the profile; a person may bring one the triage set aside back
  * to be read in full ("Lire quand même"). A group shows fifty rows, then
  * "Voir plus": the triage's are read from search_triage page by page
@@ -16,7 +17,7 @@
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { Archive, FileSearch, RefreshCw, TriangleAlert } from "lucide-react";
+import { Archive, CircleAlert, FileSearch, RefreshCw } from "lucide-react";
 
 import { Avatar } from "@/components/app-shell/avatar";
 import { EmptyState } from "@/components/app-shell/empty-state";
@@ -284,10 +285,7 @@ export function SetAsideDrawer({
               {triageFailed ? (
                 <div className="flex flex-wrap items-center gap-3">
                   <p className="flex min-w-0 items-center gap-2 text-sm text-ink">
-                    <TriangleAlert
-                      aria-hidden="true"
-                      className="size-4 shrink-0 text-caution-foreground dark:text-caution"
-                    />
+                    <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
                     <span className="min-w-0">{t("briefs.listError")}</span>
                   </p>
                   <Button

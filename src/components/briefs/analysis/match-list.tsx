@@ -1,14 +1,13 @@
 /**
- * A list of profiles of an analysis in one sheet of compact rows (the
+ * A list of profiles of an analysis in one sheet of 64px rows (the
  * matches, or the near profiles under their toggle), in the order
  * given. Rows rise in once, in the order they land: a batch that
  * returns unfolds row by row, a row already on screen never rises
  * again (its entrance played, it drops the animation, so the tiering
  * moving it cannot replay it), another analysis unfolds afresh. While an
  * analysis is not through, a match the second opinion has not seen is
- * marked as such. Before
- * the first rows are known, skeleton rows of the same height hold the
- * place.
+ * marked as such. Before the first rows are known, skeleton rows of the
+ * same height hold the place.
  */
 import { useRef } from "react";
 
@@ -29,7 +28,6 @@ export function MatchList({
   addedIds,
   canAdd,
   muted = false,
-  showScore = true,
   provisional = false,
   onOpen,
   onAdd,
@@ -43,7 +41,6 @@ export function MatchList({
   addedIds: ReadonlySet<string>;
   canAdd: boolean;
   muted?: boolean | undefined;
-  showScore?: boolean | undefined;
   /** The analysis is not through (running, or stopped): a match without the second opinion is marked. */
   provisional?: boolean | undefined;
   onOpen: (index: number) => void;
@@ -85,7 +82,7 @@ export function MatchList({
               : staggerVars(next.get(result.candidateId) ?? 0)
           }
           onAnimationEnd={(event) => {
-            // The animations inside the row (the score ring, a pill) bubble up here: only the row's own entrance counts.
+            // The animations inside the row (a pill) bubble up here: only the row's own entrance counts.
             if (event.target === event.currentTarget) settled.add(result.candidateId);
           }}
         >
@@ -95,7 +92,6 @@ export function MatchList({
             candidate={candidateOf(result.candidateId)}
             line={lineOf(result)}
             muted={muted}
-            showScore={showScore}
             unconfirmed={
               provisional && result.assessment?.decision === "fit" && !result.assessment.challenge
             }
@@ -114,7 +110,7 @@ export function MatchList({
 export function MatchListSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <div className="sheet overflow-hidden">
-      <SkeletonRows rows={rows} avatarSize="md" />
+      <SkeletonRows rows={rows} avatarSize="sm" className="[&>li]:py-3" />
     </div>
   );
 }

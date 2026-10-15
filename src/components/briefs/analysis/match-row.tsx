@@ -1,21 +1,21 @@
 /**
- * One profile of an analysis as a compact row: its rank, the photo (when
+ * One profile of an analysis as a 64px row: its rank, the photo (when
  * the organisation shows photos) or the initials, the name and the
  * position held today, one line that tells it apart (why it ranks
- * there, or its main reservation for a near profile), the tier the
- * ranking gave (or "À confirmer" while the second opinion has not seen
- * a match yet), the score as a small ring, and the way to the shortlist
- * (a check once added). The row is one button that opens the profile's
- * drawer; the shortlist button sits beside it, never inside it. A
- * candidate still being read shows placeholders, an erased one says so.
- * It renders the row's content; the list draws the row itself.
+ * there, or its main reservation for a near profile; from `md`, the
+ * drawer says it on a phone), the tier the ranking gave as its letter
+ * (or the quiet word "À confirmer" while the second opinion has not
+ * seen a match yet), and the way to the shortlist (a check once added).
+ * No ring: the figure lives in the drawer. The row is one button that
+ * opens the profile's drawer; the shortlist button sits beside it,
+ * never inside it. A candidate still being read shows placeholders, an
+ * erased one says so. It renders the row's content; the list draws the
+ * row itself.
  */
 import { Check, ListPlus } from "lucide-react";
 import { useState } from "react";
 
 import { Avatar } from "@/components/app-shell/avatar";
-import { Pill } from "@/components/app-shell/pill";
-import { ScoreRing } from "@/components/app-shell/score-ring";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -37,7 +37,6 @@ export function MatchRow({
   candidate,
   line,
   muted = false,
-  showScore = true,
   unconfirmed = false,
   added,
   canAdd,
@@ -53,8 +52,6 @@ export function MatchRow({
   line: string | null;
   /** A near profile: quieter text, no tier. */
   muted?: boolean | undefined;
-  /** False on a ranking no model read (the ring would only say "no score"). */
-  showScore?: boolean | undefined;
   /** A match the second opinion has not seen yet (a run under way or stopped): it may still leave the list. */
   unconfirmed?: boolean | undefined;
   added: boolean;
@@ -73,7 +70,6 @@ export function MatchRow({
     : t("briefs.results.gone");
   const position = candidate ? currentPosition(candidate) : null;
   const tier = muted ? null : tierOf(result);
-  const score = result.assessment ? result.assessment.score : null;
   const addLabel = added ? t("briefs.match.addedLabel") : t("briefs.results.addToShortlist");
 
   async function add() {
@@ -92,12 +88,12 @@ export function MatchRow({
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-4 pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:gap-4 sm:pl-6"
+        className="flex min-h-16 min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-4 pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:gap-4 sm:pl-6"
       >
         <span className="w-5 shrink-0 text-right text-meta text-muted-foreground tabular-nums">
           {rank}
         </span>
-        <Avatar name={loading ? "" : name} size="md" photoUrl={photoUrl} decorative />
+        <Avatar name={loading ? "" : name} size="sm" photoUrl={photoUrl} decorative />
         <span className="min-w-0 flex-1 md:flex md:items-center md:gap-6">
           {loading ? (
             <span className="block space-y-2 md:w-44 md:shrink-0 xl:w-56">
@@ -126,7 +122,7 @@ export function MatchRow({
           {line ? (
             <span
               className={cn(
-                "mt-0.5 line-clamp-2 min-w-0 text-sm sm:line-clamp-1 md:mt-0 md:flex-1",
+                "hidden min-w-0 text-sm md:line-clamp-1 md:flex-1",
                 muted ? "text-muted-foreground" : "text-ink",
               )}
             >
@@ -135,26 +131,13 @@ export function MatchRow({
           ) : null}
         </span>
         {unconfirmed ? (
-          <span className="shrink-0">
-            <Pill size="sm" tone="caution" dot>
-              {t("briefs.match.unconfirmed")}
-            </Pill>
+          <span className="shrink-0 text-meta text-muted-foreground">
+            {t("briefs.match.unconfirmed")}
           </span>
         ) : tier ? (
-          <span className="hidden shrink-0 sm:inline-flex">
+          <span className="shrink-0">
             <TierPill tier={tier} compact />
           </span>
-        ) : null}
-        {showScore ? (
-          <ScoreRing
-            score={score}
-            size="sm"
-            label={
-              score === null
-                ? t("briefs.results.noScore")
-                : t("briefs.results.score", { score: Math.round(score) })
-            }
-          />
         ) : null}
       </button>
       <div className="flex w-12 shrink-0 justify-center pr-2 sm:w-14 sm:pr-4">
@@ -168,7 +151,7 @@ export function MatchRow({
                 aria-label={addLabel}
                 aria-disabled={added || busy}
                 onClick={() => void add()}
-                className={cn(added && "cursor-default text-positive hover:bg-transparent")}
+                className={cn(added && "cursor-default hover:bg-transparent")}
               >
                 {added ? <Check aria-hidden="true" /> : <ListPlus aria-hidden="true" />}
               </Button>

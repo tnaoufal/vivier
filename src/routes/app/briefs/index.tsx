@@ -1,16 +1,19 @@
 /**
- * /app/briefs: the briefs of the organisation as a grid of cards,
- * newest change first, each card what tells a brief apart (the title,
- * its status, the domain of its role profile, how many criteria it
- * holds, what its newest analysis found, when it changed), the count in
- * the header, a status filter with counts, and the way to a new one. A
- * whole-pool analysis not through yet (profiles its triage has not
- * read, or kept profiles not read in full) says it is unfinished rather
- * than counting what it has not reached. The cards rise in once; the
- * newest analyses arrive after the briefs and fill their line. Live
- * through realtime on briefs and searches: a batch of an analysis
- * updates its brief's line from the row the event carries, and the
- * triage's two counts of that search alone, never by reading every
+ * /app/briefs: the briefs of the organisation as rows, newest change
+ * first, each row what tells a brief apart: the title, its status when
+ * it is not simply open, what its newest analysis found ("12
+ * correspondances", "Analyse inachevée", "Aucune analyse"), how many
+ * candidates its shortlist retained, the last message of its thread
+ * (who, when, the first words) and when it changed; the count in the
+ * header, a filter (open, closed, all) only once a brief is closed, and
+ * the way to a new one. A whole-pool analysis not through yet (profiles
+ * its triage has not read, or kept profiles not read in full) says it
+ * is unfinished rather than counting what it has not reached. The rows
+ * rise in once; the analyses, the shortlists' counts and the threads
+ * arrive after the briefs and fill their line. Live through realtime on
+ * briefs, searches, shortlist items and comments: a batch of an
+ * analysis updates its brief's line from the row the event carries, and
+ * the triage's two counts of that search alone, never by reading every
  * analysis again.
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -21,54 +24,74 @@ import { EmptyState } from "@/components/app-shell/empty-state";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { BriefStatusPill } from "@/components/briefs/brief-status-pill";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { Segmented } from "@/components/ui/tabs";
 import { requireSupabase } from "@/lib/auth/supabase-client";
 import {
   analysisOfRow,
-  BRIEF_FILTERS,
-  briefSubtitle,
   cardAnalysisOf,
-  countByFilter,
   filterBriefs,
   withAnalysis,
   withTriageProgress,
   type BriefFilter,
   type LatestAnalysis,
 } from "@/lib/briefs/presentation";
-import { listBriefs, readLatestAnalyses, readTriageProgress } from "@/lib/briefs/queries";
+import {
+  listBriefs,
+  readLatestAnalyses,
+  readRetainedCounts,
+  readTriageProgress,
+} from "@/lib/briefs/queries";
 import { formatCount } from "@/lib/candidates/format";
 import { debounce, subscribeToTable } from "@/lib/data/realtime";
 import { useQuery } from "@/lib/data/use-query";
-import { formatDate, useI18n } from "@/lib/i18n";
+import { formatDate, formatRelative, useI18n } from "@/lib/i18n";
 import { useCurrentOrg, useOrg } from "@/lib/org/org-context";
+import { useMemberNamer } from "@/lib/shortlists/use-members";
+import { threadSummaries } from "@/lib/threads/queries";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/briefs/")({
   component: BriefsPage,
 });
 
-const SKELETON_CARDS = 6;
+const SKELETON_ROWS = 6;
 
 function BriefsPage() {
   const { t, locale } = useI18n();
   const { org } = useCurrentOrg();
   const { can } = useOrg();
   const navigate = useNavigate();
+  const nameOf = useMemberNamer();
   const canEdit = can("member");
-  const [filter, setFilter] = useState<BriefFilter>("all");
+  const [filter, setFilter] = useState<BriefFilter>("open");
 
-  // Every brief of the organisation at once (200 at most): the filter and its counts are read in memory.
+  // Every brief of the organisation at once (200 at most): the filter is read in memory.
   const list = useQuery(`briefs:${org.id}`, async () =>
     listBriefs(await requireSupabase(), org.id, null),
   );
   const rows = useMemo(() => list.data ?? [], [list.data]);
-  const shown = useMemo(() => filterBriefs(rows, filter), [rows, filter]);
-  const counts = useMemo(() => countByFilter(rows), [rows]);
+  // The filter exists once a brief is closed; before, every brief shows.
+  const filterable = rows.some((row) => row.status === "closed");
+  const shown = useMemo(
+    () => filterBriefs(rows, filterable ? filter : "all"),
+    [filter, filterable, rows],
+  );
   const briefIds = useMemo(() => rows.map((row) => row.id), [rows]);
+  const idsKey = briefIds.join(",");
   const analyses = useQuery(
-    `briefs-analyses:${org.id}:${briefIds.join(",")}`,
+    `briefs-analyses:${org.id}:${idsKey}`,
     async () => readLatestAnalyses(await requireSupabase(), org.id, briefIds),
+    briefIds.length > 0,
+  );
+  const retained = useQuery(
+    `briefs-retained:${org.id}:${idsKey}`,
+    async () => readRetainedCounts(await requireSupabase(), org.id, briefIds),
+    briefIds.length > 0,
+  );
+  const threads = useQuery(
+    `briefs-threads:${org.id}:${idsKey}`,
+    async () => threadSummaries(await requireSupabase(), org.id, briefIds),
     briefIds.length > 0,
   );
   // The analyses as read, then kept current by the realtime rows themselves; a new read replaces them.
@@ -80,6 +103,8 @@ function BriefsPage() {
 
   const refresh = list.refresh;
   const refreshAnalyses = analyses.refresh;
+  const refreshRetained = retained.refresh;
+  const refreshThreads = threads.refresh;
   useEffect(
     () =>
       subscribeToTable(
@@ -131,6 +156,27 @@ function BriefsPage() {
         readProgress(changed.briefId, changed.analysis.searchId);
     });
   }, [org.id, refreshAnalyses]);
+  // A decision on a shortlist, a message in a thread: the row's line follows.
+  useEffect(() => {
+    const stopItems = subscribeToTable(
+      "shortlist_items",
+      `org_id=eq.${org.id}`,
+      debounce(() => {
+        void refreshRetained();
+      }, 800),
+    );
+    const stopComments = subscribeToTable(
+      "comments",
+      `org_id=eq.${org.id}`,
+      debounce(() => {
+        void refreshThreads();
+      }, 800),
+    );
+    return () => {
+      stopItems();
+      stopComments();
+    };
+  }, [org.id, refreshRetained, refreshThreads]);
 
   // No count without a brief: the empty state already says there is none.
   const countText =
@@ -147,12 +193,6 @@ function BriefsPage() {
       {t("briefs.new")}
     </Button>
   ) : null;
-
-  function criteriaText(count: number): string {
-    if (count === 0) return t("briefs.list.criteria.none");
-    if (count === 1) return t("briefs.list.criteria.one");
-    return t("briefs.list.criteria.many", { count });
-  }
 
   /** What the newest analysis found: its matches once read through, "unfinished" before, how many it ranked without a model; a placeholder while the analyses load. */
   function analysisText(analysis: LatestAnalysis | undefined): ReactNode {
@@ -183,8 +223,7 @@ function BriefsPage() {
     return t("briefs.analysis.ranked.many", { count: formatCount(locale, card.count) });
   }
 
-  const filterLabel = (value: BriefFilter) =>
-    value === "all" ? t("common.all") : t(`briefs.status.${value}`);
+  const loading = list.loading && !list.data;
 
   return (
     <div>
@@ -198,20 +237,20 @@ function BriefsPage() {
           ) : undefined
         }
         // The empty state below carries the one filled button when there is no brief yet.
-        actions={rows.length > 0 || (list.loading && !list.data) ? newButton : null}
+        actions={rows.length > 0 || loading ? newButton : null}
       />
 
-      {rows.length > 0 || (list.loading && !list.data) ? (
+      {filterable ? (
         <div className="mb-6">
           <Segmented
             value={filter}
             onChange={setFilter}
             aria-label={t("briefs.list.filter")}
-            options={BRIEF_FILTERS.map((value) => ({
-              value,
-              label: filterLabel(value),
-              count: list.data ? counts[value] : undefined,
-            }))}
+            options={[
+              { value: "open", label: t("briefs.filter.open") },
+              { value: "closed", label: t("briefs.filter.closed") },
+              { value: "all", label: t("common.all") },
+            ]}
           />
         </div>
       ) : null}
@@ -231,21 +270,12 @@ function BriefsPage() {
             </Button>
           }
         />
-      ) : list.loading && !list.data ? (
-        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true">
-          {Array.from({ length: SKELETON_CARDS }, (_, index) => (
-            <div key={index} className="sheet space-y-3 p-6">
-              <div className="flex items-start justify-between gap-3">
-                <Skeleton className="h-5 w-1/2" />
-                <Skeleton className="h-5 w-14 rounded-full" />
-              </div>
-              <Skeleton className="h-3.5 w-2/3" />
-              <Skeleton className="mt-6 h-3 w-full" />
-            </div>
-          ))}
+      ) : loading ? (
+        <div className="sheet overflow-hidden" aria-busy="true">
+          <SkeletonRows rows={SKELETON_ROWS} avatar={false} className="[&>li]:py-3" />
         </div>
       ) : shown.length === 0 ? (
-        filter !== "all" ? (
+        filterable ? (
           <EmptyState
             icon={<Briefcase />}
             title={t("briefs.empty.filtered.title")}
@@ -259,34 +289,57 @@ function BriefsPage() {
           <EmptyState icon={<Briefcase />} title={t("briefs.empty.title")} action={newButton} />
         )
       ) : (
-        <ul className="stagger grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="sheet stagger divide-y divide-border overflow-hidden">
           {shown.map((row) => {
-            const subtitle = briefSubtitle(row);
+            const retainedCount = retained.data?.get(row.id) ?? 0;
+            const thread = threads.data?.get(row.id);
             return (
               <li key={row.id} className="rise-in min-w-0">
                 <Link
                   to="/app/briefs/$briefId"
                   params={{ briefId: row.id }}
-                  className="sheet sheet-link flex h-full min-w-0 flex-col p-6"
+                  className="sheet-row py-3"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <h2 className="line-clamp-2 min-w-0 flex-1 text-base font-semibold text-ink break-words">
-                      {row.title}
-                    </h2>
-                    <BriefStatusPill status={row.status} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h2 className="truncate text-sm font-medium text-ink">{row.title}</h2>
+                      {/* Open is the rule: only another state sets a row apart. */}
+                      {row.status !== "open" ? (
+                        <BriefStatusPill status={row.status} size="sm" />
+                      ) : null}
+                    </div>
+                    <p className="truncate text-sm text-muted-foreground tabular-nums">
+                      {analysisText(shownAnalyses?.get(row.id))}
+                      {retainedCount > 0 ? (
+                        <>
+                          <span aria-hidden="true"> · </span>
+                          {retainedCount === 1
+                            ? t("briefs.list.retained.one")
+                            : t("briefs.list.retained.many", {
+                                count: formatCount(locale, retainedCount),
+                              })}
+                        </>
+                      ) : null}
+                      {thread ? (
+                        <>
+                          <span aria-hidden="true"> · </span>
+                          {nameOf(thread.lastAuthorId)}
+                          <span aria-hidden="true"> · </span>
+                          <time dateTime={thread.lastAt}>
+                            {formatRelative(locale, thread.lastAt)}
+                          </time>
+                          <span aria-hidden="true"> · </span>
+                          <span className="text-ink">{thread.lastExcerpt}</span>
+                        </>
+                      ) : null}
+                    </p>
                   </div>
-                  <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground break-words">
-                    {subtitle || t("briefs.list.noDescription")}
-                  </p>
-                  <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-6 text-meta text-muted-foreground tabular-nums">
-                    <span>{criteriaText(row.criteria.length)}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{analysisText(shownAnalyses?.get(row.id))}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>
-                      {t("briefs.list.updated", { date: formatDate(locale, row.updated_at) })}
-                    </span>
-                  </div>
+                  <time
+                    dateTime={row.updated_at}
+                    className="hidden shrink-0 text-meta text-muted-foreground tabular-nums sm:block"
+                  >
+                    {formatDate(locale, row.updated_at)}
+                  </time>
                 </Link>
               </li>
             );

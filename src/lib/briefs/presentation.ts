@@ -1,19 +1,20 @@
 /**
  * Pure helpers behind what the briefs pages show, kept apart from the
  * analysis itself (assessment.ts and its rules are the frozen part):
- * the muted line of a brief card, the status filter of the list, the
- * newest analysis of each brief, its method and what it counted (kept
- * current from the realtime rows themselves, the triage's counts read
- * apart) and what its card says of it, and what the brief page's
- * "Correspondances" tab reads off an analysis: the state its band is
- * in, the figures of its funnel, the matches, the near profiles and the
- * profiles set aside in their order, the one line each row shows (the
- * reason a profile was set aside among them), the step a running stage
- * belongs to, the time left, the turn each row takes when a list
- * unfolds (a batch that lands rises in one row after the other, a row
- * already on screen never moves again), the pages of a list read on
- * demand, and whether the job (or the role alone) a search rests on is
- * still the brief's. Tested in presentation.test.ts.
+ * the status filter of the list, the newest analysis of each brief,
+ * its method and what it counted (kept current from the realtime rows
+ * themselves, the triage's counts read apart), what its row says of it
+ * and how many candidates each shortlist retained; and what the brief
+ * page's "Correspondances" tab reads off an analysis: the state its
+ * band is in, the figures of its funnel and the one line that says
+ * them, the matches, the near profiles and the profiles set aside in
+ * their order, the one line each row shows (the reason a profile was
+ * set aside among them), the step a running stage belongs to, the time
+ * left, the turn each row takes when a list unfolds (a batch that lands
+ * rises in one row after the other, a row already on screen never moves
+ * again), the pages of a list read on demand, whether the role a search
+ * rests on is still the brief's, and whether the brief's text changed
+ * since the model read it. Tested in presentation.test.ts.
  */
 import type {
   BriefCriterion,
@@ -24,68 +25,37 @@ import type {
 } from "@/lib/db/types";
 
 import { compareTiered, decisionOf, firstMissingRequirement } from "./assessment";
-import { protectedCriterion, roleCriterion, sameCriteria } from "./criteria";
-import { roleDefinitionOf } from "./role-profile";
+import { protectedCriterion, roleCriterion } from "./criteria";
+import { briefSourceHash, roleDefinitionOf } from "./role-profile";
 import type { AnalysisStep } from "./stages";
 
-/** The first non-empty line of a text, trimmed; "" when there is none. */
-export function firstLine(text: string | null | undefined): string {
-  if (!text) return "";
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed) return trimmed;
-  }
-  return "";
-}
+/** The three views of the list: the briefs being worked on (open or draft), the closed ones, every brief. */
+export type BriefFilter = "open" | "closed" | "all";
 
-/**
- * The muted line under a brief's title: the domain of its role profile
- * when one was written (what the job is in the market), else the first
- * line of the need; "" when the brief states neither.
- */
-export function briefSubtitle(brief: Pick<BriefRow, "description" | "role_profile">): string {
-  const domain = brief.role_profile?.domain?.trim();
-  if (domain) return domain;
-  return firstLine(brief.description);
-}
-
-export type BriefFilter = BriefStatus | "all";
-
-export const BRIEF_FILTERS: readonly BriefFilter[] = ["all", "open", "draft", "closed"];
+export const BRIEF_FILTERS: readonly BriefFilter[] = ["open", "closed", "all"];
 
 export function isBriefFilter(value: unknown): value is BriefFilter {
   return typeof value === "string" && (BRIEF_FILTERS as readonly string[]).includes(value);
 }
 
-/** The rows the filter keeps, in the order given. */
-export function filterBriefs<T extends Pick<BriefRow, "status">>(
+/** The rows the filter keeps, in the order given: "open" is every brief not closed (a draft is still being worked on). */
+export function filterBriefs<T extends { status: BriefStatus }>(
   rows: readonly T[],
   filter: BriefFilter,
 ): T[] {
-  return filter === "all" ? [...rows] : rows.filter((row) => row.status === filter);
+  if (filter === "all") return [...rows];
+  if (filter === "closed") return rows.filter((row) => row.status === "closed");
+  return rows.filter((row) => row.status !== "closed");
 }
 
-/** How many rows each filter would show, for the counts next to the options. */
-export function countByFilter<T extends Pick<BriefRow, "status">>(
-  rows: readonly T[],
-): Record<BriefFilter, number> {
-  const counts: Record<BriefFilter, number> = { all: rows.length, open: 0, draft: 0, closed: 0 };
-  for (const row of rows) counts[row.status] += 1;
-  return counts;
-}
-
-/** The newest row of each brief, whatever order the rows come in; a row without a brief is skipped. */
-export function latestPerBrief<T extends { brief_id: string | null; created_at: string }>(
-  rows: readonly T[],
-): Map<string, T> {
-  const latest = new Map<string, T>();
+/** How many retained candidates each brief's shortlist holds, from the rows of its items; a brief without one is absent. */
+export function retainedByBrief(rows: readonly { briefId: string | null }[]): Map<string, number> {
+  const counts = new Map<string, number>();
   for (const row of rows) {
-    if (!row.brief_id) continue;
-    const kept = latest.get(row.brief_id);
-    if (!kept || Date.parse(row.created_at) > Date.parse(kept.created_at))
-      latest.set(row.brief_id, row);
+    if (!row.briefId) continue;
+    counts.set(row.briefId, (counts.get(row.briefId) ?? 0) + 1);
   }
-  return latest;
+  return counts;
 }
 
 /** What an analysis counted: its results, how many the model read, how many match (decision fit, whatever their tier). */
@@ -105,7 +75,7 @@ export function digestResults(results: readonly MatchResult[]): AnalysisDigest {
   return { total: results.length, assessed, present };
 }
 
-/** The newest analysis of a brief as its card says it: when it ran, how (the whole pool, the closest profiles, the text alone) and what it counted. */
+/** The newest analysis of a brief as its row says it: when it ran, how (the whole pool, the closest profiles, the text alone) and what it counted. */
 export interface LatestAnalysis extends AnalysisDigest {
   searchId: string;
   createdAt: string;
@@ -137,7 +107,7 @@ function countColumn(value: unknown): number | null {
  * keeps (result_count, assessed_count, match_count) are read first, so
  * a row whose results realtime could not carry still counts; a row
  * without them is counted from its results. The method travels with
- * them, so a card can tell an analysis a model reads from a ranking on
+ * them, so a row can tell an analysis a model reads from a ranking on
  * the text. Null when the row lacks its id, its brief or its date, or
  * carries neither, so the caller reads the analyses again instead.
  */
@@ -223,7 +193,7 @@ export function withTriageProgress(
 }
 
 /**
- * What a brief card says of its newest analysis:
+ * What a brief's row says of its newest analysis:
  * - "unfinished": a whole-pool search not through yet: profiles of its
  *   snapshot wait for the triage, profiles it kept are not in the
  *   results yet, or results are not read in full. Its counts are not its
@@ -323,6 +293,31 @@ export function funnelOf(results: readonly MatchResult[], triage: TriageTally | 
     matches,
     setAside: Math.max(0, triage.no) + noFit,
   };
+}
+
+/** One figure of the band's line, by what it counts. */
+export type FigureKey = "analysed" | "kept" | "assessed" | "setAside";
+
+export interface Figure {
+  key: FigureKey;
+  count: number;
+}
+
+/**
+ * The one line of figures under the band's headline, each figure once
+ * and only when it says something the headline does not: the profiles
+ * analysed; the ones the triage kept (a whole-pool analysis); the ones
+ * read in full, when that is not every profile kept (some are left);
+ * the ones set aside (the triage's "no" and the readings' no_fit), the
+ * figure that opens their list. The matches are the headline's and are
+ * never said twice.
+ */
+export function figuresLine(funnel: Funnel, wholePool: boolean): Figure[] {
+  const line: Figure[] = [{ key: "analysed", count: funnel.analysed }];
+  if (wholePool) line.push({ key: "kept", count: funnel.kept });
+  if (funnel.assessed !== funnel.kept) line.push({ key: "assessed", count: funnel.assessed });
+  if (funnel.setAside > 0) line.push({ key: "setAside", count: funnel.setAside });
+  return line;
 }
 
 /**
@@ -472,18 +467,17 @@ export function roleChangedSince(
 }
 
 /**
- * True when the job a search rests on is no longer the brief's: the
- * criteria saved since differ from the ones the search took, or the
- * role profile now defines the role otherwise (roleChangedSince). A
- * search the team checked and changed is run again; one they left as it
- * was starts as it is.
+ * True when the brief's text (the title or the need) changed since the
+ * model read it: the profile the brief holds was read from another
+ * text, and the next analysis reads the brief again. A brief never
+ * read, or read before the hash existed, says nothing (false): there is
+ * no reading to be out of date.
  */
-export function jobChangedSince(
-  brief: Pick<BriefRow, "criteria" | "role_profile">,
-  searchCriteria: readonly BriefCriterion[],
+export function briefChangedSince(
+  brief: Pick<BriefRow, "title" | "description" | "role_profile">,
 ): boolean {
-  if (!sameCriteria(brief.criteria, searchCriteria)) return true;
-  return roleChangedSince(brief.role_profile, searchCriteria);
+  const hash = brief.role_profile?.sourceHash;
+  return typeof hash === "string" && hash !== briefSourceHash(brief);
 }
 
 /** The most rows the deterministic ranking shows when no model reads the profiles. */
@@ -493,8 +487,6 @@ export const TEXT_RANKING_MAX = 20;
  * The state the analysis band is in:
  * - "running": a search or a stage is being sent from this page;
  * - "empty": no analysis on screen;
- * - "needsCheck": the model wrote the understanding of the job this
- *   search rests on, and the team checks it before a profile is read;
  * - "textOnly": an analysis no model can read (no model on this
  *   deployment, or a brief without criteria), ranked on the text;
  * - "legacy": an analysis stored before the whole pool was read, which
@@ -504,14 +496,7 @@ export const TEXT_RANKING_MAX = 20;
  *   promotion or a stage (interrupted, or batches that failed);
  * - "done": every stage ran on every profile it could send.
  */
-export type BandState =
-  | "empty"
-  | "running"
-  | "needsCheck"
-  | "incomplete"
-  | "done"
-  | "legacy"
-  | "textOnly";
+export type BandState = "empty" | "running" | "incomplete" | "done" | "legacy" | "textOnly";
 
 export interface BandInputs {
   /** Whether the deployment has a model; null while unknown (never read as "no model"). */
@@ -520,8 +505,6 @@ export interface BandInputs {
   method: SearchMethod | null;
   /** True while this page sends the search or a stage. */
   running: boolean;
-  /** True when the analysis on screen waits for the team's check. */
-  needsCheck: boolean;
   /** The criteria the analysis on screen was run with. */
   criteriaCount: number;
   /** Its results. */
@@ -539,7 +522,6 @@ export interface BandInputs {
 export function bandStateOf(inputs: BandInputs): BandState {
   if (inputs.running) return "running";
   if (inputs.method === null) return "empty";
-  if (inputs.needsCheck) return "needsCheck";
   const wholePool = inputs.method === "triage";
   if (!wholePool && (inputs.model === false || inputs.criteriaCount === 0)) return "textOnly";
   if (!wholePool && (inputs.poolSize === null || inputs.resultCount < inputs.poolSize))
@@ -549,11 +531,11 @@ export function bandStateOf(inputs: BandInputs): BandState {
   return "done";
 }
 
-/** The four steps the stepper names, in order. */
+/** The four steps the band names, in order. */
 export const BAND_STEPS = ["triage", "read", "challenge", "rank"] as const;
 export type BandStep = (typeof BAND_STEPS)[number];
 
-/** The step of the stepper (0 to 3) a stage belongs to: the promotion closes the triage, the final comparison is part of the tiering. */
+/** The step (0 to 3) a stage belongs to: the promotion closes the triage, the final comparison is part of the tiering. */
 export function stepOf(stage: AnalysisStep): number {
   switch (stage) {
     case "triage":

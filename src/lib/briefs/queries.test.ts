@@ -7,7 +7,10 @@ import {
   countOutsideSnapshot,
   listSetAside,
   readCandidatesById,
+  readCandidateYears,
   readLatestAnalyses,
+  readRetainedCounts,
+  readShortlistState,
   readTriageProgress,
   SEARCH_SUMMARY_COLUMNS,
 } from "./queries";
@@ -34,6 +37,7 @@ interface FakeBuilder extends PromiseLike<FakeAnswer> {
   order(...args: unknown[]): FakeBuilder;
   range(...args: unknown[]): FakeBuilder;
   limit(...args: unknown[]): FakeBuilder;
+  maybeSingle(...args: unknown[]): FakeBuilder;
 }
 
 /**
@@ -61,6 +65,7 @@ function fakeSupabase(answer: (calls: readonly Call[]) => FakeAnswer) {
       order: step("order"),
       range: step("range"),
       limit: step("limit"),
+      maybeSingle: step("maybeSingle"),
       then(onFulfilled, onRejected) {
         return Promise.resolve()
           .then(() => answer(calls))
@@ -332,5 +337,114 @@ describe("readCandidatesById", () => {
     const { supabase, queries } = fakeSupabase(() => ({ data: [], error: null }));
     expect((await readCandidatesById(supabase, "org", [])).size).toBe(0);
     expect(queries).toEqual([]);
+  });
+});
+
+describe("readRetainedCounts", () => {
+  it("counts the retained items of each brief's shortlist, in lots, nothing but them travelling", async () => {
+    const { supabase, queries } = fakeSupabase((calls) => {
+      const asked = (argsOf(calls, "in")[0]?.[1] ?? []) as string[];
+      return {
+        data: [
+          { brief_id: asked[0], shortlist_items: [{ status: "retained" }, { status: "retained" }] },
+          { brief_id: asked[1], shortlist_items: [{ status: "retained" }] },
+          { brief_id: asked[2], shortlist_items: null },
+          { brief_id: 7, shortlist_items: [{ status: "retained" }] },
+        ],
+        error: null,
+      };
+    });
+    const ids = Array.from({ length: 60 }, (_, index) => `b${index}`);
+    const counts = await readRetainedCounts(supabase, "org", [...ids, "b0"]);
+    expect(queries).toHaveLength(2);
+    const calls = queries[0] ?? [];
+    expect(argsOf(calls, "from")).toEqual([["shortlists"]]);
+    expect(argsOf(calls, "select")).toEqual([["brief_id, shortlist_items!inner(status)"]]);
+    expect(argsOf(calls, "eq")).toEqual([
+      ["org_id", "org"],
+      ["shortlist_items.status", "retained"],
+    ]);
+    expect((argsOf(calls, "in")[0]?.[1] as string[]).length).toBe(50);
+    expect(argsOf(queries[1] ?? [], "in")[0]?.[1]).toEqual(ids.slice(50));
+    expect(counts.get("b0")).toBe(2);
+    expect(counts.get("b1")).toBe(1);
+    expect(counts.get("b2")).toBeUndefined();
+    expect(counts.get("b50")).toBe(2);
+    expect(counts.size).toBe(4);
+  });
+
+  it("reads nothing for no brief", async () => {
+    const { supabase, queries } = fakeSupabase(() => ({ data: [], error: null }));
+    expect((await readRetainedCounts(supabase, "org", [])).size).toBe(0);
+    expect(queries).toEqual([]);
+  });
+});
+
+describe("readShortlistState", () => {
+  it("answers the shortlist, its candidates and how many were retained", async () => {
+    const { supabase, queries } = fakeSupabase((calls) =>
+      argsOf(calls, "from")[0]?.[0] === "shortlists"
+        ? { data: { id: "l1" }, error: null }
+        : {
+            data: [
+              { candidate_id: "c1", status: "retained" },
+              { candidate_id: "c2", status: "to_review" },
+              { candidate_id: "c3", status: "retained" },
+              { candidate_id: "c4", status: "dismissed" },
+            ],
+            error: null,
+          },
+    );
+    expect(await readShortlistState(supabase, "org", "brief")).toEqual({
+      shortlistId: "l1",
+      candidateIds: ["c1", "c2", "c3", "c4"],
+      retained: 2,
+    });
+    expect(argsOf(queries[1] ?? [], "select")).toEqual([["candidate_id, status"]]);
+    expect(argsOf(queries[1] ?? [], "eq")).toEqual([
+      ["org_id", "org"],
+      ["shortlist_id", "l1"],
+    ]);
+  });
+
+  it("answers an empty state before the first candidate was added", async () => {
+    const { supabase, queries } = fakeSupabase(() => ({ data: null, error: null }));
+    expect(await readShortlistState(supabase, "org", "brief")).toEqual({
+      shortlistId: null,
+      candidateIds: [],
+      retained: 0,
+    });
+    expect(queries).toHaveLength(1);
+  });
+});
+
+describe("readCandidateYears", () => {
+  it("reads the years of one candidate of the organisation, a value that is not a number as none", async () => {
+    const { supabase, queries } = fakeSupabase(() => ({
+      data: { id: "c1", years_experience: 12 },
+      error: null,
+    }));
+    expect(await readCandidateYears(supabase, "org", "c1")).toEqual({
+      id: "c1",
+      years_experience: 12,
+    });
+    const calls = queries[0] ?? [];
+    expect(argsOf(calls, "from")).toEqual([["candidates"]]);
+    expect(argsOf(calls, "select")).toEqual([["id, years_experience"]]);
+    expect(argsOf(calls, "eq")).toEqual([
+      ["org_id", "org"],
+      ["id", "c1"],
+    ]);
+    expect(argsOf(calls, "maybeSingle")).toEqual([[]]);
+    const odd = fakeSupabase(() => ({ data: { id: "c2", years_experience: "12" }, error: null }));
+    expect(await readCandidateYears(odd.supabase, "org", "c2")).toEqual({
+      id: "c2",
+      years_experience: null,
+    });
+  });
+
+  it("answers null for a candidate that is gone", async () => {
+    const { supabase } = fakeSupabase(() => ({ data: null, error: null }));
+    expect(await readCandidateYears(supabase, "org", "c9")).toBeNull();
   });
 });

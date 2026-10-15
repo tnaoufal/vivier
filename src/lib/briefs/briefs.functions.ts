@@ -4,9 +4,7 @@
  * criteria, the role first, in one model call bound by
  * enforceBriefReading() and saved into the brief), made by the search
  * when the brief was never read or its text changed since
- * (needsDerivation), and by the two older surfaces kept until the page
- * work removes them (extractCriteria proposes without saving,
- * regenerateRoleProfile reads and saves); the search of the talent pool
+ * (needsDerivation); the search of the talent pool
  * for a brief (with a model, a snapshot of every active profile for the
  * triage, and without one the whole pool up to FULL_POOL_MAX active
  * candidates, else the hybrid retrieval, scored by the deterministic
@@ -423,63 +421,6 @@ async function deriveBrief(
     return null;
   }
 }
-
-export interface ExtractionResult {
-  /** The criteria as one reading answers them, the role first; nothing saved. */
-  criteria: BriefCriterion[];
-  /** The model's sentences about requests it dropped, in the brief's language. */
-  warnings: string[];
-  /** Criteria and fields dropped because they named a protected characteristic. */
-  dropped: number;
-}
-
-/**
- * Kept for the criteria editor's proposals until the page work removes
- * that surface (the criteria are the brief's reading, not the team's):
- * the criteria of one reading, proposed, nothing saved.
- */
-export const extractCriteria = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => briefInput.parse(data))
-  .handler(async ({ data }): Promise<ExtractionResult> => {
-    const member = await requireMember(data.accessToken, data.orgId, "member");
-    await enforceRateLimit("model", { userKey: member.userId });
-    if (!modelConfigured()) throw new AppError("SETUP:model");
-    const brief = await loadBrief(db(), member.orgId, data.briefId);
-    const reading = await readBrief(member.orgId, brief);
-    return { criteria: reading.criteria, warnings: reading.warnings, dropped: reading.dropped };
-  });
-
-export interface RoleProfileResult {
-  roleProfile: RoleProfile;
-}
-
-/**
- * Kept for the role card's "regenerate" until the page work removes
- * that surface: the brief read again and saved, the profile and the
- * criteria together, as the next search would do it.
- */
-export const regenerateRoleProfile = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => briefInput.parse(data))
-  .handler(async ({ data }): Promise<RoleProfileResult> => {
-    const member = await requireMember(data.accessToken, data.orgId, "member");
-    await enforceRateLimit("model", { userKey: member.userId });
-    if (!modelConfigured()) throw new AppError("SETUP:model");
-    const client = db();
-    const brief = await loadBrief(client, member.orgId, data.briefId);
-    if (!jobTitleOf(brief)) throw new AppError("INPUT:invalid");
-    const reading = await readBrief(member.orgId, brief);
-    await saveReading(client, member.orgId, brief, reading);
-    console.info(
-      "[briefs]",
-      JSON.stringify({
-        event: "role_profile",
-        orgId: member.orgId,
-        briefId: brief.id,
-        model: reading.profile.model,
-      }),
-    );
-    return { roleProfile: reading.profile };
-  });
 
 // ---------------------------------------------------------------------
 // the search
