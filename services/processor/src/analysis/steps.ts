@@ -54,6 +54,7 @@ import {
   screenRequirements,
   screenRoleBrief,
   screenSystemPrompt,
+  statesMaximumYears,
   THIN_CARD_REASON,
   TRIAGE_BATCH_MAX,
   triageCard,
@@ -372,6 +373,19 @@ function briefTextOf(ctx: RunContext): BriefText {
     criteria: [...ctx.criteria],
     roleProfile: ctx.brief.role_profile,
   };
+}
+
+/**
+ * True when the brief states a maximum: its text writes a ceiling of
+ * years (statesMaximumYears()), or its role profile holds a yearsMax
+ * (the reading keeps one only when the text wrote it). Only then may a
+ * reservation or a second opinion's doubt find the person above the
+ * level (enforceAssessment(), applyChallenge()): a ceiling on
+ * experience the brief did not state is a proxy for age. Read once per
+ * step from the brief as the run holds it, after its reading.
+ */
+function maximumStatedOf(brief: LoadedBrief): boolean {
+  return statesMaximumYears(brief) || typeof brief.role_profile?.yearsMax === "number";
 }
 
 /** The kept rows of the snapshot (yes, close), every page. */
@@ -1005,9 +1019,12 @@ async function carryToShortlist(ctx: RunContext, entries: readonly MatchResult[]
  * The full reading: one call per entry without an assessment, the
  * answer bound by enforceAssessment() against the run's criteria and
  * the deterministic verdicts, every quote checked against what the
- * model was given, written entry by entry and carried to the brief's
- * shortlist. A call the model cannot answer is sent once more; then
- * the entry is left unread for this run and counted on the row.
+ * model was given, the reservations held to what one may say (never
+ * the CV's silence; the person above the level only when the brief
+ * states a maximum, maximumStatedOf()), written entry by entry and
+ * carried to the brief's shortlist. A call the model cannot answer is
+ * sent once more; then the entry is left unread for this run and
+ * counted on the row.
  */
 async function stepAssessing(ctx: RunContext): Promise<StepOutcome> {
   const startedAt = Date.now();
@@ -1021,6 +1038,7 @@ async function stepAssessing(ctx: RunContext): Promise<StepOutcome> {
   await ctx.control.stage("assessing", done, total);
   const briefText = briefTextOf(ctx);
   const junior = ctx.brief.role_profile?.seniority === "junior";
+  const maximumStated = maximumStatedOf(ctx.brief);
   const maxTokens = Math.min(
     ASSESSMENT_TOKENS_MAX,
     ASSESSMENT_TOKENS_BASE + ASSESSMENT_TOKENS_PER_REQUIREMENT * ctx.criteria.length,
@@ -1066,7 +1084,7 @@ async function stepAssessing(ctx: RunContext): Promise<StepOutcome> {
           job.result.verdicts,
           answer.value,
           answer.usage.model,
-          { texts: payloadTexts(payload), junior },
+          { texts: payloadTexts(payload), junior, maximumStated },
         );
         const entry: MatchResult = { ...job.result, assessment };
         await db.mergeResults(ctx.orgId, ctx.searchId, [entry]);
@@ -1089,8 +1107,10 @@ async function stepAssessing(ctx: RunContext): Promise<StepOutcome> {
  * The second opinion: every retained entry without one, in batches of
  * CHALLENGE_BATCH_MAX (one call per entry, the batch written in one
  * merge), applyChallenge() binding the answer: a doubt stands only on a
- * quote found in the profile. A call the model cannot answer is sent
- * once more, then the entry keeps its first reading for this run.
+ * quote found in the profile, never on the CV's silence, and above the
+ * level only when the brief states a maximum (maximumStatedOf()). A
+ * call the model cannot answer is sent once more, then the entry keeps
+ * its first reading for this run.
  */
 async function stepChallenging(ctx: RunContext): Promise<StepOutcome> {
   const startedAt = Date.now();
@@ -1104,6 +1124,7 @@ async function stepChallenging(ctx: RunContext): Promise<StepOutcome> {
   let done = total - pending.length;
   await ctx.control.stage("challenging", done, total);
   const briefText = briefTextOf(ctx);
+  const maximumStated = maximumStatedOf(ctx.brief);
   const tally = { challenged: 0, doubts: 0, failed: 0, gone: 0 };
   let stopped = false;
   for (const batch of lotsOf(pending, CHALLENGE_BATCH_MAX)) {
@@ -1148,6 +1169,7 @@ async function stepChallenging(ctx: RunContext): Promise<StepOutcome> {
         }
         const challenged = applyChallenge(assessment, answer.value, {
           texts: payloadTexts(payload),
+          maximumStated,
         });
         updated.push({ ...result, assessment: challenged });
         tally.challenged += 1;

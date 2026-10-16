@@ -7,6 +7,7 @@
  * shell's RequirementRow shape (src/components/app-shell/requirement-list.tsx).
  */
 export {
+  aboveLevelSentence,
   applyChallenge,
   ASSESS_BATCH_MAX,
   BORDERLINE_MIN_SCORE,
@@ -35,6 +36,7 @@ export {
   ROLE_NO_SCORE_CAP,
   ROLE_PARTIAL_SCORE_CAP,
   ROLE_UNKNOWN_SCORE_CAP,
+  silenceSentence,
   STRENGTHS_MAX,
   SUMMARY_MAX,
   tierOf,

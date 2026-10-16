@@ -22,13 +22,22 @@
  * FIT_MIN_SCORE). A sentence that names a protected
  * characteristic or a period without a position is withheld, and the
  * assessment says how many were, so the reading shown is never taken
- * for complete. The second opinion (applyChallenge) can only lower: a
- * doubt with a quoted evidence found in the profile on the métier or a
- * required requirement (or unclassed) sends a retained profile to "to
- * check"; one on the seniority, a contradiction or the context joins
- * its reservations, first, and leaves it retained for the team to
- * weigh; a doubt without a quote is an opinion and changes nothing. Pure: no model, no data access; every rule is stated once
- * and tested in assessment.test.ts. The rest of the module reads
+ * for complete. A reservation (a concern) is withheld and counted the
+ * same way when it only notes the CV's silence ("non mentionné", "not
+ * stated": the requirement already reads "Non renseigné", and a
+ * silence is a question), or when it finds the person above the level
+ * asked on a brief that states no maximum (EnforceOptions.maximumStated):
+ * a ceiling on experience is a proxy for age. The second opinion
+ * (applyChallenge) can only lower: a doubt with a quoted evidence found
+ * in the profile on the métier or a required requirement (or
+ * unclassed) sends a retained profile to "to check"; one on the
+ * seniority, a contradiction or the context joins its reservations,
+ * first, and leaves it retained for the team to weigh; a doubt without
+ * a quote is an opinion and changes nothing, and so is one that rests
+ * on the CV's silence or, on a brief that states no maximum, finds the
+ * person above the level (its reason withheld and counted). Pure: no
+ * model, no data access; every rule is stated once and tested in
+ * assessment.test.ts. The rest of the module reads
  * assessed results for the panel: the groups the page shows (to
  * present, to dig into, set aside, not analysed), the requirement most
  * often missing, the rows a RequirementList shows (the role first,
@@ -117,6 +126,8 @@ export interface ModelChallengeAnswer {
   verdict: string;
   /** What a doubt is about (CHALLENGE_KINDS); anything else reads as unclassed. */
   kind?: string | null | undefined;
+  /** With a "seniority" doubt, whether the level is "under" or "above" the one asked; read for that kind only. */
+  direction?: string | null | undefined;
   reason?: string | null | undefined;
   evidence?: string | null | undefined;
 }
@@ -153,6 +164,14 @@ export interface EnforceOptions {
   texts?: readonly string[] | undefined;
   /** True for a brief whose profile is junior: a role at "unknown" keeps its score (internships are positions), the decision still borderline. */
   junior?: boolean | undefined;
+  /**
+   * True when the brief states a maximum: its text writes a ceiling of
+   * years (statesMaximumYears(), role-profile.ts) or its role profile
+   * holds a yearsMax. Only then may a reservation or a second opinion's
+   * doubt find the person above the level asked. Left out, it is false:
+   * a ceiling on experience the brief did not state is a proxy for age.
+   */
+  maximumStated?: boolean | undefined;
 }
 
 export type ResultDecision = AssessmentDecision | "unassessed";
@@ -323,23 +342,160 @@ export function forbiddenSentence(text: string): boolean {
   );
 }
 
+// ---------------------------------------------------------------------
+// what a reservation may not rest on
+// ---------------------------------------------------------------------
+
+/** The participles that say what a CV states, accents folded, in any agreement: "mentionnée", "cités", "précisé", "renseigné". */
+const STATED =
+  "(?:mentionne|cite|precise|indique|renseigne|specifie|detaille|documente|evoque|communique|liste)e?s?";
+
+/**
+ * The thing a sentence says the CV leaves out: one to six words, a
+ * parenthesis counting as one ("(ISO, GMP, REACH)"), never across a
+ * comma, a stop or a "mais", so "pas de management, mais pilotage
+ * précisé" is not read as one phrase.
+ */
+const THING_WORD = "(?:(?!mais |but )[^\\s,;:.!?()]+|\\([^()]*\\))";
+const THING = `${THING_WORD}(?: ${THING_WORD}){0,5}`;
+
+/**
+ * The phrases that say the CV does not mention, state, cite, list or
+ * specify something, in French and in English, accents and case
+ * folded: "non mentionnée", "pas de certification PMP mentionnée",
+ * "non explicitement citées", "aucune mention", "non précisé", "non
+ * indiqué", "non renseigné", "le CV ne précise pas", "not mentioned",
+ * "no mention of", "not stated", "not specified", "not listed", "does
+ * not mention". High precision first: a lack the positions show
+ * ("expérience en chimie absente du CV", "anglais non maîtrisé", "pas
+ * chimie", "pas de management") is a fact, and none of them reads it.
+ */
+const SILENCE_PHRASES = [
+  `(?:non|pas|nulle part)[- ](?:\\p{L}+ment )?${STATED}`,
+  `${STATED} nulle part`,
+  `(?:pas d(?:e |')|aucune?s? )${THING} ${STATED}`,
+  "(?:aucune|nulle|pas de|absence de|fait pas|fait aucune|fait nulle) mentions?",
+  "n(?:e |')(?:\\S+ )?(?:mentionne|precise|indique|cite|renseigne|specifie|detaille|evoque|dit) (?:pas|rien|aucune?|nulle part)",
+  "ne fait pas etat|fait etat d'aucune?",
+  "(?:aucune |pas d'|sans )informations?",
+  "muete?s? (?:sur|quant)",
+  "(?:not|(?:is|are|was|were)n't) (?:been )?(?:\\p{L}+ly )?(?:mentioned|stated|specified|listed|cited|indicated|documented|detailed)",
+  "(?:does|do|did)(?: not|n't) (?:\\p{L}+ly )?(?:mention|state|specify|list|cite|indicate|detail|say)",
+  "never (?:mention(?:s|ed)?|state[sd]?|specif(?:ies|ied)|list(?:s|ed)?|cite[sd]?)",
+  "nowhere (?:mentioned|stated|specified|listed|cited)",
+  "no (?:\\p{L}+ )?mentions?",
+  `no ${THING} (?:mentioned|cited|listed|specified|indicated)`,
+  "no information (?:on|about|regarding|as to)",
+  "un(?:mentioned|stated|specified)",
+  "silent (?:on|about|regarding|as to)",
+];
+const SILENCE = new RegExp(`(?<![\\p{L}])(?:${SILENCE_PHRASES.join("|")})(?![\\p{L}])`, "u");
+
+/** A word between "above" and the level it names, never the person's own: "above the candidate's level" says the brief asks more. */
+const LEVEL_GAP =
+  "(?:(?!(?:candidate|candidat|person|his|her|their|son|sa|ses|leur)(?![\\p{L}]))\\S+ )";
+/** What the brief asks, in French, with the word that makes it the brief's: "le niveau requis", "les exigences du poste", "le cadre du poste"; or a number of years, never the person's ("des 4 ans du candidat"). */
+const ASKED_NOUN =
+  "(?:(?:du|le) niveau|(?:de )?la seniorite|(?:du|le) perimetre|(?:des|les) exigences|(?:du|le) cadre)";
+const ASKED_BY_THE_BRIEF =
+  "(?:du poste|de la fonction|du role|de la mission|du brief|de l'offre|requis\\p{L}*|demande\\p{L}*|attendu\\p{L}*|vise\\p{L}*|recherche\\p{L}*|exige\\p{L}*|minimum)";
+const ASKED = `(?:${ASKED_NOUN} ${ASKED_BY_THE_BRIEF}|(?:des|les) \\d+ ans(?! d(?:u|e) ))`;
+
+/**
+ * The phrases that flag a person above the level asked, in French and
+ * in English, accents and case folded: overqualified ("surqualifié",
+ * "surdimensionné", "overqualified"), too senior or too experienced, a
+ * seniority or an experience very high, above or beyond the level or
+ * the role ("au-dessus du niveau requis", "far above", "well above",
+ * "exceeds the level"), past its frame ("dépasse largement le cadre du
+ * poste"). Never under the level ("en dessous des 8 ans requis",
+ * "below", "insuffisante"), never what the brief asks above what the
+ * person has ("au-dessus du niveau du candidat"), never a sector
+ * ("expérience bien supérieure en pharma") or a budget ("a dépassé le
+ * cadre budgétaire").
+ */
+const ABOVE_LEVEL_PHRASES = [
+  "sur-?qualifi\\p{L}*",
+  "sur-?dimensionn\\p{L}*",
+  "over-? ?qualifi\\p{L}*",
+  "trop (?:senior|experimente\\p{L}*|qualifie\\p{L}*|confirme\\p{L}*|expert\\p{L}*|chevronne\\p{L}*|grade\\p{L}*)",
+  "(?:too|overly) (?:senior|experienced|qualified)",
+  "(?:plus|more) senior (?:que|than)",
+  "plus experimente\\p{L}* que (?:le|la|ce|l')",
+  "more experienced than (?:the|this|what)",
+  "tres senior (?:pour|par rapport|vs|au regard)",
+  "very senior (?:for|compared|relative)",
+  "(?:seniorite|anciennete|experience)(?: \\S+){0,4}? (?:tres|bien|nettement|largement|beaucoup|trop|particulierement|excessivement) (?:elevee?s?|superieure?s?)(?! en )",
+  "(?:seniority|experience)(?: \\S+){0,4}? (?:very|too|extremely|excessively) high(?!-)",
+  "(?:very|extremely|too|excessively) high (?:seniority|level of experience|experience level)",
+  `au[- ](?:dessus|dela) (?:${ASKED}|du poste|du profil|de la fonction)`,
+  `depass(?:e|ent|ait|aient|ant|er|erait|eraient) (?:\\S+ ){0,2}?(?:${ASKED}|le poste|la fonction)`,
+  `(?:far|well|way|significantly|considerably|substantially|much) (?:above|beyond) ${LEVEL_GAP}{0,3}?(?:level|seniority|scope|remit|requirements?|minimum|role|position|job|brief|years)(?!')`,
+  `above the ${LEVEL_GAP}{0,2}?(?:level|seniority)(?!')`,
+  `beyond the ${LEVEL_GAP}{0,2}?(?:level|seniority|scope|remit)(?!')`,
+  `exceed(?:s|ing|ed)? ${LEVEL_GAP}{0,2}?(?:the|this) ${LEVEL_GAP}{0,2}?(?:level|scope|remit|frame|seniority|requirements?|minimum|role|position|job)(?!')`,
+];
+const ABOVE_LEVEL = new RegExp(
+  `(?<![\\p{L}])(?:${ABOVE_LEVEL_PHRASES.join("|")})(?![\\p{L}])`,
+  "u",
+);
+
+/**
+ * True when a sentence says the CV does not mention, state, cite, list
+ * or specify something: the CV's silence read as a lack. A reservation
+ * or a second opinion's doubt that says so is withheld, since the
+ * requirement already reads "Non renseigné" and a silence is a
+ * question for the interview. A lack the positions show ("expérience en
+ * chimie absente du CV", "pas de management") is not a silence.
+ */
+export function silenceSentence(text: string): boolean {
+  return SILENCE.test(fold(text));
+}
+
+/**
+ * True when a sentence flags the person as above the level asked:
+ * overqualified, too senior, a seniority far above, past the role's
+ * frame. Never true for under the level. A reservation or a second
+ * opinion's doubt that says so stands only on a brief that states a
+ * maximum (EnforceOptions.maximumStated): a ceiling on experience the
+ * brief did not state is a proxy for age.
+ */
+export function aboveLevelSentence(text: string): boolean {
+  return ABOVE_LEVEL.test(fold(text));
+}
+
+/**
+ * True for a reservation the rules withhold besides a forbidden
+ * sentence: one that only notes the CV's silence, always, and one that
+ * finds the person above the level, unless the brief states a maximum.
+ */
+function unfoundedConcern(text: string, maximumStated: boolean): boolean {
+  return silenceSentence(text) || (!maximumStated && aboveLevelSentence(text));
+}
+
 /** What the rules count as they drop sentences: the assessment says how many were withheld. */
 interface Withheld {
   withheld: number;
 }
 
-/** The sentences of a list, trimmed and clipped to NOTE_MAX, blanks and repeats dropped, forbidden ones counted and left out, `max` at most. */
+/**
+ * The sentences of a list, trimmed and clipped to NOTE_MAX, blanks and
+ * repeats dropped, `max` at most; a forbidden one, or one `refused`
+ * turns down (for the concerns, unfoundedConcern()), is counted and
+ * left out without taking a place.
+ */
 function sentencesOf(
   value: readonly unknown[] | null | undefined,
   max: number,
   counter: Withheld,
+  refused: (text: string) => boolean = () => false,
 ): string[] {
   if (!Array.isArray(value)) return [];
   const out: string[] = [];
   for (const item of value) {
     const text = typeof item === "string" ? clip(item, NOTE_MAX) : null;
     if (!text || out.includes(text)) continue;
-    if (forbiddenSentence(text)) {
+    if (forbiddenSentence(text) || refused(text)) {
       counter.withheld += 1;
       continue;
     }
@@ -592,7 +748,12 @@ function dimensionsOf(
  * more, otherwise no_fit. The model's own borderline is never raised:
  * it is allowed to be stricter. With `texts`, every quote is checked
  * against what the model was given; with `junior`, a role at "unknown"
- * keeps its score.
+ * keeps its score. The concerns, and only they, are held to what a
+ * reservation may say: one that only notes the CV's silence
+ * (silenceSentence) is withheld and counted like a forbidden sentence,
+ * and so is one that finds the person above the level
+ * (aboveLevelSentence) unless `maximumStated`; the strengths, the
+ * questions, the notes and the evidence are read as before.
  */
 export function enforceAssessment(
   criteria: readonly BriefCriterion[],
@@ -703,7 +864,10 @@ export function enforceAssessment(
     assessment.modelScore = modelScore;
     assessment.dimensions = dimensions;
     assessment.strengths = sentencesOf(modelAnswer.strengths, STRENGTHS_MAX, counter);
-    assessment.concerns = sentencesOf(modelAnswer.concerns, CONCERNS_MAX, counter);
+    const maximumStated = options.maximumStated === true;
+    assessment.concerns = sentencesOf(modelAnswer.concerns, CONCERNS_MAX, counter, (text) =>
+      unfoundedConcern(text, maximumStated),
+    );
     assessment.questions = sentencesOf(modelAnswer.questions, QUESTIONS_MAX, counter);
   }
   if (counter.withheld > 0) assessment.withheld = counter.withheld;
@@ -725,8 +889,16 @@ export function enforceAssessment(
  * contradiction or the context keeps the decision and the score;
  * anything else (confirmed, or a doubt without evidence, or with a
  * quote the profile does not hold: an opinion is not a fact) is stored
- * as confirmed and changes nothing else. A reason or an evidence the
- * filter withheld adds to the assessment's count.
+ * as confirmed and changes nothing else. So is a doubt whose reason
+ * only notes the CV's silence (silenceSentence: a silence is a
+ * question, never a doubt), or, unless `maximumStated`, one that finds
+ * the person above the level: a "seniority" doubt with the direction
+ * "above", or a reason that says so (aboveLevelSentence), since a
+ * ceiling on experience the brief did not state is a proxy for age. A
+ * doubt under the level, or above it on a brief that states a maximum,
+ * is kept as any other. A reason or an evidence the filter withheld
+ * (forbidden, or such a reason, counted once) adds to the assessment's
+ * count.
  */
 export function applyChallenge(
   assessment: Assessment,
@@ -739,14 +911,28 @@ export function applyChallenge(
   const rawEvidence = clip(answer.evidence, EVIDENCE_MAX);
   const evidenceForbidden = rawEvidence !== null && forbiddenSentence(rawEvidence);
   const evidence = rawEvidence && !evidenceForbidden ? rawEvidence : null;
+  const kind = isChallengeKind(answer.kind) ? answer.kind : null;
+  const above =
+    kind === "seniority" &&
+    typeof answer.direction === "string" &&
+    answer.direction.trim().toLowerCase() === "above";
+  // A doubt that rests on the CV's silence, or finds the person above a level the brief does not cap, is no doubt: its reason is withheld.
+  const unfounded =
+    answer.verdict === "doubt" &&
+    reason !== null &&
+    (silenceSentence(reason) ||
+      (options.maximumStated !== true && (above || aboveLevelSentence(reason))));
   const withheld =
-    (assessment.withheld ?? 0) + (reasonForbidden ? 1 : 0) + (evidenceForbidden ? 1 : 0);
+    (assessment.withheld ?? 0) +
+    (reasonForbidden ? 1 : 0) +
+    (evidenceForbidden ? 1 : 0) +
+    (unfounded ? 1 : 0);
   const counted = withheld > 0 ? { withheld } : {};
   const grounded =
     evidence !== null && (options.texts === undefined || evidenceGrounded(evidence, options.texts));
-  const doubt = answer.verdict === "doubt" && reason !== null && grounded;
+  const doubt = answer.verdict === "doubt" && reason !== null && grounded && !unfounded;
   if (!doubt) {
-    // A doubt the model could not quote is not kept even as a sentence; a confirmation's reason (why the profile holds) is.
+    // A doubt the model could not quote, or that the rules withheld, is not kept even as a sentence; a confirmation's reason (why the profile holds) is.
     const challenge: AssessmentChallenge = {
       verdict: "confirmed",
       reason: answer.verdict === "confirmed" ? reason : null,
@@ -754,7 +940,6 @@ export function applyChallenge(
     };
     return { ...assessment, ...counted, challenge };
   }
-  const kind = isChallengeKind(answer.kind) ? answer.kind : null;
   const concerns = [...(assessment.concerns ?? [])];
   if (!concerns.includes(reason)) concerns.push(reason);
   const challenge: AssessmentChallenge = kind

@@ -800,7 +800,14 @@ goes and leaves the stage and the progress on the row, and
    or "née en 1975", the phrases of a career break or a leave, the job's
    own collocations such as "politique commerciale" or "race condition"
    taken out first) is withheld and counted (`withheld`), and the
-   reading says it is incomplete by that much. The **composite
+   reading says it is incomplete by that much. So is a concern
+   that only notes the CV's silence ("certification PMP non mentionnée",
+   `silenceSentence()`): the requirement table already says "Non
+   renseigné", and a silence is a question. One that finds the person
+   above the level ("surqualifié", "far above", "dépasse le cadre du
+   poste", `aboveLevelSentence()`) stands only when the brief states a
+   maximum (its text writes a ceiling of years, or its profile holds a
+   `yearsMax`), since a ceiling on experience is a proxy for age. The **composite
    score** (the package's `scoring.ts`) replaces the model's: role 0.40,
    seniority 0.15, context 0.15, the mean of trajectory and achievements
    0.15, and the weighted coverage of the other requirements 0.15 (`yes`
@@ -845,7 +852,8 @@ goes and leaves the stage and the progress on the row, and
    already lists. It answers `confirmed` (with one sentence on what the
    profile rests on) or `doubt` with a reason, a quote and what it is
    about (`metier`, `requirement`, `seniority`, `contradiction`,
-   `context`). `applyChallenge()` can only lower: a doubt whose quote is
+   `context`; a `seniority` doubt says whether the level is `under` or
+   `above`). `applyChallenge()` can only lower: a doubt whose quote is
    found in the profile and whose reason names nothing forbidden is
    appended to the concerns and stored; on the métier or a required
    requirement (or unclassed) it also sends the decision to `borderline`
@@ -853,7 +861,11 @@ goes and leaves the stage and the progress on the row, and
    on the seniority, a contradiction or the context leaves the profile
    retained for the team to weigh; a doubt
    without a quote, or with one the profile does not hold, is an opinion
-   and is stored as confirmed, changing nothing. The reading puts the
+   and is stored as confirmed, changing nothing. So is a doubt that
+   only notes the CV's silence, and one that finds the person above the
+   level (a `seniority` doubt `above`, or a reason that says so) on a
+   brief that states no maximum, for the same reason as a concern: its
+   reason is withheld and counted. The reading puts the
    doubt first among the reservations ("Seconde lecture : …"). A call the
    model cannot answer is sent once more, then the entry keeps its first
    reading for this run.

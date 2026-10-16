@@ -231,6 +231,29 @@ describe("prompts", () => {
     );
   });
 
+  it("never take the CV's silence or a level above a minimum for a reservation or a doubt", () => {
+    // The reservations: a silence is a question, and above the level needs a maximum, as for the seniority dimension.
+    const system = assessmentSystemPrompt();
+    expect(system).toContain("a seniority under the level, a context far from the brief's");
+    expect(system).not.toContain("a seniority above or under");
+    expect(system).toContain("A thing the CV does not state is not a concern: it is a question");
+    expect(system).toContain(
+      'never write that the CV does not mention, state or specify something ("non mentionné", "pas de X mentionné", "not stated")',
+    );
+    expect(system).toContain(
+      "Above the level is a concern only when brief.roleProfile.yearsMax is set, judged on the level reached as for the seniority dimension, never on a number of years",
+    );
+    // The second opinion says which way a seniority doubt goes, and above the level needs a maximum too.
+    const challenge = challengeSystemPrompt();
+    expect(challenge).toContain('"direction":"under|above"');
+    expect(challenge).toContain(
+      '- direction, with a "seniority" doubt, says whether the level is "under" or "above" the one asked; empty for any other kind.',
+    );
+    expect(challenge).toContain(
+      "Above the level is a doubt only when brief.roleProfile.yearsMax is set or the brief states a maximum level; a thing the CV does not state is never a doubt.",
+    );
+  });
+
   it("reads the whole pool up to 200 candidates, else 120 retrieved rows", () => {
     expect(FULL_POOL_MAX).toBe(200);
     expect(RETRIEVAL_LIMIT).toBe(120);
@@ -1013,8 +1036,9 @@ describe("challengePayload and challengeSystemPrompt", () => {
   it("asks for the strongest reason not to present, a doubt only with evidence, never a protected characteristic or a career break", () => {
     const system = challengeSystemPrompt();
     expect(system).toContain(
-      '{"verdict":"confirmed|doubt","kind":"metier|requirement|seniority|contradiction|context","reason":"...","evidence":"..."}',
+      '{"verdict":"confirmed|doubt","kind":"metier|requirement|seniority|contradiction|context","direction":"under|above","reason":"...","evidence":"..."}',
     );
+    expect(system).toContain("evidence, kind and direction are empty");
     expect(system).toContain("strongest reason NOT to present");
     expect(system).toContain("métier mismatch hidden behind titles");
     expect(system).toContain("seniority mismatch");
